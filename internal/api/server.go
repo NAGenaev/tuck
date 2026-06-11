@@ -7,8 +7,10 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/NAGenaev/tuck/internal/audit"
 	"github.com/NAGenaev/tuck/internal/barrier"
 	"github.com/NAGenaev/tuck/internal/core"
+	"github.com/NAGenaev/tuck/internal/metrics"
 )
 
 const maxBodyBytes = 1 << 20 // 1 MiB
@@ -19,11 +21,17 @@ const tokenCtxKey contextKey = iota
 
 // Server adapts a core.Core to HTTP.
 type Server struct {
-	core *core.Core
+	core  *core.Core
+	audit *audit.Logger
 }
 
-// New returns an HTTP server over the given core.
-func New(c *core.Core) *Server { return &Server{core: c} }
+// New returns an HTTP server over the given core with a no-op audit logger.
+func New(c *core.Core) *Server { return NewWithAudit(c, audit.Nop()) }
+
+// NewWithAudit returns an HTTP server with the given audit logger.
+func NewWithAudit(c *core.Core, l *audit.Logger) *Server {
+	return &Server{core: c, audit: l}
+}
 
 // Handler builds the route table.
 func (s *Server) Handler() http.Handler {
@@ -36,6 +44,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/sys/ready", s.getReady)
 	mux.HandleFunc("POST /v1/sys/unseal", s.postUnseal)
 	mux.HandleFunc("POST /v1/sys/seal", s.requireToken(s.postSeal))
+	mux.HandleFunc("GET /v1/sys/snapshot", s.requireToken(s.getSnapshot))
+
+	mux.HandleFunc("GET /metrics", metrics.Handler())
 
 	mux.HandleFunc("GET /v1/secret/{path...}", s.requireToken(s.getSecret))
 	mux.HandleFunc("PUT /v1/secret/{path...}", s.requireToken(s.putSecret))
@@ -54,7 +65,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/auth/kubernetes/role/{namespace}/{sa}", s.requireToken(s.getK8sRole))
 	mux.HandleFunc("DELETE /v1/auth/kubernetes/role/{namespace}/{sa}", s.requireToken(s.deleteK8sRole))
 
-	return mux
+	return audit.Middleware(s.audit, mux)
 }
 
 // requireToken extracts and validates X-Tuck-Token, then stores the token ID

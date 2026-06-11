@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"path"
 	"sync"
 	"time"
@@ -119,6 +120,7 @@ func (c *Core) Start(ctx context.Context) (*StartResult, error) {
 		if err := c.barrier.Unseal(ctx, result.RootKey); err != nil {
 			return nil, fmt.Errorf("barrier unseal: %w", err)
 		}
+		clear(result.RootKey)
 		rootTok, err := token.Generate(token.RootTokenDisplayName, []string{token.RootPolicyName}, 0)
 		if err != nil {
 			return nil, fmt.Errorf("generate root token: %w", err)
@@ -142,6 +144,7 @@ func (c *Core) Start(ctx context.Context) (*StartResult, error) {
 	if err := c.barrier.Unseal(ctx, rootKey); err != nil {
 		return nil, fmt.Errorf("barrier unseal: %w", err)
 	}
+	clear(rootKey)
 	return nil, nil
 }
 
@@ -180,6 +183,7 @@ func (c *Core) UnsealShard(ctx context.Context, share string) (bool, error) {
 	if err := c.barrier.Unseal(unsealCtx, rootKey); err != nil {
 		return false, fmt.Errorf("barrier unseal after shards: %w", err)
 	}
+	clear(rootKey)
 	c.unsealCtx = nil // release the stored context
 	return true, nil
 }
@@ -362,5 +366,46 @@ func (c *Core) DeleteSecret(ctx context.Context, p string) error {
 // cannot escape the secret/ namespace via "..".
 func secretKey(p string) string {
 	return secretPrefix + path.Clean("/"+p)[1:]
+}
+
+// Snapshotter returns a function that writes a database snapshot to an io.Writer,
+// and true if the backend supports snapshots. Returns (nil, false) otherwise.
+func (c *Core) Snapshotter() (func(ctx context.Context, w io.Writer) error, bool) {
+	type snapBackend interface {
+		Snapshot(ctx context.Context, w io.Writer) error
+	}
+	if sb, ok := c.backend.(snapBackend); ok {
+		return sb.Snapshot, true
+	}
+	return nil, false
+}
+
+// StartGC launches a background goroutine that periodically removes expired
+// tokens. It returns when ctx is cancelled.
+func (c *Core) StartGC(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(15 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if !c.barrier.IsSealed() {
+					c.runGC(ctx)
+				}
+			}
+		}
+	}()
+}
+
+func (c *Core) runGC(ctx context.Context) {
+	expired, err := c.tokens.ListExpired(ctx)
+	if err != nil {
+		return
+	}
+	for _, id := range expired {
+		_ = c.tokens.Delete(ctx, id)
+	}
 }
 

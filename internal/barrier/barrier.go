@@ -171,6 +171,17 @@ func (b *Barrier) Delete(ctx context.Context, key string) error {
 	return b.backend.Delete(ctx, key)
 }
 
+// List returns keys with the given prefix from the backend.
+// Requires the barrier to be unsealed.
+func (b *Barrier) List(ctx context.Context, prefix string) ([]string, error) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if b.key == nil {
+		return nil, ErrSealed
+	}
+	return b.backend.List(ctx, prefix)
+}
+
 // --- crypto helpers: AES-256-GCM, nonce prefixed to the ciphertext ---
 
 func encrypt(key, plaintext []byte) ([]byte, error) {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 
 	bolt "go.etcd.io/bbolt"
 )
@@ -61,6 +62,15 @@ func (b *Bolt) Put(_ context.Context, entry *Entry) error {
 func (b *Bolt) Delete(_ context.Context, key string) error {
 	return b.db.Update(func(tx *bolt.Tx) error {
 		return tx.Bucket(bucketName).Delete([]byte(key))
+	})
+}
+
+// Snapshot writes a consistent point-in-time copy of the database to w.
+// The caller is responsible for closing w after Snapshot returns.
+func (b *Bolt) Snapshot(_ context.Context, w io.Writer) error {
+	return b.db.View(func(tx *bolt.Tx) error {
+		_, err := tx.WriteTo(w)
+		return err
 	})
 }
 

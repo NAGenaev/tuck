@@ -2,6 +2,8 @@ package physical
 
 import (
 	"context"
+	"errors"
+	"io"
 	"strings"
 	"sync"
 )
@@ -43,6 +45,10 @@ func (m *InMem) Delete(_ context.Context, key string) error {
 	defer m.mu.Unlock()
 	delete(m.data, key)
 	return nil
+}
+
+func (m *InMem) Snapshot(_ context.Context, _ io.Writer) error {
+	return errors.New("inmem backend does not support snapshots")
 }
 
 func (m *InMem) List(_ context.Context, prefix string) ([]string, error) {

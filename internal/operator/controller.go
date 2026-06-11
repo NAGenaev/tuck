@@ -3,7 +3,7 @@ package operator
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -55,13 +55,13 @@ func New(kube KubeClientIface, tuck TuckClientIface, namespace string) *Controll
 
 // Run starts the controller loop and blocks until ctx is cancelled.
 func (ctrl *Controller) Run(ctx context.Context) error {
-	log.Println("operator: starting controller")
+	slog.Info("operator: starting controller")
 	for {
 		if err := ctrl.runOnce(ctx); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			log.Printf("operator: watch cycle error: %v — reconnecting in %s", err, watchReconnectDelay)
+			slog.Error("operator: watch cycle error — reconnecting", "err", err, "delay", watchReconnectDelay)
 			select {
 			case <-time.After(watchReconnectDelay):
 			case <-ctx.Done():
@@ -80,13 +80,12 @@ func (ctrl *Controller) runOnce(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("list: %w", err)
 	}
-	log.Printf("operator: listed %d TuckSecret(s)", len(list.Items))
+	slog.Info("operator: listed TuckSecrets", "count", len(list.Items))
 
 	for _, ts := range list.Items {
 		ctrl.addTracked(ts)
 		if err := ctrl.reconcile(ctx, ts); err != nil {
-			log.Printf("operator: reconcile %s/%s: %v",
-				ts.Metadata.Namespace, ts.Metadata.Name, err)
+			slog.Error("operator: reconcile", "namespace", ts.Metadata.Namespace, "name", ts.Metadata.Name, "err", err)
 		}
 	}
 
@@ -113,8 +112,7 @@ func (ctrl *Controller) runOnce(ctx context.Context) error {
 				return nil
 			}
 			if err := ctrl.handleEvent(ctx, ev); err != nil {
-				log.Printf("operator: handle event %q for %s/%s: %v",
-					ev.Type, ev.Object.Metadata.Namespace, ev.Object.Metadata.Name, err)
+				slog.Error("operator: handle event", "type", ev.Type, "namespace", ev.Object.Metadata.Namespace, "name", ev.Object.Metadata.Name, "err", err)
 			}
 
 		case <-ticker.C:
@@ -135,8 +133,7 @@ func (ctrl *Controller) handleEvent(ctx context.Context, ev WatchEvent) error {
 		// The operator does NOT delete the K8s Secret on TuckSecret deletion.
 		// It only manages Secret content, not its lifecycle. This is
 		// conservative: the user deletes the K8s Secret explicitly if desired.
-		log.Printf("operator: TuckSecret %s/%s deleted — K8s Secret left in place",
-			ev.Object.Metadata.Namespace, ev.Object.Metadata.Name)
+		slog.Info("operator: TuckSecret deleted — K8s Secret left in place", "namespace", ev.Object.Metadata.Namespace, "name", ev.Object.Metadata.Name)
 		return nil
 
 	case "BOOKMARK":
@@ -150,7 +147,7 @@ func (ctrl *Controller) handleEvent(ctx context.Context, ev WatchEvent) error {
 		return fmt.Errorf("watch error event (likely 410 Gone) — re-listing")
 
 	default:
-		log.Printf("operator: unknown event type %q — ignoring", ev.Type)
+		slog.Warn("operator: unknown event type — ignoring", "type", ev.Type)
 		return nil
 	}
 }
@@ -183,9 +180,7 @@ func (ctrl *Controller) reconcile(ctx context.Context, ts TuckSecret) error {
 			ts.Metadata.Namespace, spec.SecretName, err)
 	}
 
-	log.Printf("operator: synced %s/%s → k8s secret %s/%s[%s]",
-		ts.Metadata.Namespace, ts.Metadata.Name,
-		ts.Metadata.Namespace, spec.SecretName, spec.SecretKey)
+	slog.Info("operator: synced TuckSecret", "namespace", ts.Metadata.Namespace, "name", ts.Metadata.Name, "secret", spec.SecretName, "key", spec.SecretKey)
 
 	ctrl.mu.Lock()
 	key := resourceKey(ts)
@@ -213,8 +208,7 @@ func (ctrl *Controller) runDueRefreshes(ctx context.Context) {
 
 	for _, ts := range due {
 		if err := ctrl.reconcile(ctx, ts); err != nil {
-			log.Printf("operator: periodic refresh %s/%s: %v",
-				ts.Metadata.Namespace, ts.Metadata.Name, err)
+			slog.Error("operator: periodic refresh", "namespace", ts.Metadata.Namespace, "name", ts.Metadata.Name, "err", err)
 		}
 	}
 }

@@ -5,7 +5,7 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -29,14 +29,18 @@ func main() {
 		"Kubernetes API server base URL")
 	flag.Parse()
 
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
 	// Validate required files exist before we start connecting.
 	if _, err := os.Stat(*saTokenFile); err != nil {
-		log.Fatalf("operator: SA token file %q not found: %v", *saTokenFile, err)
+		slog.Error("operator: SA token file not found", "file", *saTokenFile, "err", err)
+		os.Exit(1)
 	}
 
 	kubeClient, err := operator.NewKubeClient(*k8sAPI, *saTokenFile, *k8sCAFile)
 	if err != nil {
-		log.Fatalf("operator: build kube client: %v", err)
+		slog.Error("operator: build kube client", "err", err)
+		os.Exit(1)
 	}
 
 	tuckClient := operator.NewTuckClient(*tuckAddr, *saTokenFile)
@@ -46,11 +50,11 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	log.Printf("operator: starting (tuck=%s, k8s=%s, namespace=%q)",
-		*tuckAddr, *k8sAPI, *namespace)
+	slog.Info("operator: starting", "tuck", *tuckAddr, "k8s", *k8sAPI, "namespace", *namespace)
 
 	if err := ctrl.Run(ctx); err != nil && ctx.Err() == nil {
-		log.Fatalf("operator: fatal error: %v", err)
+		slog.Error("operator: fatal error", "err", err)
+		os.Exit(1)
 	}
-	log.Println("operator: shutdown complete")
+	slog.Info("operator: shutdown complete")
 }

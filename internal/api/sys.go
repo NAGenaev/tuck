@@ -99,6 +99,28 @@ func (s *Server) getReady(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ready": true, "sealed": false})
 }
 
+// getSnapshot handles GET /v1/sys/snapshot (requires root policy).
+// Returns a binary bbolt snapshot suitable for disaster recovery.
+func (s *Server) getSnapshot(w http.ResponseWriter, r *http.Request) {
+	tokenID := tokenFromCtx(r.Context())
+	if err := s.core.EnforceAccess(r.Context(), tokenID, "sys/snapshot", policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
+	snap, ok := s.core.Snapshotter()
+	if !ok {
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "backend does not support snapshots"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", `attachment; filename="tuck-snapshot.db"`)
+	w.WriteHeader(http.StatusOK)
+	if err := snap(r.Context(), w); err != nil {
+		// Headers already sent — just log, can't write JSON error
+		_ = err
+	}
+}
+
 // postSeal handles POST /v1/sys/seal (requires X-Tuck-Token with root policy).
 //
 // Re-seals the server immediately, dropping the barrier key from memory. All

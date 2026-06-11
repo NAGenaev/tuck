@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/NAGenaev/tuck/internal/barrier"
 	"github.com/NAGenaev/tuck/internal/physical"
@@ -40,6 +42,27 @@ func (s *Store) Get(ctx context.Context, id string) (*Token, error) {
 
 func (s *Store) Delete(ctx context.Context, id string) error {
 	return s.barrier.Delete(ctx, tokenKey(id))
+}
+
+// ListExpired returns the IDs of all tokens whose TTL has elapsed.
+// Tokens with no expiry (ExpiresAt.IsZero()) are never returned.
+func (s *Store) ListExpired(ctx context.Context) ([]string, error) {
+	keys, err := s.barrier.List(ctx, "auth/token/")
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	var expired []string
+	for _, key := range keys {
+		tok, err := s.Get(ctx, strings.TrimPrefix(key, "auth/token/"))
+		if err != nil {
+			continue // skip unreadable tokens
+		}
+		if !tok.ExpiresAt.IsZero() && tok.ExpiresAt.Before(now) {
+			expired = append(expired, tok.ID)
+		}
+	}
+	return expired, nil
 }
 
 func tokenKey(id string) string { return "auth/token/" + id }

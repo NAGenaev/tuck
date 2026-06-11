@@ -3,7 +3,10 @@
 // here — encryption is the barrier's job, one layer up.
 package physical
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
 // Entry is a single key/value pair in a storage backend.
 type Entry struct {
@@ -22,4 +25,7 @@ type Backend interface {
 	Delete(ctx context.Context, key string) error
 	// List returns the keys that start with prefix.
 	List(ctx context.Context, prefix string) ([]string, error)
+	// Snapshot writes a consistent database copy to w (for backup).
+	// Not all backends support this — inmem returns an error.
+	Snapshot(ctx context.Context, w io.Writer) error
 }

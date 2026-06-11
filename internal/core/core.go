@@ -91,9 +91,13 @@ func (c *Core) Seal() { c.barrier.Seal() }
 
 // Authenticate looks up tokenID and validates it. Returns ErrTokenInvalid on
 // any failure so callers cannot distinguish missing from expired.
+// ErrSealed is passed through as-is so HTTP callers can return 503.
 func (c *Core) Authenticate(ctx context.Context, tokenID string) (*token.Token, error) {
 	tok, err := c.tokens.Get(ctx, tokenID)
 	if err != nil {
+		if errors.Is(err, barrier.ErrSealed) {
+			return nil, err
+		}
 		return nil, ErrTokenInvalid
 	}
 	if tok.IsExpired() {

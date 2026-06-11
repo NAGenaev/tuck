@@ -1,0 +1,82 @@
+package api
+
+import (
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"time"
+
+	"github.com/NAGenaev/tuck/internal/policy"
+	"github.com/NAGenaev/tuck/internal/token"
+)
+
+type createTokenReq struct {
+	DisplayName string   `json:"display_name"`
+	Policies    []string `json:"policies"`
+	TTL         string   `json:"ttl"` // e.g. "24h", "" = never expires
+}
+
+func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/token", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodyBytes))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})
+		return
+	}
+	var req createTokenReq
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+	var ttl time.Duration
+	if req.TTL != "" {
+		if ttl, err = time.ParseDuration(req.TTL); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid ttl: " + err.Error()})
+			return
+		}
+	}
+	if req.Policies == nil {
+		req.Policies = []string{}
+	}
+	tok, err := s.core.CreateToken(r.Context(), req.DisplayName, req.Policies, ttl)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, tok)
+}
+
+func (s *Server) lookupToken(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/token/"+id, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
+	tok, err := s.core.LookupToken(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, token.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "token not found"})
+			return
+		}
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, tok)
+}
+
+func (s *Server) revokeToken(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/token/"+id, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := s.core.RevokeToken(r.Context(), id); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

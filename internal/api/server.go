@@ -1,11 +1,10 @@
-// Package api exposes Tuck's HTTP interface. Milestone 0 implements a minimal
-// KV: PUT/GET/DELETE on /v1/secret/<path>, plus a seal-status health endpoint.
+// Package api exposes Tuck's HTTP interface.
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 
 	"github.com/NAGenaev/tuck/internal/barrier"
@@ -13,6 +12,10 @@ import (
 )
 
 const maxBodyBytes = 1 << 20 // 1 MiB
+
+type contextKey int
+
+const tokenCtxKey contextKey = iota
 
 // Server adapts a core.Core to HTTP.
 type Server struct {
@@ -22,63 +25,68 @@ type Server struct {
 // New returns an HTTP server over the given core.
 func New(c *core.Core) *Server { return &Server{core: c} }
 
-// Handler builds the route table. Uses net/http pattern routing (Go 1.22+),
-// so there is no web framework in the dependency tree.
+// Handler builds the route table.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+
 	mux.HandleFunc("GET /v1/health", s.health)
-	mux.HandleFunc("GET /v1/secret/{path...}", s.getSecret)
-	mux.HandleFunc("PUT /v1/secret/{path...}", s.putSecret)
-	mux.HandleFunc("DELETE /v1/secret/{path...}", s.deleteSecret)
+
+	mux.HandleFunc("GET /v1/secret/{path...}", s.requireToken(s.getSecret))
+	mux.HandleFunc("PUT /v1/secret/{path...}", s.requireToken(s.putSecret))
+	mux.HandleFunc("DELETE /v1/secret/{path...}", s.requireToken(s.deleteSecret))
+
+	mux.HandleFunc("POST /v1/auth/token", s.requireToken(s.createToken))
+	mux.HandleFunc("GET /v1/auth/token/{id}", s.requireToken(s.lookupToken))
+	mux.HandleFunc("DELETE /v1/auth/token/{id}", s.requireToken(s.revokeToken))
+
+	mux.HandleFunc("PUT /v1/policy/{name}", s.requireToken(s.putPolicy))
+	mux.HandleFunc("GET /v1/policy/{name}", s.requireToken(s.getPolicy))
+	mux.HandleFunc("DELETE /v1/policy/{name}", s.requireToken(s.deletePolicy))
+
 	return mux
+}
+
+// requireToken extracts and validates X-Tuck-Token, then stores the token ID
+// in context. Returns 401 on missing/invalid token, 503 if the barrier is sealed.
+func (s *Server) requireToken(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.Header.Get("X-Tuck-Token")
+		if id == "" {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing X-Tuck-Token header"})
+			return
+		}
+		if _, err := s.core.Authenticate(r.Context(), id); err != nil {
+			if errors.Is(err, barrier.ErrSealed) {
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "sealed"})
+				return
+			}
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid or expired token"})
+			return
+		}
+		next(w, r.WithContext(context.WithValue(r.Context(), tokenCtxKey, id)))
+	}
+}
+
+func tokenFromCtx(ctx context.Context) string {
+	id, _ := ctx.Value(tokenCtxKey).(string)
+	return id
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"sealed": s.core.Sealed()})
 }
 
-func (s *Server) getSecret(w http.ResponseWriter, r *http.Request) {
-	p := r.PathValue("path")
-	val, ok, err := s.core.GetSecret(r.Context(), p)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"path": p, "value": string(val)})
-}
-
-func (s *Server) putSecret(w http.ResponseWriter, r *http.Request) {
-	p := r.PathValue("path")
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodyBytes))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})
-		return
-	}
-	if err := s.core.PutSecret(r.Context(), p, body); err != nil {
-		writeErr(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (s *Server) deleteSecret(w http.ResponseWriter, r *http.Request) {
-	if err := s.core.DeleteSecret(r.Context(), r.PathValue("path")); err != nil {
-		writeErr(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 func writeErr(w http.ResponseWriter, err error) {
-	if errors.Is(err, barrier.ErrSealed) {
+	switch {
+	case errors.Is(err, barrier.ErrSealed):
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "sealed"})
-		return
+	case errors.Is(err, core.ErrTokenInvalid):
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid token"})
+	case errors.Is(err, core.ErrUnauthorized):
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
+	default:
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
-	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

@@ -1,25 +1,45 @@
 # Tuck — Production Roadmap
 
-> Состояние: M0–M8 завершены (v0.9 pre-GA). Следующий шаг: внешний security audit (QA-3) → v1.0 GA.
-> P2-фичи (Raft HA, KV v2, Webhook Injector) запланированы на v1.x.
+> Состояние: M0–M18 завершены (v0.18.0). Следующий шаг: внешний security audit (QA-3) → v1.0 GA.
 
 ---
 
-## Текущее состояние (M0–M4)
+## Текущее состояние (v0.18.0)
 
 | Компонент | Статус |
 |---|---|
 | Envelope encryption AES-256-GCM (barrier) | ✅ |
-| bbolt backend + in-memory for tests | ✅ |
+| bbolt backend + Raft HA backend (3–5 нод) | ✅ |
 | Dev / Shamir / Transit seal | ✅ |
-| HTTP API (14 эндпоинтов) | ✅ |
-| Bearer токены с TTL, root токен | ✅ |
-| ACL политики (glob-matching) | ✅ |
+| KV v1 + KV v2 (версии, CAS, soft-delete, max_versions) | ✅ |
+| Token auth, ACL политики (glob-matching) | ✅ |
 | Kubernetes SA auth (TokenReview) | ✅ |
-| TuckSecret CRD + operator controller | ✅ |
-| 37 тестов, все зелёные | ✅ |
-
-**Чего нет:** TLS, audit-лог, rate limiting, CLI, UI, graceful shutdown, CI pipeline, backup/restore, метрики, LIST эндпоинты, token renew, Shamir конфигурируется через флаги.
+| JWT / OIDC auth (JWKS, role matching) | ✅ |
+| AppRole auth (role_id + secret_id) | ✅ |
+| TuckSecret CRD + operator (leader election, conditions, deletion policy) | ✅ |
+| Webhook Agent Injector (tmpfs, минует etcd) | ✅ |
+| Helm chart | ✅ |
+| Database engine (PostgreSQL / MySQL, auto-revoke) | ✅ |
+| PKI engine (X.509 CA, CRL, role-based issuance) | ✅ |
+| Transit engine (AES-GCM, ECDSA, Ed25519, RSA-PSS, rewrap) | ✅ |
+| SSH engine (CA-режим, user/host certs, TrustedUserCAKeys) | ✅ |
+| TOTP engine (RFC 6238, SHA1/256/512, 6/8 цифр) | ✅ |
+| TLS (self-signed ECDSA P-256 или custom cert) | ✅ |
+| Graceful shutdown (30s drain + seal) | ✅ |
+| Audit log (SHA-256 hash chain, values never logged) | ✅ |
+| Rate limiting (per-IP token bucket) | ✅ |
+| Backup/restore (bbolt snapshot) | ✅ |
+| Key rotation (POST /v1/sys/rotate) | ✅ |
+| Prometheus metrics (/metrics) | ✅ |
+| OpenTelemetry tracing (OTLP) | ✅ |
+| Embedded web dashboard (/ui/) | ✅ |
+| CLI client (tuckcli) | ✅ |
+| Go SDK (pkg/client) | ✅ |
+| OpenAPI 3.0 spec (/openapi.json) | ✅ |
+| goreleaser (linux/darwin/windows × amd64/arm64, cosign, SBOM) | ✅ |
+| CI pipeline (GitHub Actions: build, test -race, lint, gosec) | ✅ |
+| Threat model (docs/THREAT_MODEL.md) | ✅ |
+| Community files (SECURITY.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md) | ✅ |
 
 ---
 

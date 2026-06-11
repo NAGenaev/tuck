@@ -2,11 +2,11 @@
 
 > The simplest Kubernetes-native secrets manager. Tuck a secret away — no ceremony.
 
-[![Go](https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go)](https://go.dev)
+[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Status](https://img.shields.io/badge/status-v0.9_pre--GA-orange)]()
+[![Release](https://img.shields.io/badge/release-v0.18.0-green)](https://github.com/NAGenaev/tuck/releases)
 
-Tuck is an open-source secrets manager built for Kubernetes. The pitch: **anti-Vault** — a single static binary, no external database, and auto-unseal by default. `kubectl apply` and it runs.
+Tuck is an open-source secrets manager built for Kubernetes. The pitch: **anti-Vault** — a single static binary, no external database, auto-unseal by default. `kubectl apply` and it runs.
 
 [Документация на русском →](README_RU.md)
 
@@ -21,30 +21,65 @@ Tuck's wedge is **operational simplicity**:
 | | Vault | Tuck |
 |---|---|---|
 | Dependencies | Consul / Raft + DB | none — single binary |
-| Storage | External | Embedded bbolt |
-| Unseal on restart | Manual (Shamir quorum) | Auto (dev/transit) |
+| Storage | External | Embedded bbolt or built-in Raft |
+| Unseal on restart | Manual (Shamir quorum) | Auto (dev / transit) |
 | Kubernetes operator | External (ESO) | Built-in |
+| Secrets engines | PKI, Transit, SSH, Database, TOTP | Same |
+| Auth methods | Token, K8s, JWT, AppRole | Same |
+| HA | Vault Enterprise / OSS Raft | Built-in Raft (3–5 nodes) |
 | Binary size | ~300 MB | ~20 MB |
-
-Tuck is not trying to replace Vault for large enterprises. It targets **small-to-medium Kubernetes platforms** where operational overhead matters more than federation and dynamic secrets.
 
 ---
 
 ## Features
 
-- **AES-256-GCM envelope encryption** — root key → DEK → secret data; key rotation re-wraps only the DEK, never re-encrypts data
-- **Three seal types:** dev (auto-unseal, local only), Shamir (n-of-k quorum), Transit (KMS via Vault-compatible API)
-- **Full REST API** — KV secrets, token auth, ACL policies, LIST endpoints, binary-safe values
-- **Kubernetes operator** — `TuckSecret` CRD syncs Tuck secrets into native K8s Secrets with status conditions
-- **Kubernetes SA auth** — workloads authenticate via `TokenReview` API, no sidecars
-- **CLI client** (`tuckcli`) — get/put/delete/list secrets, manage tokens and policies
-- **Embedded web dashboard** at `/ui/` — no build step
-- **Prometheus metrics** at `/metrics`
-- **Tamper-evident audit log** — SHA-256 hash chain, values never logged
+### Core
+
+- **AES-256-GCM envelope encryption** — root key → DEK → ciphertext; key rotation re-wraps only the DEK, no data re-encryption
+- **Three seal types:** dev (auto-unseal, local), Shamir (n-of-k quorum), Transit (KMS via Vault-compatible API)
+- **KV v1** — simple key-value secrets with ACL enforcement
+- **KV v2** — versioned secrets: CAS (check-and-set), soft-delete, undelete, destroy, configurable `max_versions`
+- **Tamper-evident audit log** — SHA-256 hash chain, secret values never logged
 - **Per-IP rate limiting** — token bucket, exponential backoff on auth failures
 - **TLS** — ECDSA P-256 self-signed for dev, or bring your own cert
 - **Graceful shutdown** — 30-second drain + seal on exit
-- **HA operator** — Kubernetes `Lease`-based leader election
+- **Backup/restore** — `GET /v1/sys/snapshot` streams a live bbolt snapshot
+- **Key rotation** — `POST /v1/sys/rotate` generates a new root key, re-wraps the DEK
+
+### Auth methods
+
+| Method | Description |
+|--------|-------------|
+| **Token** | Root token on init; create scoped tokens with TTL and policies |
+| **Kubernetes SA** | Workloads exchange ServiceAccount JWT via `TokenReview` API |
+| **JWT / OIDC** | Any OIDC provider — Keycloak, Auth0, GitHub Actions, Google |
+| **AppRole** | Machine-to-machine auth via `role_id` + `secret_id` pairs |
+
+### Dynamic secrets engines
+
+| Engine | Description |
+|--------|-------------|
+| **Database** | On-demand PostgreSQL / MySQL credentials; auto-revoked at lease expiry |
+| **PKI** | Internal X.509 CA; issue short-lived TLS certificates per role |
+| **Transit** | Encryption-as-a-service; versioned keys (AES-256-GCM, ECDSA, Ed25519, RSA-PSS); sign/verify/HMAC; rewrap after rotation |
+| **SSH** | CA-mode SSH certificates; sign user or host public keys; `TrustedUserCAKeys` workflow |
+| **TOTP** | Store TOTP secrets and validate / generate time-based OTP codes; `otpauth://` URL output |
+
+### Kubernetes
+
+- **Operator** — `TuckSecret` CRD syncs Tuck secrets into native K8s Secrets; status conditions (`Synced`, `Ready`); Lease-based leader election; deletion policy (`Retain` / `Delete`)
+- **Webhook Agent Injector** — MutatingWebhook injects an init container that writes secrets to a tmpfs volume; bypasses etcd entirely
+- **Helm chart** — single `helm install` deploys server + operator + optional injector
+
+### Operations
+
+- **Raft HA** — built-in 3–5 node cluster; embedded consensus; no external coordination service
+- **Prometheus metrics** at `/metrics`
+- **OpenTelemetry tracing** (OTLP exporter)
+- **Embedded web dashboard** at `/ui/`
+- **CLI client** (`tuckcli`) — full KV, token, policy management
+- **Go SDK** (`pkg/client`) — typed Go client for the full API
+- **OpenAPI 3.0 spec** at `/openapi.json`
 
 ---
 
@@ -97,7 +132,7 @@ tuck \
   --data-dir=/var/lib/tuck
 ```
 
-On first start, Tuck prints the root token and 5 Shamir shares. Distribute the shares to separate operators — none of them alone can unseal the server.
+On first start, Tuck prints the root token and 5 Shamir shares. Distribute the shares to separate operators — none of them alone can unseal.
 
 After a restart, submit any 3 shares:
 
@@ -111,11 +146,13 @@ tuckcli unseal <share-3>   # "unsealed successfully"
 
 ## Kubernetes
 
-### Install the operator
+### Helm install
 
 ```sh
-kubectl apply -f deploy/crd/
-kubectl apply -f deploy/operator/
+helm install tuck deploy/helm/tuck \
+  --namespace tuck-system --create-namespace \
+  --set server.sealType=shamir \
+  --set server.shamirSeal.n=5,server.shamirSeal.k=3
 ```
 
 ### Declare a secret
@@ -130,29 +167,236 @@ spec:
   tuckPath: db/password
   secretName: db-secret
   secretKey: password
+  deletionPolicy: Retain
 ```
 
-The operator watches the CRD and creates/updates a native `Secret`. Status conditions show `Synced: True` or an error message.
+### Webhook injection (bypasses etcd)
 
-### Kubernetes workload auth
+```yaml
+metadata:
+  annotations:
+    tuck.io/inject: "true"
+    tuck.io/addr: "https://tuck.tuck-system:8200"
+    tuck.io/secrets: "db/password:password.txt,api/key:api-key.txt"
+```
+
+Secrets are written to `/tuck/secrets/` on a tmpfs volume before app containers start.
+
+---
+
+## Dynamic Secrets Examples
+
+### PKI — issue a TLS certificate
 
 ```sh
-tuckcli token create \
-  --name=my-app \
-  --policy=app-policy \
-  --k8s-sa=my-app/default
+# Generate root CA
+curl -XPOST https://tuck:8200/v1/pki/generate/root \
+  -H "X-Tuck-Token: $TOKEN" \
+  -d '{"common_name":"Tuck Internal CA","ttl":"87600h"}'
+
+# Create a role
+curl -XPUT https://tuck:8200/v1/pki/roles/web \
+  -H "X-Tuck-Token: $TOKEN" \
+  -d '{"allowed_domains":["svc.cluster.local"],"allow_subdomains":true,"default_ttl":"72h"}'
+
+# Issue a cert
+curl -XPOST https://tuck:8200/v1/pki/issue/web \
+  -H "X-Tuck-Token: $TOKEN" \
+  -d '{"common_name":"api.svc.cluster.local"}'
 ```
 
-The workload exchanges its ServiceAccount token for a Tuck token via `POST /v1/auth/k8s`.
+### SSH — sign an SSH public key
+
+```sh
+# Set up target host (once): add CA pubkey to TrustedUserCAKeys
+curl https://tuck:8200/v1/ssh/ca/public-key | jq -r .public_key \
+  | sudo tee /etc/ssh/trusted_user_ca_keys
+
+# Sign a user's key
+curl -XPOST https://tuck:8200/v1/ssh/sign/ops \
+  -H "X-Tuck-Token: $TOKEN" \
+  -d '{"public_key":"ssh-ed25519 AAAA...","valid_principals":["ubuntu"],"ttl":"24h"}'
+```
+
+### Transit — encrypt/decrypt without handling keys
+
+```sh
+# Create an AES key
+curl -XPOST https://tuck:8200/v1/transit/keys/payments \
+  -H "X-Tuck-Token: $TOKEN" -d '{"type":"aes256-gcm96"}'
+
+# Encrypt
+CIPHER=$(curl -s -XPOST https://tuck:8200/v1/transit/encrypt/payments \
+  -H "X-Tuck-Token: $TOKEN" \
+  -d "{\"plaintext\":\"$(echo -n 'card:4242' | base64)\"}" | jq -r .ciphertext)
+
+# Rotate and rewrap
+curl -XPOST https://tuck:8200/v1/transit/keys/payments/rotate \
+  -H "X-Tuck-Token: $TOKEN"
+curl -XPOST https://tuck:8200/v1/transit/rewrap/payments \
+  -H "X-Tuck-Token: $TOKEN" -d "{\"ciphertext\":\"$CIPHER\"}"
+```
+
+### TOTP — 2FA validation
+
+```sh
+# Create a key (returns secret + otpauth:// URL for QR import)
+curl -XPOST https://tuck:8200/v1/totp/keys/myapp \
+  -H "X-Tuck-Token: $TOKEN" \
+  -d '{"issuer":"ACME Corp","account":"user@example.com"}'
+
+# Validate user-submitted code
+curl -XPOST https://tuck:8200/v1/totp/code/myapp \
+  -H "X-Tuck-Token: $TOKEN" -d '{"code":"123456"}'
+# → {"valid":true}
+```
+
+---
+
+## API Reference
+
+All endpoints require `X-Tuck-Token` header unless marked **public**.
+
+### System
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/v1/sys/seal-status` | public | Seal state |
+| GET | `/v1/sys/ready` | public | Readiness (503 if sealed) |
+| GET | `/v1/health` | public | Liveness |
+| POST | `/v1/sys/unseal` | public | Submit Shamir share |
+| POST | `/v1/sys/seal` | token | Seal the server |
+| POST | `/v1/sys/rotate` | token | Rotate root key |
+| GET | `/v1/sys/snapshot` | token | Download bbolt backup |
+| GET | `/v1/sys/cluster` | token | Raft cluster status |
+| POST | `/v1/sys/cluster/join` | token | Add a Raft voter |
+| DELETE | `/v1/sys/cluster/node/{id}` | token | Remove a Raft voter |
+
+### KV v1
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET/PUT/DELETE | `/v1/secret/{path}` | Read / write / delete |
+| LIST | `/v1/secret/{prefix}` | List keys |
+
+### KV v2 (versioned)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET/PUT/DELETE | `/v2/secret/{path}` | Read / write / soft-delete |
+| LIST | `/v2/secret/{prefix}` | List keys |
+| POST | `/v2/secret/undelete/{path}` | Restore a soft-deleted version |
+| POST | `/v2/secret/destroy/{path}` | Permanent delete |
+| GET/PUT/DELETE | `/v2/secret/metadata/{path}` | Version metadata |
+
+### Auth
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/auth/token` | Create token |
+| GET/DELETE | `/v1/auth/token/{id}` | Get / revoke |
+| POST | `/v1/auth/token/{id}/renew` | Renew |
+| LIST | `/v1/auth/token/` | List |
+| POST | `/v1/auth/kubernetes/login` | K8s SA login (public) |
+| PUT/GET/DELETE | `/v1/auth/kubernetes/role/{ns}/{sa}` | K8s role binding |
+| POST | `/v1/auth/jwt/login` | JWT/OIDC login (public) |
+| GET/PUT | `/v1/auth/jwt/config` | JWKS config |
+| PUT/GET/DELETE | `/v1/auth/jwt/role/{name}` | JWT role |
+| LIST | `/v1/auth/jwt/role/` | List JWT roles |
+| POST | `/v1/auth/approle/login` | AppRole login (public) |
+| PUT/GET/DELETE | `/v1/auth/approle/role/{name}` | AppRole role |
+| LIST | `/v1/auth/approle/role/` | List roles |
+| POST | `/v1/auth/approle/role/{name}/secret-id` | Generate secret-id |
+| GET/DELETE | `/v1/auth/approle/role/{name}/secret-id/{id}` | Inspect / destroy |
+
+### Policies
+
+| Method | Path | Description |
+|--------|------|-------------|
+| PUT/GET/DELETE | `/v1/policy/{name}` | Manage policy |
+| LIST | `/v1/policy/` | List |
+
+### Database engine
+
+| Method | Path | Description |
+|--------|------|-------------|
+| PUT/GET/DELETE | `/v1/database/config/{name}` | Connection config |
+| LIST | `/v1/database/config/` | List configs |
+| PUT/GET/DELETE | `/v1/database/role/{name}` | Role (creation/revocation SQL) |
+| LIST | `/v1/database/role/` | List roles |
+| POST | `/v1/database/creds/{role}` | Generate ephemeral credentials |
+| GET/DELETE | `/v1/database/lease/{id}` | Inspect / revoke lease |
+| LIST | `/v1/database/lease/` | List leases |
+
+### PKI engine
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/v1/pki/generate/root` | token | Generate root CA |
+| POST | `/v1/pki/import/ca` | token | Import existing CA |
+| GET | `/v1/pki/ca/pem` | **public** | CA certificate (for client trust stores) |
+| GET | `/v1/pki/crl/pem` | **public** | Current CRL |
+| PUT/GET/DELETE | `/v1/pki/roles/{name}` | token | Manage roles |
+| LIST | `/v1/pki/roles/` | token | List roles |
+| POST | `/v1/pki/issue/{role}` | token | Issue certificate |
+| POST | `/v1/pki/revoke/{serial}` | token | Revoke certificate |
+| GET | `/v1/pki/certs/{serial}` | token | Get cert record |
+| LIST | `/v1/pki/certs/` | token | List certs |
+
+### Transit engine
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/transit/keys/{name}` | Create key |
+| GET/DELETE | `/v1/transit/keys/{name}` | Get / delete |
+| LIST | `/v1/transit/keys/` | List |
+| POST | `/v1/transit/keys/{name}/rotate` | Rotate (new version) |
+| POST | `/v1/transit/keys/{name}/config` | Set `min_decryption_version`, `deletable` |
+| POST | `/v1/transit/encrypt/{name}` | Encrypt |
+| POST | `/v1/transit/decrypt/{name}` | Decrypt |
+| POST | `/v1/transit/rewrap/{name}` | Rewrap ciphertext with latest key |
+| POST | `/v1/transit/sign/{name}` | Sign |
+| POST | `/v1/transit/verify/{name}` | Verify signature |
+| POST | `/v1/transit/hmac/{name}` | Compute HMAC |
+
+### SSH engine
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/v1/ssh/generate/ca` | token | Generate CA key pair |
+| POST | `/v1/ssh/import/ca` | token | Import existing CA |
+| GET | `/v1/ssh/ca/public-key` | **public** | CA public key (for `TrustedUserCAKeys`) |
+| PUT/GET/DELETE | `/v1/ssh/roles/{name}` | token | Manage roles |
+| LIST | `/v1/ssh/roles/` | token | List roles |
+| POST | `/v1/ssh/sign/{role}` | token | Sign a public key → SSH certificate |
+
+### TOTP engine
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/totp/keys/{name}` | Create key (returns `otpauth://` URL) |
+| GET/DELETE | `/v1/totp/keys/{name}` | Get metadata / delete |
+| LIST | `/v1/totp/keys/` | List |
+| GET | `/v1/totp/code/{name}` | Generate current code |
+| POST | `/v1/totp/code/{name}` | Validate code → `{"valid":true}` |
+
+### Other
+
+| Path | Description |
+|------|-------------|
+| `GET /metrics` | Prometheus metrics |
+| `GET /ui/` | Embedded web dashboard |
+| `GET /openapi.json` | OpenAPI 3.0 spec |
 
 ---
 
 ## CLI Reference
 
-```
+```sh
 tuckcli status                              # seal status
-tuckcli unseal <share>                      # submit a Shamir share
+tuckcli unseal <share>                      # submit Shamir share
 tuckcli seal                                # seal the server
+tuckcli rotate                              # rotate root key
 
 tuckcli kv get <path>                       # read a secret
 tuckcli kv put <path> <value>               # write a secret
@@ -169,8 +413,6 @@ tuckcli policy put <name> <json-rules>
 tuckcli policy get <name>
 tuckcli policy delete <name>
 tuckcli policy list
-
-tuckcli rotate                              # rotate root key (root token required)
 ```
 
 Environment variables: `TUCK_ADDR` (default `https://127.0.0.1:8200`), `TUCK_TOKEN`.
@@ -180,25 +422,47 @@ Environment variables: `TUCK_ADDR` (default `https://127.0.0.1:8200`), `TUCK_TOK
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────┐
-│  HTTP API  (net/http, no framework)           │
-│  TLS · Auth middleware · Rate limiter         │
-│  Audit log (hash chain) · Metrics             │
-├──────────────────────────────────────────────┤
-│  Core  (orchestration, logical KV)            │
-│  Token store · Policy store                   │
-├──────────────────────────────────────────────┤
-│  Barrier  (AES-256-GCM envelope encryption)   │
-│  root key → DEK → ciphertext                  │
-├──────────────────────────────────────────────┤
-│  Physical backend                             │
-│  bbolt (single file) | in-memory (tests)      │
-└──────────────────────────────────────────────┘
-     ▲
-  Seal (dev | shamir | transit)
+┌─────────────────────────────────────────────────────────┐
+│  HTTP API  (net/http, no framework)                      │
+│  TLS · Auth middleware · Rate limiter · Audit log        │
+│  Prometheus metrics · OpenTelemetry · OpenAPI            │
+├─────────────────────────────────────────────────────────┤
+│  Core  (orchestration + logical operations)              │
+│  Token store · Policy store · KV v1/v2                   │
+├────────────────┬────────────────────────────────────────┤
+│  Auth engines  │  Dynamic secrets engines               │
+│  · K8s SA      │  · Database (PostgreSQL / MySQL)       │
+│  · JWT / OIDC  │  · PKI (X.509 CA)                      │
+│  · AppRole     │  · Transit (encryption-as-a-service)   │
+│                │  · SSH (CA-mode certificates)           │
+│                │  · TOTP (time-based OTP)               │
+├────────────────┴────────────────────────────────────────┤
+│  Barrier  (AES-256-GCM envelope encryption)             │
+│  root key → DEK → ciphertext                            │
+├─────────────────────────────────────────────────────────┤
+│  Physical backend                                        │
+│  bbolt (single file) | Raft HA (3–5 nodes, embedded)    │
+└─────────────────────────────────────────────────────────┘
+               ▲
+         Seal (dev | shamir | transit)
 ```
 
-Key rotation: `POST /v1/sys/rotate` generates a new root key, re-wraps the DEK, and returns new Shamir shares — no data re-encryption needed.
+---
+
+## Go SDK
+
+```go
+import "github.com/NAGenaev/tuck/pkg/client"
+
+c := client.New("https://tuck:8200", client.WithToken("tuck_..."))
+
+// KV
+c.Put(ctx, "secret/db/password", []byte("s3cr3t"))
+val, _ := c.Get(ctx, "secret/db/password")
+
+// KV v2
+c.V2Write(ctx, "app/config", map[string]string{"key": "val"})
+```
 
 ---
 
@@ -212,47 +476,39 @@ go test ./...              # all tests
 go test -race ./...        # with race detector
 go build ./cmd/tuck        # server binary
 go build ./cmd/tuckcli     # CLI binary
-go build ./cmd/tuck-operator  # operator binary
+go build ./cmd/tuck-operator
+go build ./cmd/tuck-injector
+go build ./cmd/tuck-agent
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a deeper design walkthrough, and [docs/RUNBOOK.md](docs/RUNBOOK.md) for operational procedures.
-
-### Load testing
-
-```sh
-k6 run \
-  --env TUCK_ADDR=https://127.0.0.1:8200 \
-  --env TUCK_TOKEN=$TUCK_TOKEN \
-  --duration 1m --vus 200 \
-  test/load/k6_soak.js
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/RUNBOOK.md](docs/RUNBOOK.md).
 
 ---
 
-## API
+## Status
 
-All endpoints require `X-Tuck-Token` header except `/v1/sys/seal-status` and `/v1/sys/unseal`.
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/v1/sys/seal-status` | Seal state |
-| `POST` | `/v1/sys/unseal` | Submit Shamir share |
-| `POST` | `/v1/sys/seal` | Seal the server |
-| `POST` | `/v1/sys/rotate` | Rotate root key |
-| `GET` | `/v1/sys/snapshot` | Download bbolt snapshot |
-| `GET` | `/v1/health` | Liveness probe |
-| `GET` | `/v1/sys/ready` | Readiness probe (503 if sealed) |
-| `GET/PUT/DELETE` | `/v1/secret/{path}` | KV operations |
-| `LIST` | `/v1/secret/{prefix}` | List keys |
-| `POST` | `/v1/auth/token` | Create token |
-| `GET/DELETE` | `/v1/auth/token/{id}` | Get / revoke token |
-| `POST` | `/v1/auth/token/{id}/renew` | Renew token |
-| `LIST` | `/v1/auth/token/` | List tokens |
-| `GET/PUT/DELETE` | `/v1/policy/{name}` | Policy operations |
-| `LIST` | `/v1/policy/` | List policies |
-| `POST` | `/v1/auth/k8s` | Kubernetes SA login |
-| `GET` | `/metrics` | Prometheus metrics |
-| `GET` | `/ui/` | Web dashboard |
+| Milestone | Version | Status |
+|-----------|---------|--------|
+| M0 — Crypto core, bbolt, KV API | v0.1 | ✅ |
+| M1 — Token auth, ACL policies | v0.2 | ✅ |
+| M2 — Kubernetes SA auth | v0.3 | ✅ |
+| M3 — TuckSecret CRD + operator | v0.4 | ✅ |
+| M4 — Shamir + Transit seals | v0.5 | ✅ |
+| M5 — TLS, graceful shutdown, CI | v0.5 | ✅ |
+| M6 — Audit log, metrics, backup, rate limiting | v0.6 | ✅ |
+| M7 — LIST endpoints, token renew, key rotation, CLI | v0.7 | ✅ |
+| M8 — HA operator, embedded UI, threat model | v0.9 | ✅ |
+| M9 — KV v2, OpenTelemetry, OpenAPI spec, embedded dashboard | v0.9 | ✅ |
+| M10 — Go SDK, goreleaser, release pipeline | v0.10 | ✅ |
+| M11 — Raft HA backend (3–5 node cluster) | v0.11 | ✅ |
+| M12 — Webhook Agent Injector (tmpfs, bypasses etcd) | v0.12 | ✅ |
+| M13 — JWT/OIDC auth, Helm chart | v0.13 | ✅ |
+| M14 — AppRole auth, Database dynamic secrets | v0.14 | ✅ |
+| M15 — PKI secrets engine (internal X.509 CA) | v0.15 | ✅ |
+| M16 — Transit secrets engine (encryption-as-a-service) | v0.16 | ✅ |
+| M17 — SSH secrets engine (CA-mode certificates) | v0.17 | ✅ |
+| M18 — TOTP secrets engine (2FA / OTP validation) | v0.18 | ✅ |
+| v1.0 GA — External security audit | — | 🔜 |
 
 ---
 
@@ -260,26 +516,7 @@ All endpoints require `X-Tuck-Token` header except `/v1/sys/seal-status` and `/v
 
 See [SECURITY.md](SECURITY.md) for the vulnerability disclosure policy and [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the threat model.
 
-To report a vulnerability: **genaevlive@gmail.com** (coordinated disclosure, 90-day window).
-
----
-
-## Status & Roadmap
-
-| Milestone | Status |
-|---|---|
-| M0 — Crypto core (barrier, bbolt, dev seal, KV API) | ✅ |
-| M1 — Token auth, ACL policies | ✅ |
-| M2 — Kubernetes ServiceAccount auth | ✅ |
-| M3 — TuckSecret CRD + operator | ✅ |
-| M4 — Production seals (Shamir, Transit) | ✅ |
-| M5 — Security & DevOps baseline (TLS, graceful shutdown, CI) | ✅ |
-| M6 — Reliability & Observability (audit log, metrics, backup) | ✅ |
-| M7 — API completeness (LIST, token renew, key rotation, CLI) | ✅ |
-| M8 — Pre-GA hardening (HA operator, embedded UI, threat model, community) | ✅ |
-| v1.0 GA — External security audit | 🔜 |
-
-Post-GA (v1.x): Raft HA backend, KV v2 (versioning), Webhook Agent Injector, OpenTelemetry.
+Report vulnerabilities: **genaevlive@gmail.com** (coordinated disclosure, 90-day window).
 
 ---
 

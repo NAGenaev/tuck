@@ -1,0 +1,33 @@
+# Example: a Pod with Tuck secret injection enabled.
+# The tuck-agent init container will run first, fetch the secrets, and write
+# them to /tuck/secrets/ before the app container starts.
+#
+# Prerequisites:
+#   1. The namespace must have label tuck.io/inject=enabled.
+#   2. A K8s Secret named "tuck-token" must exist in the Pod's namespace:
+#        kubectl create secret generic tuck-token --from-literal=token=tuck_...
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
+  labels:
+    tuck.io/inject: enabled   # enables the webhook for this namespace
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp
+  namespace: demo
+  annotations:
+    tuck.io/inject: "true"
+    tuck.io/addr: "https://tuck.tuck-system.svc:8200"
+    tuck.io/secrets: "db/password:db-password,db/user:db-user,api/key:api-key"
+    # tuck.io/token-secret: "tuck-token"  # default; override if needed
+    # tuck.io/output-dir: "/tuck/secrets"  # default
+    # tuck.io/insecure: "true"             # only for dev with self-signed certs
+spec:
+  containers:
+    - name: app
+      image: alpine:3.20
+      command: ["sh", "-c", "echo 'DB_PASS:' && cat /tuck/secrets/db-password && sleep 3600"]
+      # /tuck/secrets is automatically mounted by the injector (read-only).

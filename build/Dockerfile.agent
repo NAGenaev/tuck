@@ -1,0 +1,4 @@
+FROM gcr.io/distroless/static:nonroot
+COPY tuck-agent /tuck-agent
+USER 65532:65532
+ENTRYPOINT ["/tuck-agent"]

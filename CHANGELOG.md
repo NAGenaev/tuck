@@ -11,6 +11,59 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.12.0] — 2026-06-11
+
+### Added
+
+#### OP-4 — Webhook Agent Injector
+
+Secrets are now deliverable as files on a tmpfs volume inside Pods, bypassing Kubernetes etcd entirely. No secret value ever touches the K8s Secret API.
+
+**`internal/injector/`**
+- `Handler` — HTTP mutating admission webhook; handles `POST /mutate`.
+- `BuildPatch` — produces a RFC 6902 JSON Patch that adds:
+  - A `tuck-secrets` `emptyDir{medium: Memory}` (tmpfs) volume.
+  - A `tuck-agent` init container that fetches secrets before app containers start.
+  - A read-only `/tuck/secrets` volume mount in every app container.
+- Idempotent: repeated calls on already-injected Pods produce no patch.
+- `ParseAnnotations` / `ParseSecretsList` — extract config from Pod annotations.
+
+**`cmd/tuck-agent/`** — init container binary
+- Reads `TUCK_ADDR`, `TUCK_TOKEN_FILE` (or `TUCK_TOKEN`), `TUCK_SECRETS`, `TUCK_OUTPUT_DIR`.
+- Fetches each secret via `pkg/client`, writes files atomically (`.tmp` → rename) with mode `0400`.
+- Fails fast if any secret is missing — Pod creation is blocked until all secrets are available.
+
+**`cmd/tuck-injector/`** — webhook server binary
+- HTTPS server (`--tls-cert` / `--tls-key` from cert-manager or custom CA).
+- `--agent-image` flag to pin the tuck-agent image version.
+- `/healthz` and `/readyz` probes, graceful shutdown.
+
+**`deploy/webhook/`** — Kubernetes manifests
+- `rbac.yaml` — ServiceAccount + ClusterRole for the injector.
+- `deployment.yaml` — 2-replica Deployment + Service (port 443→8443).
+- `cert.yaml` — cert-manager `Certificate` + self-signed `Issuer` for webhook TLS.
+- `webhook.yaml` — `MutatingWebhookConfiguration` with `failurePolicy: Ignore` (never blocks pods on injector outage), namespace selector `tuck.io/inject=enabled`, object selector `tuck.io/inject=true`.
+- `example-pod.yaml` — annotated Pod showing all supported annotations.
+
+**Pod annotations**
+
+| Annotation | Required | Default | Description |
+|---|---|---|---|
+| `tuck.io/inject` | yes | — | Set to `"true"` to enable injection |
+| `tuck.io/addr` | yes | — | Tuck server URL |
+| `tuck.io/secrets` | yes | — | `"path:filename,..."`  pairs |
+| `tuck.io/token-secret` | no | `tuck-token` | K8s Secret with `token` key |
+| `tuck.io/output-dir` | no | `/tuck/secrets` | Secrets directory in Pod |
+| `tuck.io/agent-image` | no | `ghcr.io/nagenaev/tuck-agent:latest` | Override agent image |
+| `tuck.io/insecure` | no | `false` | Skip TLS verification |
+
+**Release pipeline updates**
+- goreleaser builds `tuck-injector` and `tuck-agent` for `linux/{amd64,arm64}`.
+- Docker images: `ghcr.io/nagenaev/tuck-injector` and `ghcr.io/nagenaev/tuck-agent`.
+- `build/Dockerfile.injector` and `build/Dockerfile.agent` (distroless, uid 65532).
+
+---
+
 ## [0.11.0] — 2026-06-11
 
 ### Added
@@ -113,7 +166,8 @@ Pre-release for M10 testing.
 
 ---
 
-[Unreleased]: https://github.com/NAGenaev/tuck/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/NAGenaev/tuck/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/NAGenaev/tuck/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/NAGenaev/tuck/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/NAGenaev/tuck/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/NAGenaev/tuck/compare/v0.4.0...v0.9.0

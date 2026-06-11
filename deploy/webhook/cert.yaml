@@ -1,0 +1,39 @@
+# cert-manager Certificate for the Tuck injector webhook TLS.
+# Requires cert-manager >= v1.0 installed in the cluster.
+# Install cert-manager: https://cert-manager.io/docs/installation/
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: tuck-injector-selfsigned
+  namespace: tuck-system
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: tuck-injector-tls
+  namespace: tuck-system
+spec:
+  secretName: tuck-injector-tls
+  duration: 8760h   # 1 year
+  renewBefore: 360h # 15 days
+  subject:
+    organizations: [tuck]
+  isCA: false
+  privateKey:
+    algorithm: ECDSA
+    encoding: PKCS1
+    size: 256
+  usages:
+    - server auth
+    - digital signature
+    - key encipherment
+  dnsNames:
+    - tuck-injector.tuck-system.svc
+    - tuck-injector.tuck-system.svc.cluster.local
+  issuerRef:
+    name: tuck-injector-selfsigned
+    kind: Issuer
+    group: cert-manager.io

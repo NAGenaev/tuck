@@ -38,6 +38,26 @@ builds:
     ldflags:
       - -s -w
 
+  - id: tuck-injector
+    main: ./cmd/tuck-injector
+    binary: tuck-injector
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.Version={{.Version}}
+
+  - id: tuck-agent
+    main: ./cmd/tuck-agent
+    binary: tuck-agent
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+
 archives:
   - id: tuck
     builds: [tuck, tuckcli]
@@ -127,6 +147,52 @@ dockers:
     build_flag_templates:
       - "--platform=linux/arm64"
 
+  - id: tuck-injector
+    ids: [tuck-injector]
+    image_templates:
+      - "ghcr.io/nagenaev/tuck-injector:{{ .Version }}-amd64"
+      - "ghcr.io/nagenaev/tuck-injector:latest-amd64"
+    dockerfile: build/Dockerfile.injector
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title=tuck-injector"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source=https://github.com/NAGenaev/tuck"
+
+  - id: tuck-injector-arm64
+    ids: [tuck-injector]
+    image_templates:
+      - "ghcr.io/nagenaev/tuck-injector:{{ .Version }}-arm64"
+      - "ghcr.io/nagenaev/tuck-injector:latest-arm64"
+    dockerfile: build/Dockerfile.injector
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+
+  - id: tuck-agent
+    ids: [tuck-agent]
+    image_templates:
+      - "ghcr.io/nagenaev/tuck-agent:{{ .Version }}-amd64"
+      - "ghcr.io/nagenaev/tuck-agent:latest-amd64"
+    dockerfile: build/Dockerfile.agent
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title=tuck-agent"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source=https://github.com/NAGenaev/tuck"
+
+  - id: tuck-agent-arm64
+    ids: [tuck-agent]
+    image_templates:
+      - "ghcr.io/nagenaev/tuck-agent:{{ .Version }}-arm64"
+      - "ghcr.io/nagenaev/tuck-agent:latest-arm64"
+    dockerfile: build/Dockerfile.agent
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+
 docker_manifests:
   - name_template: "ghcr.io/nagenaev/tuck:{{ .Version }}"
     image_templates:
@@ -147,6 +213,26 @@ docker_manifests:
     image_templates:
       - "ghcr.io/nagenaev/tuck-operator:latest-amd64"
       - "ghcr.io/nagenaev/tuck-operator:latest-arm64"
+
+  - name_template: "ghcr.io/nagenaev/tuck-injector:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/nagenaev/tuck-injector:{{ .Version }}-amd64"
+      - "ghcr.io/nagenaev/tuck-injector:{{ .Version }}-arm64"
+
+  - name_template: "ghcr.io/nagenaev/tuck-injector:latest"
+    image_templates:
+      - "ghcr.io/nagenaev/tuck-injector:latest-amd64"
+      - "ghcr.io/nagenaev/tuck-injector:latest-arm64"
+
+  - name_template: "ghcr.io/nagenaev/tuck-agent:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/nagenaev/tuck-agent:{{ .Version }}-amd64"
+      - "ghcr.io/nagenaev/tuck-agent:{{ .Version }}-arm64"
+
+  - name_template: "ghcr.io/nagenaev/tuck-agent:latest"
+    image_templates:
+      - "ghcr.io/nagenaev/tuck-agent:latest-amd64"
+      - "ghcr.io/nagenaev/tuck-agent:latest-arm64"
 
 changelog:
   use: github

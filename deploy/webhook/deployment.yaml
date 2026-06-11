@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tuck-injector
+  namespace: tuck-system
+  labels:
+    app: tuck-injector
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tuck-injector
+  template:
+    metadata:
+      labels:
+        app: tuck-injector
+    spec:
+      serviceAccountName: tuck-injector
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+      containers:
+        - name: tuck-injector
+          image: ghcr.io/nagenaev/tuck-injector:latest
+          imagePullPolicy: Always
+          args:
+            - --agent-image=ghcr.io/nagenaev/tuck-agent:latest
+          ports:
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          volumeMounts:
+            - name: certs
+              mountPath: /tuck/certs
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            limits:
+              cpu: 200m
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 32Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+      volumes:
+        - name: certs
+          secret:
+            secretName: tuck-injector-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tuck-injector
+  namespace: tuck-system
+  labels:
+    app: tuck-injector
+spec:
+  selector:
+    app: tuck-injector
+  ports:
+    - name: https
+      port: 443
+      targetPort: 8443
+      protocol: TCP

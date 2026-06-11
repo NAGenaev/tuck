@@ -1,0 +1,38 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: tuck-injector
+  annotations:
+    # cert-manager injects the caBundle automatically when this annotation is set.
+    # If you're not using cert-manager, replace with the base64-encoded CA cert.
+    cert-manager.io/inject-ca-from: tuck-system/tuck-injector-tls
+spec:
+  webhooks:
+    - name: inject.tuck.io
+      admissionReviewVersions: ["v1"]
+      sideEffects: None
+      failurePolicy: Ignore  # Do NOT block pod creation on webhook failure.
+      matchPolicy: Equivalent
+      namespaceSelector:
+        matchExpressions:
+          - key: tuck.io/inject
+            operator: In
+            values: ["enabled"]
+      objectSelector:
+        matchExpressions:
+          - key: tuck.io/inject
+            operator: In
+            values: ["true"]
+      rules:
+        - operations: ["CREATE", "UPDATE"]
+          apiGroups: [""]
+          apiVersions: ["v1"]
+          resources: ["pods"]
+      clientConfig:
+        service:
+          name: tuck-injector
+          namespace: tuck-system
+          path: /mutate
+          port: 443
+        # caBundle is injected by cert-manager. For manual TLS, set this field
+        # to the base64-encoded CA certificate that signed the webhook TLS cert.

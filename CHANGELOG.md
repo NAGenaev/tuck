@@ -11,6 +11,86 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.18.0] — 2026-06-11
+
+### Added
+
+#### TOTP Secrets Engine (`internal/dynamic/totp`)
+
+Tuck now stores and manages TOTP (Time-based One-Time Password) secrets inside
+the encrypted barrier. Applications can validate OTP codes server-side or have
+Tuck generate the current code — useful for application 2FA flows and
+service-to-service authentication via short-lived numeric codes.
+
+**How it works**
+
+TOTP is defined in RFC 6238 (built on HMAC-OTP, RFC 4226). A random secret is
+stored in Tuck's encrypted barrier; at each 30-second window the engine
+computes `HOTP(secret, floor(unix_time / period))` using dynamic truncation and
+returns a numeric code. Tuck validates codes with a configurable skew window
+(default ±1 period) to accommodate clock drift.
+
+**Key options**
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `algorithm` | `sha1` | Hash algorithm: `sha1`, `sha256`, `sha512` |
+| `digits` | `6` | Code length: `6` or `8` |
+| `period` | `30` | Code rotation period in seconds |
+| `skew` | `1` | Allowed window drift in periods (checked on both sides) |
+| `issuer` | `"Tuck"` | Label in the otpauth:// URL |
+| `account` | key name | Account identifier in the otpauth:// URL |
+| `secret` | auto-generated | Optional base32 TOTP secret to import |
+
+**Workflow**
+
+1. `POST /v1/totp/keys/{name}` — create a key; response includes the base32
+   secret and an `otpauth://` URI ready for a QR code generator
+2. Import the `url` into any standard authenticator app (Google Authenticator, Authy, etc.)
+3. `POST /v1/totp/code/{name}` with `{"code":"123456"}` to validate a user code
+4. `GET /v1/totp/code/{name}` to have Tuck generate the current code (for server-to-server flows)
+
+**API endpoints** (6 total)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/totp/keys/{name}` | Create or overwrite a TOTP key |
+| `GET` | `/v1/totp/keys/{name}` | Read key metadata (no secret) |
+| `DELETE` | `/v1/totp/keys/{name}` | Delete a key |
+| `LIST` | `/v1/totp/keys/` | List key names |
+| `GET` | `/v1/totp/code/{name}` | Generate the current code (+ `valid_until`) |
+| `POST` | `/v1/totp/code/{name}` | Validate a code → `{"valid":true}` |
+
+**Quick start**
+```sh
+# Create a TOTP key — use the returned "url" to generate a QR code
+TOKEN=$(curl -s https://tuck:8200/v1/totp/keys/myapp \
+  -X POST -H "X-Tuck-Token: $ROOT" \
+  -d '{"issuer":"ACME Corp","account":"user@example.com"}' \
+  | jq -r .secret)
+
+# Validate a code entered by the user
+curl -XPOST https://tuck:8200/v1/totp/code/myapp \
+  -H "X-Tuck-Token: $APP_TOKEN" \
+  -d '{"code":"123456"}'
+# → {"valid":true}
+
+# Server-side code generation (e.g. for rotation scripts)
+curl https://tuck:8200/v1/totp/code/myapp \
+  -H "X-Tuck-Token: $APP_TOKEN"
+# → {"code":"123456","valid_until":"2026-06-11T12:00:30Z"}
+```
+
+**Tests**: 13 unit tests including RFC 6238 Appendix B known test vectors
+(SHA1 at T=59, T=1111111109, T=1234567890, T=2000000000), skew window
+boundary tests, algorithm variants (SHA256), 8-digit codes, import/export, and
+invalid secret rejection.
+
+**No new dependencies** — implemented with Go stdlib only (`crypto/hmac`,
+`crypto/sha1`, `crypto/sha256`, `crypto/sha512`, `encoding/base32`).
+
+---
+
 ## [0.17.0] — 2026-06-11
 
 ### Added

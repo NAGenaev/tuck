@@ -18,6 +18,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/dynamic/database"
 	"github.com/NAGenaev/tuck/internal/dynamic/pki"
 	dynSSH "github.com/NAGenaev/tuck/internal/dynamic/ssh"
+	dynTOTP "github.com/NAGenaev/tuck/internal/dynamic/totp"
 	"github.com/NAGenaev/tuck/internal/dynamic/transit"
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
 	"github.com/NAGenaev/tuck/internal/kvv2"
@@ -77,6 +78,7 @@ type Core struct {
 	pkiManager     *pki.Manager
 	transitManager *transit.Manager
 	sshManager     *dynSSH.Manager
+	totpManager    *dynTOTP.Manager
 	// optional — nil means k8s auth is disabled
 	k8sReviewer k8sauth.Reviewer
 	k8sRoles    *k8sauth.RoleStore
@@ -112,6 +114,7 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		pkiManager:     pki.NewManager(b),
 		transitManager: transit.NewManager(b),
 		sshManager:     dynSSH.NewManager(b),
+		totpManager:    dynTOTP.NewManager(b),
 		k8sReviewer:  reviewer,
 		k8sRoles:    k8sauth.NewRoleStore(b),
 	}
@@ -562,6 +565,27 @@ func (c *Core) LoginJWT(ctx context.Context, tokenStr string) (*token.Token, err
 	}
 	displayName := "jwt:" + result.Subject
 	return c.CreateToken(ctx, displayName, result.Policies, result.TTL)
+}
+
+// --- TOTP secrets engine ---
+
+func (c *Core) TOTPCreateKey(ctx context.Context, name string, req dynTOTP.CreateKeyRequest) (*dynTOTP.CreateResult, error) {
+	return c.totpManager.CreateKey(ctx, name, req)
+}
+func (c *Core) TOTPGetKey(ctx context.Context, name string) (*dynTOTP.KeyInfo, error) {
+	return c.totpManager.GetKey(ctx, name)
+}
+func (c *Core) TOTPDeleteKey(ctx context.Context, name string) error {
+	return c.totpManager.DeleteKey(ctx, name)
+}
+func (c *Core) TOTPListKeys(ctx context.Context) ([]string, error) {
+	return c.totpManager.ListKeys(ctx)
+}
+func (c *Core) TOTPGenerateCode(ctx context.Context, name string) (*dynTOTP.GenerateResult, error) {
+	return c.totpManager.GenerateCode(ctx, name)
+}
+func (c *Core) TOTPValidateCode(ctx context.Context, name, code string) (bool, error) {
+	return c.totpManager.ValidateCode(ctx, name, code)
 }
 
 // --- SSH secrets engine ---

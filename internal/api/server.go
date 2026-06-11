@@ -84,6 +84,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/auth/jwt/role/{name}", s.requireToken(s.deleteJWTRole))
 	mux.HandleFunc("LIST /v1/auth/jwt/role/", s.requireToken(s.listJWTRoles))
 
+	// TOTP secrets engine — store and validate time-based OTP codes
+	mux.HandleFunc("POST /v1/totp/keys/{name}", s.requireToken(s.totpCreateKey))
+	mux.HandleFunc("GET /v1/totp/keys/{name}", s.requireToken(s.totpGetKey))
+	mux.HandleFunc("DELETE /v1/totp/keys/{name}", s.requireToken(s.totpDeleteKey))
+	mux.HandleFunc("LIST /v1/totp/keys/", s.requireToken(s.totpListKeys))
+	mux.HandleFunc("GET /v1/totp/code/{name}", s.requireToken(s.totpGenerateCode))
+	mux.HandleFunc("POST /v1/totp/code/{name}", s.requireToken(s.totpValidateCode))
+
 	// SSH secrets engine — CA mode (signed SSH certificates)
 	// CA public key is unauthenticated so hosts can fetch it for TrustedUserCAKeys.
 	mux.HandleFunc("POST /v1/ssh/generate/ca", s.requireToken(s.sshGenerateCA))

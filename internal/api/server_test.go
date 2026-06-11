@@ -17,7 +17,7 @@ import (
 func newTestServer(t *testing.T) (*httptest.Server, *core.Core) {
 	t.Helper()
 	c := core.New(physical.NewInMem(), seal.NewDev(filepath.Join(t.TempDir(), "rootkey")))
-	if err := c.Start(context.Background()); err != nil {
+	if _, err := c.Start(context.Background()); err != nil {
 		t.Fatalf("core start: %v", err)
 	}
 	ts := httptest.NewServer(New(c).Handler())

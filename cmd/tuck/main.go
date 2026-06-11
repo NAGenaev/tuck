@@ -1,7 +1,4 @@
 // Command tuck runs the Tuck secrets-manager server.
-//
-// Milestone 0: a single binary, a bbolt file, and a dev seal. Run `tuck` and
-// it serves an encrypted KV with zero setup.
 package main
 
 import (
@@ -29,9 +26,17 @@ func main() {
 	defer backend.Close()
 
 	c := core.New(backend, seal.NewDev(*sealKey))
-	if err := c.Start(context.Background()); err != nil {
+	rootTok, err := c.Start(context.Background())
+	if err != nil {
 		log.Fatalf("start core: %v", err)
 	}
+	if rootTok != nil {
+		log.Printf("==========================================================")
+		log.Printf("ROOT TOKEN (shown once — store it securely):")
+		log.Printf("  %s", rootTok.ID)
+		log.Printf("==========================================================")
+	}
+
 	log.Printf("tuck: unsealed (dev seal), serving on http://%s", *addr)
 	log.Printf("tuck: WARNING dev seal stores the root key in plaintext at %q — dev use only", *sealKey)
 

@@ -64,10 +64,12 @@ go test ./...
 
 - **M0 — crypto core (done):** barrier (envelope encryption), bbolt backend,
   dev seal, KV HTTP API, integration tests.
-- **M1 — identity:** token auth, path-based ACL policies.
-- **M2 — k8s-native:** Kubernetes auth via the TokenReview API; short-lived
+- **M1 — identity (done):** token auth, path-based ACL policies.
+- **M2 — k8s-native (done):** Kubernetes auth via the TokenReview API; short-lived
   tokens mapped from `namespace/serviceaccount` to policy.
-- **M3 — operator:** CRD + controller that syncs secrets into the cluster.
+- **M3 — operator (done):** `TuckSecret` CRD + controller that syncs secrets into
+  native K8s Secrets; `deploy/crd.yaml` + `deploy/operator.yaml` for one-command
+  installation.
 - **M4 — production seals:** KMS auto-unseal, Shamir fallback.
 - **M5 — HA:** Raft-replicated storage backend.
 

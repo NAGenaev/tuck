@@ -1,0 +1,75 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: tucksecrets.tuck.io
+spec:
+  group: tuck.io
+  scope: Namespaced
+  names:
+    plural: tucksecrets
+    singular: tucksecret
+    kind: TuckSecret
+    listKind: TuckSecretList
+    shortNames:
+      - ts
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [tuckPath, secretName, secretKey]
+              properties:
+                tuckPath:
+                  type: string
+                  description: >
+                    Logical path of the secret inside Tuck
+                    (e.g. "db/password"). The operator prepends /v1/secret/.
+                secretName:
+                  type: string
+                  description: Name of the Kubernetes Secret to create or update.
+                secretKey:
+                  type: string
+                  description: >
+                    Key inside the Kubernetes Secret's data map where
+                    the value will be stored.
+                tuckServer:
+                  type: string
+                  description: >
+                    Override the operator's default Tuck server address for
+                    this resource. Optional.
+                refreshInterval:
+                  type: string
+                  description: >
+                    How often to re-fetch the value from Tuck. Accepts any
+                    Go duration string (e.g. "5m", "1h"). Default: 5m.
+            status:
+              type: object
+              properties:
+                lastSyncTime:
+                  type: string
+                  format: date-time
+                lastSyncError:
+                  type: string
+                syncedRevision:
+                  type: string
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: TuckPath
+          type: string
+          jsonPath: .spec.tuckPath
+        - name: SecretName
+          type: string
+          jsonPath: .spec.secretName
+        - name: LastSynced
+          type: string
+          jsonPath: .status.lastSyncTime
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp

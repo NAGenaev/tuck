@@ -1,0 +1,109 @@
+---
+# Namespace where the operator runs.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tuck
+---
+# ServiceAccount the operator pod will use.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tuck-operator
+  namespace: tuck
+---
+# ClusterRole: the operator needs read/write access to TuckSecrets (all
+# namespaces) and read/write access to Secrets in all namespaces.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tuck-operator
+rules:
+  # TuckSecret CRD resources
+  - apiGroups: ["tuck.io"]
+    resources: ["tucksecrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["tuck.io"]
+    resources: ["tucksecrets/status"]
+    verbs: ["update", "patch"]
+  # Kubernetes Secrets (destination)
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update"]
+---
+# Bind the ClusterRole to the operator's ServiceAccount.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tuck-operator
+subjects:
+  - kind: ServiceAccount
+    name: tuck-operator
+    namespace: tuck
+roleRef:
+  kind: ClusterRole
+  name: tuck-operator
+  apiGroup: rbac.authorization.k8s.io
+---
+# Deployment for the operator.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tuck-operator
+  namespace: tuck
+  labels:
+    app: tuck-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tuck-operator
+  template:
+    metadata:
+      labels:
+        app: tuck-operator
+    spec:
+      serviceAccountName: tuck-operator
+      # Run as non-root.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+      containers:
+        - name: operator
+          # Replace with your actual image reference.
+          image: ghcr.io/nagenaev/tuck-operator:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--tuck-addr=https://tuck.tuck.svc:8200"
+            - "--k8s-api=https://kubernetes.default.svc"
+            - "--sa-token-file=/var/run/secrets/kubernetes.io/serviceaccount/token"
+            - "--k8s-ca-file=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+            # Omit --namespace to watch all namespaces, or set a specific one:
+            # - "--namespace=production"
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          # The default projected SA token is mounted here automatically
+          # by Kubernetes when serviceAccountName is set.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      terminationGracePeriodSeconds: 30

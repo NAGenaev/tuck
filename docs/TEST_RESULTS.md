@@ -1,6 +1,6 @@
 ﻿# Tuck - test results
 
-**Run date:** 2026-06-11 15:33
+**Run date:** 2026-06-11 16:30
 **Environment:** Windows, go1.23.4, minikube v1.38.1
 
 | ID | Test | Result | Details |
@@ -9,7 +9,7 @@
 | SHAMIR | Shamir seal unit tests | PASS |  |
 | SHAMIR-HTTP | TestSysShamirUnseal integration | PASS |  |
 | BUILD | go build tuck.exe | PASS |  |
-| SETUP | Extract root token | PASS | tuck_OFYg_YwJ0zgndAcZlm3ZSnDwi5N1V7EupONiIERk7c8 |
+| SETUP | Extract root token | PASS | tuck_JAUcP-N8cTPtLeNagJEWZq5VBLbIgnHxZ9NneuJ7Bc8 |
 | SETUP2 | Server ready | PASS |  |
 | 1 | Health check | PASS | {"sealed":false} |
 | 2 | Seal status | PASS | {"sealed":false,"type":"dev"} |
@@ -22,11 +22,11 @@
 | 4b | Bad token 401 | PASS | status 401 |
 | 5a | Create policy | PASS | status 204 |
 | 5b | Read policy | PASS | {"name":"prod-readonly","rules":[{"path":"secret/prod/*","capabilities":["rea... |
-| 5c | Create limited token | PASS | tuck_BA8gkia3DJq_c8g-nLhY9KZ57pZifxXvGDgHf1nP9s4 |
+| 5c | Create limited token | PASS | tuck_amGpgQCxpeQRfB_yGQ6yquGv4GgMR-3uG1yWdTz8ooM |
 | 5d | Limited can read prod | PASS | {"path":"prod/api-key","value":"prod-api-key-value"} |
 | 5e | Limited cannot write | PASS | status 403 |
 | 5f | Limited cannot read staging | PASS | status 403 |
-| 6a | Create token with TTL | PASS | tuck_wluynEvo7aVL6QypWWU5eviKgKba4EP5JEU0oouZaR4 |
+| 6a | Create token with TTL | PASS | tuck_wTxLlEPLe0TnTQyxjPQX85VIiv-DdXxXeh-rePCOzI4 |
 | 6b | Get token | PASS | status 200 |
 | 6c | Revoke token | PASS | status 204 |
 | 6d | Revoked token 401 | PASS | status 401 |
@@ -45,18 +45,7 @@
 
 ## Summary
 
-- **Passed: 37 / 37**
-- **Failed: 0**
-- **Date:** 2026-06-11 (Windows 10, Go 1.23.4, minikube v1.38.1, k8s 1.35.1)
+- Passed: 37 / 37
+- Failed: 0
 
-### Coverage map
-
-| Block | Tests | Status |
-|-------|-------|--------|
-| Unit (`go test ./...`) | UNIT, SHAMIR, SHAMIR-HTTP | PASS |
-| Local API (tests 1-7) | Health, KV, auth, ACL, tokens, seal | PASS |
-| Local persist (test 10) | 10a, 10b | PASS |
-| Minikube (tests 8-9) | SA auth, TuckSecret operator | PASS |
-| Minikube persist (10k) | Pod restart + PVC | PASS |
-
-Scenarios: [TESTING.md](TESTING.md) | Rerun: `.\scripts\run-all-tests.ps1`
+Scenarios: [TESTING.md](TESTING.md)

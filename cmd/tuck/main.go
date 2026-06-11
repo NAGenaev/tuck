@@ -47,19 +47,28 @@ func main() {
 	}
 
 	c := core.NewWithK8s(backend, seal.NewDev(*sealKey), reviewer)
-	rootTok, err := c.Start(context.Background())
-	if err != nil {
+	startResult, err := c.Start(context.Background())
+	if err != nil && err != core.ErrNeedsUnseal {
 		log.Fatalf("start core: %v", err)
 	}
-	if rootTok != nil {
+	if startResult != nil {
 		log.Printf("==========================================================")
 		log.Printf("ROOT TOKEN (shown once — store it securely):")
-		log.Printf("  %s", rootTok.ID)
+		log.Printf("  %s", startResult.RootToken.ID)
+		if len(startResult.Shares) > 0 {
+			log.Printf("SHAMIR SHARES (distribute to operators now):")
+			for i, s := range startResult.Shares {
+				log.Printf("  [%d] %s", i+1, s)
+			}
+		}
 		log.Printf("==========================================================")
 	}
-
-	log.Printf("tuck: unsealed (dev seal), serving on http://%s", *addr)
-	log.Printf("tuck: WARNING dev seal stores the root key in plaintext at %q — dev use only", *sealKey)
+	if err == core.ErrNeedsUnseal {
+		log.Printf("tuck: SEALED — supply shards via POST /v1/sys/unseal")
+	} else {
+		log.Printf("tuck: unsealed (dev seal), serving on http://%s", *addr)
+		log.Printf("tuck: WARNING dev seal stores the root key in plaintext at %q — dev use only", *sealKey)
+	}
 
 	if err := http.ListenAndServe(*addr, api.New(c).Handler()); err != nil {
 		log.Fatalf("serve: %v", err)

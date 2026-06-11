@@ -18,13 +18,13 @@ import (
 func newTestServer(t *testing.T) (*httptest.Server, *core.Core, string) {
 	t.Helper()
 	c := core.New(physical.NewInMem(), seal.NewDev(filepath.Join(t.TempDir(), "rootkey")))
-	rootTok, err := c.Start(context.Background())
+	result, err := c.Start(context.Background())
 	if err != nil {
 		t.Fatalf("core start: %v", err)
 	}
 	ts := httptest.NewServer(New(c).Handler())
 	t.Cleanup(ts.Close)
-	return ts, c, rootTok.ID
+	return ts, c, result.RootToken.ID
 }
 
 func authedReq(t *testing.T, method, url, body, tokenID string) *http.Request {

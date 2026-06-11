@@ -29,13 +29,13 @@ func (m *mockReviewer) Review(_ string) (*k8sauth.ReviewResult, error) {
 func newTestServerWithK8s(t *testing.T, reviewer k8sauth.Reviewer) (*httptest.Server, *core.Core, string) {
 	t.Helper()
 	c := core.NewWithK8s(physical.NewInMem(), seal.NewDev(filepath.Join(t.TempDir(), "rootkey")), reviewer)
-	rootTok, err := c.Start(context.Background())
+	result, err := c.Start(context.Background())
 	if err != nil {
 		t.Fatalf("core start: %v", err)
 	}
 	ts := httptest.NewServer(New(c).Handler())
 	t.Cleanup(ts.Close)
-	return ts, c, rootTok.ID
+	return ts, c, result.RootToken.ID
 }
 
 func loginK8s(t *testing.T, ts *httptest.Server, saToken string) *http.Response {

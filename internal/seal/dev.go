@@ -15,7 +15,7 @@ const rootKeySize = 32
 //
 // WARNING: insecure by design. Anyone who can read the key file can decrypt
 // every secret. Never use the dev seal in production — that is what the KMS and
-// Shamir seals (later milestones) are for.
+// Shamir seals are for.
 type Dev struct {
 	path string
 }
@@ -27,7 +27,9 @@ func NewDev(path string) *Dev {
 
 func (d *Dev) Type() string { return "dev" }
 
-func (d *Dev) Init() ([]byte, error) {
+// Init generates a fresh root key, writes it to disk, and returns it wrapped
+// in an InitResult. Shares is always nil for the dev seal.
+func (d *Dev) Init() (*InitResult, error) {
 	if _, err := os.Stat(d.path); err == nil {
 		return nil, fmt.Errorf("dev seal: key file %q already exists", d.path)
 	}
@@ -38,9 +40,11 @@ func (d *Dev) Init() ([]byte, error) {
 	if err := os.WriteFile(d.path, key, 0600); err != nil {
 		return nil, fmt.Errorf("dev seal: write key: %w", err)
 	}
-	return key, nil
+	return &InitResult{RootKey: key}, nil
 }
 
+// Unseal reads the root key from disk and returns it. For the dev seal this
+// always succeeds as long as the key file exists and has the right size.
 func (d *Dev) Unseal() ([]byte, error) {
 	key, err := os.ReadFile(d.path)
 	if err != nil {

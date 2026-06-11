@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"sync"
 	"time"
 
 	"github.com/NAGenaev/tuck/internal/barrier"
@@ -23,7 +24,25 @@ var (
 	ErrUnauthorized    = errors.New("permission denied")
 	ErrTokenInvalid    = errors.New("invalid or expired token")
 	ErrK8sAuthDisabled = errors.New("kubernetes auth is not configured")
+
+	// ErrNeedsUnseal is returned by Start when the seal requires interactive
+	// shard collection (e.g. ShamirSeal). The server remains running; callers
+	// should poll SealStatus and surface POST /v1/sys/unseal to operators.
+	ErrNeedsUnseal = errors.New("core: seal requires manual unseal — supply shards via /v1/sys/unseal")
+
+	// ErrSealNotInteractive is returned by UnsealShard when the active seal
+	// does not implement SharableUnseal (e.g. Dev or Transit seals).
+	ErrSealNotInteractive = errors.New("core: active seal does not support interactive shard unseal")
 )
+
+// SealStatusInfo is returned by Core.SealStatus and exposed via
+// GET /v1/sys/seal-status.
+type SealStatusInfo struct {
+	Sealed   bool   `json:"sealed"`
+	Type     string `json:"type"`
+	Required int    `json:"required_shards,omitempty"` // non-zero for ShamirSeal only
+	Received int    `json:"received_shards,omitempty"` // non-zero for ShamirSeal only
+}
 
 // Core is Tuck's runtime: storage + crypto + seal, plus the logical KV and identity APIs.
 type Core struct {
@@ -35,6 +54,14 @@ type Core struct {
 	// optional — nil means k8s auth is disabled
 	k8sReviewer k8sauth.Reviewer
 	k8sRoles    *k8sauth.RoleStore
+
+	// unsealMu guards unseal-shard operations so concurrent POST /v1/sys/unseal
+	// requests cannot race on AcceptShard.
+	unsealMu sync.Mutex
+
+	// unsealCtx is stored during the "waiting for shards" window so that
+	// UnsealShard can call barrier.Unseal once the key is reconstructed.
+	unsealCtx context.Context //nolint:containedctx // intentional: stored for deferred barrier.Unseal
 }
 
 // New builds a Core without Kubernetes auth support.
@@ -57,22 +84,39 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 	}
 }
 
-// Start brings the core up. On first initialisation it returns the root token
-// — print it, it will never be shown again. On subsequent starts it returns nil.
-func (c *Core) Start(ctx context.Context) (*token.Token, error) {
+// StartResult is returned by Core.Start on the first initialisation.
+// On subsequent starts it is nil (auto-unseal seals) or ErrNeedsUnseal is
+// returned (ShamirSeal).
+type StartResult struct {
+	// RootToken is the bootstrap token. Print it once and store it securely —
+	// it is never accessible again via the API.
+	RootToken *token.Token
+	// Shares is non-nil only on the very first boot with a ShamirSeal. These
+	// are the base64url-encoded shares that must be distributed to operators.
+	// After Start returns, they are no longer accessible.
+	Shares []string
+}
+
+// Start brings the core up. On first initialisation it returns a StartResult
+// containing the root token (and shares if ShamirSeal). On subsequent starts
+// with an auto-unseal seal it returns (nil, nil). For ShamirSeal it returns
+// (nil, ErrNeedsUnseal) and waits for operators to call UnsealShard.
+func (c *Core) Start(ctx context.Context) (*StartResult, error) {
 	inited, err := c.barrier.Initialized(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("check initialized: %w", err)
 	}
+
 	if !inited {
-		rootKey, err := c.seal.Init()
+		result, err := c.seal.Init()
 		if err != nil {
 			return nil, fmt.Errorf("seal init: %w", err)
 		}
-		if err := c.barrier.Initialize(ctx, rootKey); err != nil {
+
+		if err := c.barrier.Initialize(ctx, result.RootKey); err != nil {
 			return nil, fmt.Errorf("barrier init: %w", err)
 		}
-		if err := c.barrier.Unseal(ctx, rootKey); err != nil {
+		if err := c.barrier.Unseal(ctx, result.RootKey); err != nil {
 			return nil, fmt.Errorf("barrier unseal: %w", err)
 		}
 		rootTok, err := token.Generate(token.RootTokenDisplayName, []string{token.RootPolicyName}, 0)
@@ -82,16 +126,74 @@ func (c *Core) Start(ctx context.Context) (*token.Token, error) {
 		if err := c.tokens.Put(ctx, rootTok); err != nil {
 			return nil, fmt.Errorf("store root token: %w", err)
 		}
-		return rootTok, nil
+		return &StartResult{RootToken: rootTok, Shares: result.Shares}, nil
 	}
+
+	// Already initialized — unseal.
 	rootKey, err := c.seal.Unseal()
 	if err != nil {
+		if errors.Is(err, seal.ErrNeedsShards) {
+			// Interactive seal: store context for later barrier.Unseal call.
+			c.unsealCtx = ctx
+			return nil, ErrNeedsUnseal
+		}
 		return nil, fmt.Errorf("seal unseal: %w", err)
 	}
 	if err := c.barrier.Unseal(ctx, rootKey); err != nil {
 		return nil, fmt.Errorf("barrier unseal: %w", err)
 	}
 	return nil, nil
+}
+
+// UnsealShard accepts one base64url-encoded Shamir shard. When enough shards
+// have been collected the barrier is unsealed automatically. Returns true when
+// the barrier is now open.
+//
+// Returns an error if the active seal does not implement SharableUnseal, if
+// the shard is malformed, or if a duplicate shard is provided.
+func (c *Core) UnsealShard(ctx context.Context, share string) (bool, error) {
+	su, ok := c.seal.(seal.SharableUnseal)
+	if !ok {
+		return false, ErrSealNotInteractive
+	}
+
+	c.unsealMu.Lock()
+	defer c.unsealMu.Unlock()
+
+	complete, rootKey, err := su.AcceptShard(share)
+	if err != nil {
+		return false, err
+	}
+	if !complete {
+		return false, nil
+	}
+
+	// Use the stored context if the caller didn't provide a live one.
+	unsealCtx := ctx
+	if unsealCtx == nil && c.unsealCtx != nil {
+		unsealCtx = c.unsealCtx
+	}
+	if unsealCtx == nil {
+		unsealCtx = context.Background()
+	}
+
+	if err := c.barrier.Unseal(unsealCtx, rootKey); err != nil {
+		return false, fmt.Errorf("barrier unseal after shards: %w", err)
+	}
+	c.unsealCtx = nil // release the stored context
+	return true, nil
+}
+
+// SealStatus returns a snapshot of the current seal/unseal state.
+func (c *Core) SealStatus() SealStatusInfo {
+	info := SealStatusInfo{
+		Sealed: c.barrier.IsSealed(),
+		Type:   c.seal.Type(),
+	}
+	if su, ok := c.seal.(seal.SharableUnseal); ok {
+		info.Required, info.Received = su.ShardsProgress()
+	}
+	return info
 }
 
 // Sealed reports whether the core is currently sealed.
@@ -261,3 +363,4 @@ func (c *Core) DeleteSecret(ctx context.Context, p string) error {
 func secretKey(p string) string {
 	return secretPrefix + path.Clean("/"+p)[1:]
 }
+

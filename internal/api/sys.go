@@ -121,6 +121,30 @@ func (s *Server) getSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// postRotate handles POST /v1/sys/rotate (requires root policy).
+//
+// Generates a new root key via the active seal and re-wraps the barrier DEK.
+// No data re-encryption is needed — only the keyring envelope changes.
+// For ShamirSeal, new shares are returned in the response and must be
+// distributed to operators immediately; the old shares become invalid.
+func (s *Server) postRotate(w http.ResponseWriter, r *http.Request) {
+	tokenID := tokenFromCtx(r.Context())
+	if err := s.core.EnforceAccess(r.Context(), tokenID, "sys/rotate", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
+	shares, err := s.core.RotateKey(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	resp := map[string]any{"ok": true}
+	if len(shares) > 0 {
+		resp["shares"] = shares
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
 // postSeal handles POST /v1/sys/seal (requires X-Tuck-Token with root policy).
 //
 // Re-seals the server immediately, dropping the barrier key from memory. All

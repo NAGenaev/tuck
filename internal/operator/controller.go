@@ -10,9 +10,10 @@ import (
 
 const (
 	defaultRefreshInterval = 5 * time.Minute
-	// watchReconnectDelay is how long to wait before re-listing after a watch
-	// error (410 Gone, network drop, etc.).
-	watchReconnectDelay = 5 * time.Second
+	// reconnectBase is the initial backoff delay after a watch-cycle error.
+	reconnectBase = 1 * time.Second
+	// reconnectMax caps the exponential backoff.
+	reconnectMax = 30 * time.Second
 )
 
 // KubeClientIface is the subset of KubeClient used by the controller.
@@ -54,19 +55,25 @@ func New(kube KubeClientIface, tuck TuckClientIface, namespace string) *Controll
 }
 
 // Run starts the controller loop and blocks until ctx is cancelled.
+// Reconnect delay is exponentially backed off (1s → 30s) on repeated errors
+// and reset to the base delay on a successful cycle.
 func (ctrl *Controller) Run(ctx context.Context) error {
 	slog.Info("operator: starting controller")
+	delay := reconnectBase
 	for {
 		if err := ctrl.runOnce(ctx); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			slog.Error("operator: watch cycle error — reconnecting", "err", err, "delay", watchReconnectDelay)
+			slog.Error("operator: watch cycle error — reconnecting", "err", err, "delay", delay)
 			select {
-			case <-time.After(watchReconnectDelay):
+			case <-time.After(delay):
 			case <-ctx.Done():
 				return ctx.Err()
 			}
+			delay = min(delay*2, reconnectMax)
+		} else {
+			delay = reconnectBase // reset on clean exit
 		}
 	}
 }

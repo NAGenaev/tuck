@@ -83,6 +83,24 @@ func (s *Server) getPolicy(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// listPolicies handles LIST /v1/policy/.
+// Returns {"keys": [...]} with all policy names.
+func (s *Server) listPolicies(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/policy", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
+	names, err := s.core.ListPolicies(r.Context())
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if names == nil {
+		names = []string{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"keys": names})
+}
+
 func (s *Server) deletePolicy(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/policy/"+name, policy.CapDelete); err != nil {

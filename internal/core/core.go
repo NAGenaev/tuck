@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"strings"
 	"sync"
 	"time"
 
@@ -279,6 +280,31 @@ func (c *Core) LookupToken(ctx context.Context, tokenID string) (*token.Token, e
 	return c.tokens.Get(ctx, tokenID)
 }
 
+// ListTokens returns all token IDs in the store.
+func (c *Core) ListTokens(ctx context.Context) ([]string, error) {
+	return c.tokens.List(ctx)
+}
+
+// RenewToken extends tokenID's expiry by ttl (default 1h when ttl≤0).
+// Returns ErrTokenInvalid if the token doesn't exist or is already expired.
+func (c *Core) RenewToken(ctx context.Context, tokenID string, ttl time.Duration) (*token.Token, error) {
+	tok, err := c.tokens.Get(ctx, tokenID)
+	if err != nil {
+		return nil, ErrTokenInvalid
+	}
+	if tok.IsExpired() {
+		return nil, ErrTokenInvalid
+	}
+	if ttl <= 0 {
+		ttl = time.Hour
+	}
+	tok.ExpiresAt = time.Now().UTC().Add(ttl)
+	if err := c.tokens.Put(ctx, tok); err != nil {
+		return nil, err
+	}
+	return tok, nil
+}
+
 // --- Policy management ---
 
 func (c *Core) PutPolicy(ctx context.Context, p *policy.Policy) error {
@@ -291,6 +317,11 @@ func (c *Core) GetPolicy(ctx context.Context, name string) (*policy.Policy, erro
 
 func (c *Core) DeletePolicy(ctx context.Context, name string) error {
 	return c.policies.Delete(ctx, name)
+}
+
+// ListPolicies returns all policy names in the store.
+func (c *Core) ListPolicies(ctx context.Context) ([]string, error) {
+	return c.policies.List(ctx)
 }
 
 // --- Kubernetes auth ---
@@ -339,6 +370,30 @@ func (c *Core) DeleteK8sRole(ctx context.Context, namespace, sa string) error {
 
 // --- KV secrets ---
 
+// ListSecrets returns all secret keys whose storage key starts with the given
+// prefix path. An empty prefix lists every secret.
+func (c *Core) ListSecrets(ctx context.Context, prefix string) ([]string, error) {
+	storagePrefix := secretPrefix
+	if prefix != "" {
+		p := secretKey(prefix)
+		// Ensure a trailing slash so we list within the directory, not just
+		// exact matches.
+		if !strings.HasSuffix(p, "/") {
+			p += "/"
+		}
+		storagePrefix = p
+	}
+	keys, err := c.barrier.List(ctx, storagePrefix)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]string, len(keys))
+	for i, k := range keys {
+		result[i] = strings.TrimPrefix(k, secretPrefix)
+	}
+	return result, nil
+}
+
 // GetSecret returns the bytes stored at the logical path, or (nil, false) if
 // nothing is stored there.
 func (c *Core) GetSecret(ctx context.Context, p string) ([]byte, bool, error) {
@@ -366,6 +421,22 @@ func (c *Core) DeleteSecret(ctx context.Context, p string) error {
 // cannot escape the secret/ namespace via "..".
 func secretKey(p string) string {
 	return secretPrefix + path.Clean("/"+p)[1:]
+}
+
+// RotateKey generates a new root key via the seal and re-wraps the barrier DEK.
+// No data re-encryption is needed — only the keyring envelope changes.
+// For ShamirSeal the new shares are returned; for other seals the slice is nil.
+func (c *Core) RotateKey(ctx context.Context) ([]string, error) {
+	result, err := c.seal.Init()
+	if err != nil {
+		return nil, fmt.Errorf("seal re-init: %w", err)
+	}
+	if err := c.barrier.Rekey(ctx, result.RootKey); err != nil {
+		clear(result.RootKey)
+		return nil, fmt.Errorf("rekey barrier: %w", err)
+	}
+	clear(result.RootKey)
+	return result.Shares, nil
 }
 
 // Snapshotter returns a function that writes a database snapshot to an io.Writer,

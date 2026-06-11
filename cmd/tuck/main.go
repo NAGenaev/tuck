@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -22,7 +23,12 @@ import (
 	"github.com/NAGenaev/tuck/internal/tlsutil"
 )
 
+// Version is set at build time via -ldflags "-X main.Version=x.y.z".
+var Version = "dev"
+
 func main() {
+	versionFlag := flag.Bool("version", false, "print version and exit")
+
 	// Network
 	addr := flag.String("addr", "127.0.0.1:8200", "HTTP(S) listen address")
 	dataPath := flag.String("data", "tuck.db", "path to the bbolt data file")
@@ -55,6 +61,11 @@ func main() {
 	k8sCaFile := flag.String("k8s-ca-file", "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt", "path to k8s CA certificate")
 
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Fprintf(os.Stdout, "tuck %s\n", Version)
+		os.Exit(0)
+	}
 
 	// --- Backend ---
 	backend, err := physical.OpenBolt(*dataPath)
@@ -126,6 +137,8 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
+
+	c.StartGC(ctx)
 
 	startResult, startErr := c.Start(ctx)
 	if startErr != nil && !errors.Is(startErr, core.ErrNeedsUnseal) {

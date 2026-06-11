@@ -80,3 +80,51 @@ func (s *Server) revokeToken(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// renewToken handles POST /v1/auth/token/{id}/renew.
+// Optional body: {"ttl": "24h"}. Default renewal TTL is 1h.
+func (s *Server) renewToken(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/token/"+id, policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
+	var req struct {
+		TTL string `json:"ttl"`
+	}
+	body, _ := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodyBytes))
+	_ = json.Unmarshal(body, &req)
+
+	var ttl time.Duration
+	if req.TTL != "" {
+		var err error
+		if ttl, err = time.ParseDuration(req.TTL); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid ttl: " + err.Error()})
+			return
+		}
+	}
+	tok, err := s.core.RenewToken(r.Context(), id, ttl)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, tok)
+}
+
+// listTokens handles LIST /v1/auth/token/.
+// Returns {"keys": [...]} with all token IDs.
+func (s *Server) listTokens(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/token", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
+	ids, err := s.core.ListTokens(r.Context())
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if ids == nil {
+		ids = []string{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"keys": ids})
+}

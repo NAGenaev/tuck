@@ -44,6 +44,19 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 	return s.barrier.Delete(ctx, tokenKey(id))
 }
 
+// List returns all token IDs currently persisted in the store.
+func (s *Store) List(ctx context.Context) ([]string, error) {
+	keys, err := s.barrier.List(ctx, "auth/token/")
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, len(keys))
+	for i, k := range keys {
+		ids[i] = strings.TrimPrefix(k, "auth/token/")
+	}
+	return ids, nil
+}
+
 // ListExpired returns the IDs of all tokens whose TTL has elapsed.
 // Tokens with no expiry (ExpiresAt.IsZero()) are never returned.
 func (s *Store) ListExpired(ctx context.Context) ([]string, error) {

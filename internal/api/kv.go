@@ -1,9 +1,11 @@
 package api
 
 import (
+	"encoding/base64"
 	"io"
 	"net/http"
 	"path"
+	"unicode/utf8"
 
 	"github.com/NAGenaev/tuck/internal/policy"
 )
@@ -29,7 +31,16 @@ func (s *Server) getSecret(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"path": p, "value": string(val)})
+	// API-1: binary-safe response — base64-encode when the value is not valid UTF-8.
+	if utf8.Valid(val) {
+		writeJSON(w, http.StatusOK, map[string]string{"path": p, "value": string(val)})
+	} else {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"path":     p,
+			"value":    base64.StdEncoding.EncodeToString(val),
+			"encoding": "base64",
+		})
+	}
 }
 
 func (s *Server) putSecret(w http.ResponseWriter, r *http.Request) {
@@ -61,4 +72,27 @@ func (s *Server) deleteSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// listSecrets handles LIST /v1/secret/{path...}.
+// Returns {"keys": [...]} with all secret paths under the given prefix.
+func (s *Server) listSecrets(w http.ResponseWriter, r *http.Request) {
+	prefix := r.PathValue("path")
+	enforcePath := "secret/"
+	if prefix != "" {
+		enforcePath = secretEnforcePath(prefix)
+	}
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), enforcePath, policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
+	keys, err := s.core.ListSecrets(r.Context(), prefix)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if keys == nil {
+		keys = []string{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"keys": keys})
 }

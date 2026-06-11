@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/NAGenaev/tuck/internal/barrier"
 	"github.com/NAGenaev/tuck/internal/physical"
@@ -40,6 +41,19 @@ func (s *Store) Get(ctx context.Context, name string) (*Policy, error) {
 
 func (s *Store) Delete(ctx context.Context, name string) error {
 	return s.barrier.Delete(ctx, policyKey(name))
+}
+
+// List returns all policy names currently persisted in the store.
+func (s *Store) List(ctx context.Context) ([]string, error) {
+	keys, err := s.barrier.List(ctx, "auth/policy/")
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, len(keys))
+	for i, k := range keys {
+		names[i] = strings.TrimPrefix(k, "auth/policy/")
+	}
+	return names, nil
 }
 
 func policyKey(name string) string { return "auth/policy/" + name }

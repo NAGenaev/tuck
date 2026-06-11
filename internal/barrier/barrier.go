@@ -171,6 +171,22 @@ func (b *Barrier) Delete(ctx context.Context, key string) error {
 	return b.backend.Delete(ctx, key)
 }
 
+// Rekey wraps the current barrier key (DEK) with newRootKey and persists the
+// updated keyring. Use this for root-key rotation: the in-memory DEK is
+// unchanged, so no data re-encryption is required.
+func (b *Barrier) Rekey(ctx context.Context, newRootKey []byte) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.key == nil {
+		return ErrSealed
+	}
+	wrapped, err := encrypt(newRootKey, b.key)
+	if err != nil {
+		return fmt.Errorf("re-wrap barrier key: %w", err)
+	}
+	return b.backend.Put(ctx, &physical.Entry{Key: keyringPath, Value: wrapped})
+}
+
 // List returns keys with the given prefix from the backend.
 // Requires the barrier to be unsealed.
 func (b *Barrier) List(ctx context.Context, prefix string) ([]string, error) {

@@ -45,20 +45,25 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sys/unseal", s.postUnseal)
 	mux.HandleFunc("POST /v1/sys/seal", s.requireToken(s.postSeal))
 	mux.HandleFunc("GET /v1/sys/snapshot", s.requireToken(s.getSnapshot))
+	mux.HandleFunc("POST /v1/sys/rotate", s.requireToken(s.postRotate))
 
 	mux.HandleFunc("GET /metrics", metrics.Handler())
 
 	mux.HandleFunc("GET /v1/secret/{path...}", s.requireToken(s.getSecret))
 	mux.HandleFunc("PUT /v1/secret/{path...}", s.requireToken(s.putSecret))
 	mux.HandleFunc("DELETE /v1/secret/{path...}", s.requireToken(s.deleteSecret))
+	mux.HandleFunc("LIST /v1/secret/{path...}", s.requireToken(s.listSecrets))
 
 	mux.HandleFunc("POST /v1/auth/token", s.requireToken(s.createToken))
 	mux.HandleFunc("GET /v1/auth/token/{id}", s.requireToken(s.lookupToken))
 	mux.HandleFunc("DELETE /v1/auth/token/{id}", s.requireToken(s.revokeToken))
+	mux.HandleFunc("POST /v1/auth/token/{id}/renew", s.requireToken(s.renewToken))
+	mux.HandleFunc("LIST /v1/auth/token/", s.requireToken(s.listTokens))
 
 	mux.HandleFunc("PUT /v1/policy/{name}", s.requireToken(s.putPolicy))
 	mux.HandleFunc("GET /v1/policy/{name}", s.requireToken(s.getPolicy))
 	mux.HandleFunc("DELETE /v1/policy/{name}", s.requireToken(s.deletePolicy))
+	mux.HandleFunc("LIST /v1/policy/", s.requireToken(s.listPolicies))
 
 	mux.HandleFunc("POST /v1/auth/kubernetes/login", s.loginK8s)
 	mux.HandleFunc("PUT /v1/auth/kubernetes/role/{namespace}/{sa}", s.requireToken(s.putK8sRole))

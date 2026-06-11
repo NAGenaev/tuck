@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/core"
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
 	"github.com/NAGenaev/tuck/internal/physical"
+	physraft "github.com/NAGenaev/tuck/internal/physical/raft"
 	"github.com/NAGenaev/tuck/internal/seal"
 	"github.com/NAGenaev/tuck/internal/telemetry"
 	"github.com/NAGenaev/tuck/internal/tlsutil"
@@ -56,6 +58,16 @@ func main() {
 	transitToken := flag.String("seal-transit-token", "", "Transit seal: bearer token (use env TUCK_TRANSIT_TOKEN to avoid ps exposure)")
 	transitKeyFile := flag.String("seal-transit-key-file", "tuck-transit.enc", "Transit seal: file to store wrapped root key ciphertext")
 
+	// Cluster (Raft HA)
+	clusterMode      := flag.Bool("cluster", false, "enable Raft HA backend (replaces bbolt with a replicated Raft log)")
+	clusterNodeID    := flag.String("cluster-node-id", "", "unique node ID for this instance (defaults to hostname)")
+	clusterBindAddr  := flag.String("cluster-bind-addr", "0.0.0.0:8201", "Raft RPC listen address")
+	clusterAdvertise := flag.String("cluster-advertise", "", "Raft RPC advertise address (defaults to --cluster-bind-addr)")
+	clusterDir       := flag.String("cluster-dir", "tuck-raft", "directory for Raft logs, snapshots, and FSM state")
+	clusterBootstrap := flag.Bool("cluster-bootstrap", false, "bootstrap a new cluster (first node only; ignored on restarts)")
+	clusterJoin      := flag.String("cluster-join", "", "leader HTTP address to join an existing cluster (e.g. https://leader:8200)")
+	clusterPeers     := flag.String("cluster-peers", "", "comma-separated bootstrap peers: id=raftAddr,... (used with --cluster-bootstrap)")
+
 	// Observability
 	otelEndpoint := flag.String("otel-endpoint", "", "OpenTelemetry OTLP HTTP endpoint (e.g. http://otel-collector:4318); empty = disabled")
 
@@ -72,11 +84,58 @@ func main() {
 	}
 
 	// --- Backend ---
-	backend, err := physical.OpenBolt(*dataPath)
-	if err != nil {
-		log.Fatalf("open backend: %v", err)
+	var (
+		backend physical.Backend
+		err     error
+	)
+	if *clusterMode {
+		nodeID := *clusterNodeID
+		if nodeID == "" {
+			if h, herr := os.Hostname(); herr == nil {
+				nodeID = h
+			} else {
+				nodeID = "node1"
+			}
+		}
+		var peers []physraft.Peer
+		if *clusterPeers != "" {
+			for _, p := range splitComma(*clusterPeers) {
+				if idx := indexOf(p, '='); idx >= 0 {
+					peers = append(peers, physraft.Peer{ID: p[:idx], Addr: p[idx+1:]})
+				}
+			}
+		}
+		rb, raftErr := physraft.Open(physraft.Config{
+			NodeID:        nodeID,
+			BindAddr:      *clusterBindAddr,
+			AdvertiseAddr: *clusterAdvertise,
+			DataDir:       *clusterDir,
+			Bootstrap:     *clusterBootstrap,
+			Peers:         peers,
+		})
+		if raftErr != nil {
+			log.Fatalf("open raft backend: %v", raftErr)
+		}
+		defer rb.Close()
+
+		// Auto-join an existing cluster via the leader's HTTP API.
+		if *clusterJoin != "" {
+			if joinErr := clusterJoinLeader(*clusterJoin, nodeID, *clusterBindAddr); joinErr != nil {
+				log.Fatalf("cluster join: %v", joinErr)
+			}
+			log.Printf("tuck: joined cluster via %s", *clusterJoin)
+		}
+
+		backend = rb
+		log.Printf("tuck: Raft HA backend (node=%s bind=%s dir=%s)", nodeID, *clusterBindAddr, *clusterDir)
+	} else {
+		bb, bbErr := physical.OpenBolt(*dataPath)
+		if bbErr != nil {
+			log.Fatalf("open backend: %v", bbErr)
+		}
+		defer bb.Close()
+		backend = bb
 	}
-	defer backend.Close()
 
 	// --- Seal ---
 	var s seal.Seal
@@ -245,4 +304,51 @@ func main() {
 	}
 	c.Seal() // drop barrier key from memory before exit
 	log.Printf("tuck: shutdown complete")
+}
+
+// clusterJoinLeader POSTs a join request to the leader's HTTP API.
+func clusterJoinLeader(leaderHTTP, nodeID, raftAddr string) error {
+	import_bytes := fmt.Sprintf(`{"node_id":%q,"raft_addr":%q}`, nodeID, raftAddr)
+	req, err := http.NewRequest(http.MethodPost, leaderHTTP+"/v1/sys/cluster/join",
+		strings.NewReader(import_bytes))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	// Use the root token env var if set so the join can authenticate.
+	if tok := os.Getenv("TUCK_TOKEN"); tok != "" {
+		req.Header.Set("X-Tuck-Token", tok)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("leader returned %s", resp.Status)
+	}
+	return nil
+}
+
+// splitComma splits s by commas, trimming spaces.
+func splitComma(s string) []string {
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// indexOf returns the index of byte b in s, or -1.
+func indexOf(s string, b byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == b {
+			return i
+		}
+	}
+	return -1
 }

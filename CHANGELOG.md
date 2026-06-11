@@ -11,6 +11,37 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.11.0] — 2026-06-11
+
+### Added
+
+#### HA-1 — Raft-replicated backend (`internal/physical/raft`)
+- New `physraft.Backend` implementing `physical.Backend` via Hashicorp Raft consensus.
+- **All writes replicated** through the Raft log — AES-256-GCM ciphertext is still the only thing that ever hits storage; Raft adds consensus on top, not cleartext.
+- **FSM** backed by bbolt (`fsm.db`): applies `put`/`delete` commands committed by the cluster leader. Snapshot/restore support for log compaction.
+- **Persistent stores**: Raft log + stable store in `raft.db` (raft-boltdb/v2), file-based snapshot store.
+- **TCP transport** with configurable `BindAddr` and `AdvertiseAddr` for multi-node setups.
+- `ErrNotLeader` — write operations on followers return a typed error; the HTTP layer maps it to `503 not leader`.
+- `Backend.Status()` — real-time cluster topology (leader ID, leader addr, all servers, suffrage).
+- `Backend.AddVoter` / `Backend.RemoveServer` — online membership changes from the leader.
+
+#### Cluster HTTP API (`/v1/sys/cluster`)
+- `GET /v1/sys/cluster` — returns cluster topology (is_leader, leader, servers).
+- `POST /v1/sys/cluster/join` — adds a voter to a running cluster (`{"node_id","raft_addr"}`); must be called against the leader.
+- `DELETE /v1/sys/cluster/node/{id}` — removes a voter from the cluster.
+
+#### Server flags (`tuck --cluster ...`)
+- `--cluster` — enable Raft HA backend (replaces bbolt).
+- `--cluster-node-id` — stable node identity (defaults to hostname).
+- `--cluster-bind-addr` — Raft RPC listen address (default `0.0.0.0:8201`).
+- `--cluster-advertise` — advertised Raft address for peer discovery.
+- `--cluster-dir` — data directory for Raft logs + FSM state (default `tuck-raft/`).
+- `--cluster-bootstrap` — bootstrap a fresh cluster (first node only; idempotent on restart).
+- `--cluster-peers` — comma-separated `id=raftAddr` list for multi-node bootstrap.
+- `--cluster-join` — auto-join an existing cluster by POSTing to the leader's HTTP API.
+
+---
+
 ## [0.10.0] — 2026-06-11
 
 ### Added
@@ -82,7 +113,8 @@ Pre-release for M10 testing.
 
 ---
 
-[Unreleased]: https://github.com/NAGenaev/tuck/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/NAGenaev/tuck/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/NAGenaev/tuck/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/NAGenaev/tuck/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/NAGenaev/tuck/compare/v0.4.0...v0.9.0
 [0.4.0]: https://github.com/NAGenaev/tuck/releases/tag/v0.4.0

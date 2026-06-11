@@ -11,6 +11,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/barrier"
 	"github.com/NAGenaev/tuck/internal/core"
 	"github.com/NAGenaev/tuck/internal/metrics"
+	physraft "github.com/NAGenaev/tuck/internal/physical/raft"
 	"github.com/NAGenaev/tuck/internal/ui"
 )
 
@@ -89,6 +90,11 @@ func (s *Server) Handler() http.Handler {
 	// OpenAPI spec
 	mux.HandleFunc("GET /openapi.json", serveOpenAPI)
 
+	// Cluster management (Raft HA mode only)
+	mux.HandleFunc("GET /v1/sys/cluster", s.requireToken(s.getClusterStatus))
+	mux.HandleFunc("POST /v1/sys/cluster/join", s.requireToken(s.postClusterJoin))
+	mux.HandleFunc("DELETE /v1/sys/cluster/node/{id}", s.requireToken(s.deleteClusterNode))
+
 	return audit.Middleware(s.audit, mux)
 }
 
@@ -130,6 +136,9 @@ func writeErr(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid token"})
 	case errors.Is(err, core.ErrUnauthorized):
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
+	case errors.Is(err, physraft.ErrNotLeader):
+		// Return 503 so callers know to retry against the leader.
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "not leader — write to the cluster leader"})
 	default:
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}

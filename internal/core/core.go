@@ -47,6 +47,16 @@ type SealStatusInfo struct {
 	Received int    `json:"received_shards,omitempty"` // non-zero for ShamirSeal only
 }
 
+// ClusterBackender is the optional interface exposed by Raft-backed physical
+// backends. Core surfaces it to the API layer through ClusterBackend().
+type ClusterBackender interface {
+	IsLeader() bool
+	LeaderAddr() string
+	AddVoter(id, addr string) error
+	RemoveServer(id string) error
+	ClusterStatus() any
+}
+
 // Core is Tuck's runtime: storage + crypto + seal, plus the logical KV and identity APIs.
 type Core struct {
 	backend  physical.Backend
@@ -428,6 +438,15 @@ func secretKey(p string) string {
 
 // KVv2 returns the versioned KV store.
 func (c *Core) KVv2() *kvv2.Store { return c.kv2 }
+
+// ClusterBackend returns the cluster interface if the physical backend
+// implements it (i.e. Raft mode), otherwise nil.
+func (c *Core) ClusterBackend() ClusterBackender {
+	if cb, ok := c.backend.(ClusterBackender); ok {
+		return cb
+	}
+	return nil
+}
 
 // RotateKey generates a new root key via the seal and re-wraps the barrier DEK.
 // No data re-encryption is needed — only the keyring envelope changes.

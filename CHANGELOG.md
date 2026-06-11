@@ -11,6 +11,60 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.14.0] — 2026-06-11
+
+### Added
+
+#### AppRole Auth (`internal/auth/approle`)
+
+Machine-to-machine authentication using role-id + secret-id pairs — no OIDC provider or Kubernetes dependency required.
+
+- **`Role`** — named role with auto-generated `role_id`; configurable `token_ttl`, `secret_id_ttl`, `secret_id_num_uses`, and `policies`.
+- **`SecretID`** — short-lived credential generated per role; supports unlimited, limited-use, and TTL-bound modes.
+- **`Store.Login`** — validates role-id + secret-id, decrements use-count, auto-deletes exhausted or expired secret-IDs, and returns a `LoginResult`.
+
+**HTTP API**
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/v1/auth/approle/login` | none | Exchange role-id + secret-id for a Tuck token |
+| PUT | `/v1/auth/approle/role/{name}` | token | Create or update a role |
+| GET | `/v1/auth/approle/role/{name}` | token | Read role definition |
+| DELETE | `/v1/auth/approle/role/{name}` | token | Delete a role |
+| LIST | `/v1/auth/approle/role/` | token | List role names |
+| POST | `/v1/auth/approle/role/{name}/secret-id` | token | Generate a new secret-id |
+| GET | `/v1/auth/approle/role/{name}/secret-id/{id}` | token | Inspect a secret-id |
+| DELETE | `/v1/auth/approle/role/{name}/secret-id/{id}` | token | Destroy a specific secret-id |
+
+#### Dynamic Secrets — Database Engine (`internal/dynamic/database`)
+
+On-demand short-lived database credentials for PostgreSQL and MySQL; no static credentials needed in application code.
+
+- **`Config`** — named database connection (plugin_name: `postgresql` or `mysql`, DSN, max_open_conns); connection pool with ping-based health check.
+- **`Role`** — maps a role name to a database config; `creation_statements` and `revocation_statements` support `{{username}}`, `{{password}}`, `{{expiry}}`, `{{database}}` templates; auto-populated with safe defaults per plugin type.
+- **`Lease`** — tracks each generated credential; expired leases are revoked by the background GC via `RevokeExpired()`.
+- GC integration: `dbManager.RevokeExpired(ctx)` is called every GC tick alongside token expiry.
+- Connection URL masked on GET config responses to avoid credential leakage.
+
+**HTTP API**
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| PUT | `/v1/database/config/{name}` | token | Register a database connection |
+| GET | `/v1/database/config/{name}` | token | Read config (connection_url redacted) |
+| DELETE | `/v1/database/config/{name}` | token | Remove config and close pooled connection |
+| LIST | `/v1/database/config/` | token | List config names |
+| PUT | `/v1/database/role/{name}` | token | Create or update a database role |
+| GET | `/v1/database/role/{name}` | token | Read role definition |
+| DELETE | `/v1/database/role/{name}` | token | Delete a role |
+| LIST | `/v1/database/role/` | token | List role names |
+| POST | `/v1/database/creds/{role}` | token | Generate ephemeral credentials |
+| GET | `/v1/database/lease/{id}` | token | Inspect a lease |
+| DELETE | `/v1/database/lease/{id}` | token | Immediately revoke a lease |
+| LIST | `/v1/database/lease/` | token | List active lease IDs |
+
+---
+
 ## [0.13.0] — 2026-06-11
 
 ### Added

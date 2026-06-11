@@ -84,6 +84,30 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/auth/jwt/role/{name}", s.requireToken(s.deleteJWTRole))
 	mux.HandleFunc("LIST /v1/auth/jwt/role/", s.requireToken(s.listJWTRoles))
 
+	// AppRole auth — login is unauthenticated; role/secret-id management requires a token
+	mux.HandleFunc("POST /v1/auth/approle/login", s.loginAppRole)
+	mux.HandleFunc("PUT /v1/auth/approle/role/{name}", s.requireToken(s.putAppRole))
+	mux.HandleFunc("GET /v1/auth/approle/role/{name}", s.requireToken(s.getAppRole))
+	mux.HandleFunc("DELETE /v1/auth/approle/role/{name}", s.requireToken(s.deleteAppRole))
+	mux.HandleFunc("LIST /v1/auth/approle/role/", s.requireToken(s.listAppRoles))
+	mux.HandleFunc("POST /v1/auth/approle/role/{name}/secret-id", s.requireToken(s.generateSecretID))
+	mux.HandleFunc("GET /v1/auth/approle/role/{name}/secret-id/{id}", s.requireToken(s.lookupSecretID))
+	mux.HandleFunc("DELETE /v1/auth/approle/role/{name}/secret-id/{id}", s.requireToken(s.destroySecretID))
+
+	// Dynamic secrets: database engine
+	mux.HandleFunc("PUT /v1/database/config/{name}", s.requireToken(s.putDBConfig))
+	mux.HandleFunc("GET /v1/database/config/{name}", s.requireToken(s.getDBConfig))
+	mux.HandleFunc("DELETE /v1/database/config/{name}", s.requireToken(s.deleteDBConfig))
+	mux.HandleFunc("LIST /v1/database/config/", s.requireToken(s.listDBConfigs))
+	mux.HandleFunc("PUT /v1/database/role/{name}", s.requireToken(s.putDBRole))
+	mux.HandleFunc("GET /v1/database/role/{name}", s.requireToken(s.getDBRole))
+	mux.HandleFunc("DELETE /v1/database/role/{name}", s.requireToken(s.deleteDBRole))
+	mux.HandleFunc("LIST /v1/database/role/", s.requireToken(s.listDBRoles))
+	mux.HandleFunc("POST /v1/database/creds/{role}", s.requireToken(s.generateDBCreds))
+	mux.HandleFunc("GET /v1/database/lease/{id}", s.requireToken(s.getDBLease))
+	mux.HandleFunc("DELETE /v1/database/lease/{id}", s.requireToken(s.revokeDBLease))
+	mux.HandleFunc("LIST /v1/database/lease/", s.requireToken(s.listDBLeases))
+
 	// KV v2 — versioned secrets
 	mux.HandleFunc("PUT /v2/secret/{path...}", s.requireToken(s.v2WriteSecret))
 	mux.HandleFunc("GET /v2/secret/{path...}", s.requireToken(s.v2ReadSecret))

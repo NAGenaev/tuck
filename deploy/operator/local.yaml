@@ -1,0 +1,57 @@
+# Minikube/local overlay: apply after deploy/operator/deployment.yaml
+#   kubectl apply -f deploy/operator/local.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tuck-operator
+  namespace: tuck
+  labels:
+    app: tuck-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tuck-operator
+  template:
+    metadata:
+      labels:
+        app: tuck-operator
+    spec:
+      serviceAccountName: tuck-operator
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+      containers:
+        - name: operator
+          image: tuck-operator:local
+          imagePullPolicy: Never
+          args:
+            - "--tuck-addr=http://tuck.tuck.svc:8200"
+            - "--k8s-api=https://kubernetes.default.svc"
+            - "--sa-token-file=/var/run/secrets/kubernetes.io/serviceaccount/token"
+            - "--k8s-ca-file=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      terminationGracePeriodSeconds: 30

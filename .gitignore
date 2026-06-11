@@ -1,8 +1,19 @@
 # Compiled binaries
 /tuck
 /tuck.exe
+/tuck-operator
+/tuck-operator.exe
 *.exe
 
 # Local dev data — NEVER commit secrets or root keys
 *.db
 tuck-dev-rootkey
+tuck-rootkey.bin
+
+# Test / local runtime artifacts
+testdata/*
+!testdata/minikube-root-token.example.txt
+*.log
+
+# IDE / agent local config
+.claude/

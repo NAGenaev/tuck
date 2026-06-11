@@ -60,6 +60,13 @@ curl http://127.0.0.1:8200/v1/health
 go test ./...
 ```
 
+### Local Kubernetes (minikube)
+
+See [docs/MINIKUBE.md](docs/MINIKUBE.md) for a step-by-step guide (Windows +
+Docker Desktop). Full test scenarios: [docs/TESTING.md](docs/TESTING.md).
+Latest results: [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) (37/37 PASS).
+E2E demo: [docs/E2E-DEMO.md](docs/E2E-DEMO.md). Deploy layout: [deploy/README.md](deploy/README.md).
+
 ## Roadmap
 
 - **M0 — crypto core (done):** barrier (envelope encryption), bbolt backend,
@@ -68,7 +75,7 @@ go test ./...
 - **M2 — k8s-native (done):** Kubernetes auth via the TokenReview API; short-lived
   tokens mapped from `namespace/serviceaccount` to policy.
 - **M3 — operator (done):** `TuckSecret` CRD + controller that syncs secrets into
-  native K8s Secrets; `deploy/crd.yaml` + `deploy/operator.yaml` for one-command
+  native K8s Secrets; manifests in `deploy/` for one-command install
   installation.
 - **M4 — production seals:** KMS auto-unseal, Shamir fallback.
 - **M5 — HA:** Raft-replicated storage backend.

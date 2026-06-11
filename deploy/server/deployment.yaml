@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tuck
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tuck-data
+  namespace: tuck
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tuck-server
+  namespace: tuck
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tuck-server
+  namespace: tuck
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tuck-server
+  template:
+    metadata:
+      labels:
+        app: tuck-server
+    spec:
+      serviceAccountName: tuck-server
+      containers:
+        - name: tuck
+          image: tuck-server:local
+          imagePullPolicy: Never
+          args:
+            - "--addr=0.0.0.0:8200"
+            - "--data=/data/tuck.db"
+            - "--dev-seal-key=/data/rootkey.bin"
+            - "--k8s-api=https://kubernetes.default.svc"
+            - "--k8s-token-file=/var/run/secrets/kubernetes.io/serviceaccount/token"
+            - "--k8s-ca-file=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+          ports:
+            - containerPort: 8200
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: tuck-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tuck
+  namespace: tuck
+spec:
+  selector:
+    app: tuck-server
+  ports:
+    - port: 8200
+      targetPort: 8200

@@ -1,0 +1,12 @@
+FROM golang:1.23-alpine AS builder
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -o /tuck-operator ./cmd/tuck-operator
+
+FROM alpine:3.19
+RUN adduser -D -u 65532 tuck
+USER tuck
+COPY --from=builder /tuck-operator /tuck-operator
+ENTRYPOINT ["/tuck-operator"]

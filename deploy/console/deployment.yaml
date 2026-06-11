@@ -1,0 +1,76 @@
+# OpenShift Console (origin-console) for minikube / vanilla k8s.
+# Requires secret "console-token" — created by scripts/start-openshift-console.ps1
+apiVersion: v1
+kind: Service
+metadata:
+  name: console
+  namespace: openshift-console
+  labels:
+    app: openshift-console
+spec:
+  selector:
+    app: openshift-console
+  ports:
+    - name: http
+      port: 9000
+      targetPort: 9000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: console
+  namespace: openshift-console
+  labels:
+    app: openshift-console
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openshift-console
+  template:
+    metadata:
+      labels:
+        app: openshift-console
+    spec:
+      serviceAccountName: console
+      containers:
+        - name: console
+          image: quay.io/openshift/origin-console:4.16
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9000
+          env:
+            - name: BRIDGE_K8S_MODE
+              value: "off-cluster"
+            - name: BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT
+              value: "https://kubernetes.default.svc:443"
+            - name: BRIDGE_K8S_AUTH
+              value: "bearer-token"
+            - name: BRIDGE_K8S_AUTH_BEARER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: console-token
+                  key: token
+            - name: BRIDGE_K8S_MODE_OFF_CLUSTER_SKIP_VERIFY_TLS
+              value: "true"
+            - name: BRIDGE_USER_AUTH
+              value: "disabled"
+            - name: BRIDGE_BASE_ADDRESS
+              value: "http://localhost:9000"
+            - name: BRIDGE_USER_SETTINGS_LOCATION
+              value: "localstorage"
+            - name: BRIDGE_BRANDING
+              value: "openshift"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9000
+            initialDelaySeconds: 15
+            periodSeconds: 10

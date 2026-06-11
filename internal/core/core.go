@@ -16,6 +16,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/auth/jwt"
 	"github.com/NAGenaev/tuck/internal/barrier"
 	"github.com/NAGenaev/tuck/internal/dynamic/database"
+	"github.com/NAGenaev/tuck/internal/dynamic/pki"
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
 	"github.com/NAGenaev/tuck/internal/kvv2"
 	"github.com/NAGenaev/tuck/internal/physical"
@@ -71,6 +72,7 @@ type Core struct {
 	jwtStore     *jwt.Store
 	approleStore *approle.Store
 	dbManager    *database.Manager
+	pkiManager   *pki.Manager
 	// optional — nil means k8s auth is disabled
 	k8sReviewer k8sauth.Reviewer
 	k8sRoles    *k8sauth.RoleStore
@@ -103,6 +105,7 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		jwtStore:     jwt.NewStore(b),
 		approleStore: approle.NewStore(b),
 		dbManager:    database.NewManager(b),
+		pkiManager:   pki.NewManager(b),
 		k8sReviewer:  reviewer,
 		k8sRoles:    k8sauth.NewRoleStore(b),
 	}
@@ -553,6 +556,45 @@ func (c *Core) LoginJWT(ctx context.Context, tokenStr string) (*token.Token, err
 	}
 	displayName := "jwt:" + result.Subject
 	return c.CreateToken(ctx, displayName, result.Policies, result.TTL)
+}
+
+// --- PKI secrets engine ---
+
+func (c *Core) GeneratePKICA(ctx context.Context, cfg *pki.CAConfig) (string, error) {
+	return c.pkiManager.GenerateCA(ctx, cfg)
+}
+func (c *Core) ImportPKICA(ctx context.Context, certPEM, keyPEM string) error {
+	return c.pkiManager.ImportCA(ctx, certPEM, keyPEM)
+}
+func (c *Core) GetPKICACert(ctx context.Context) (string, error) {
+	return c.pkiManager.GetCACert(ctx)
+}
+func (c *Core) GetPKICRL(ctx context.Context) (string, error) {
+	return c.pkiManager.GetCRL(ctx)
+}
+func (c *Core) PutPKIRole(ctx context.Context, r *pki.Role) error {
+	return c.pkiManager.PutRole(ctx, r)
+}
+func (c *Core) GetPKIRole(ctx context.Context, name string) (*pki.Role, error) {
+	return c.pkiManager.GetRole(ctx, name)
+}
+func (c *Core) DeletePKIRole(ctx context.Context, name string) error {
+	return c.pkiManager.DeleteRole(ctx, name)
+}
+func (c *Core) ListPKIRoles(ctx context.Context) ([]string, error) {
+	return c.pkiManager.ListRoles(ctx)
+}
+func (c *Core) IssuePKICert(ctx context.Context, roleName, commonName string, altNames []string, ttl time.Duration) (*pki.IssuedCert, error) {
+	return c.pkiManager.IssueCert(ctx, roleName, commonName, altNames, ttl)
+}
+func (c *Core) RevokePKICert(ctx context.Context, serial string) error {
+	return c.pkiManager.RevokeCert(ctx, serial)
+}
+func (c *Core) GetPKICert(ctx context.Context, serial string) (*pki.CertRecord, error) {
+	return c.pkiManager.GetCert(ctx, serial)
+}
+func (c *Core) ListPKICerts(ctx context.Context) ([]string, error) {
+	return c.pkiManager.ListCerts(ctx)
 }
 
 // --- AppRole auth ---

@@ -11,6 +11,64 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.15.0] — 2026-06-11
+
+### Added
+
+#### PKI Secrets Engine (`internal/dynamic/pki`)
+
+Tuck now acts as an internal Certificate Authority. Services can request short-lived X.509 certificates on demand — no more static cert files or manual CA workflows.
+
+- **`Manager.GenerateCA`** — creates a self-signed root CA (ECDSA P-256 default, or RSA); persists key inside the encrypted barrier.
+- **`Manager.ImportCA`** — imports an existing CA cert + private key; validates both before persisting.
+- **`Manager.GetCRL`** — generates a signed CRL from all revoked certificate records (updates on every call).
+- **`Role`** — controls what certs a role may issue: `allowed_domains`, `allow_subdomains`, `allow_ip_sans`, `allow_localhost`, `key_type` (ec/rsa), `key_bits`, `default_ttl`, `max_ttl`, `server_flag`, `client_flag`.
+- **`Manager.IssueCert`** — validates CN + SANs against role, generates a new key pair, signs the leaf cert with the CA, persists a `CertRecord` (no private key stored), returns the cert + private key to the caller once.
+- **`Manager.RevokeCert`** — marks a cert as revoked; it appears in the next CRL.
+- Domain validation: exact match or subdomain match (when `allow_subdomains=true`); IP SANs gated by `allow_ip_sans`; loopback gated by `allow_localhost`.
+- TTL enforcement: `max_ttl` caps requested TTL; falls back to `default_ttl`.
+- 12 tests covering: CA generation, CA import, role CRUD, cert issuance + x509 chain verification, RSA keys, domain policy enforcement, subdomain allow, IP SAN allow/deny, revocation + CRL parsing, cert listing, TTL capping.
+
+**HTTP API**
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/v1/pki/generate/root` | token | Generate a new self-signed root CA |
+| POST | `/v1/pki/import/ca` | token | Import an existing CA cert + key |
+| GET | `/v1/pki/ca/pem` | none | Fetch the CA certificate (for client trust stores) |
+| GET | `/v1/pki/crl/pem` | none | Fetch the current CRL |
+| PUT | `/v1/pki/roles/{name}` | token | Create or update a role |
+| GET | `/v1/pki/roles/{name}` | token | Read a role |
+| DELETE | `/v1/pki/roles/{name}` | token | Delete a role |
+| LIST | `/v1/pki/roles/` | token | List role names |
+| POST | `/v1/pki/issue/{role}` | token | Issue a TLS certificate |
+| POST | `/v1/pki/revoke/{serial}` | token | Revoke a certificate |
+| GET | `/v1/pki/certs/{serial}` | token | Inspect a cert record (metadata only) |
+| LIST | `/v1/pki/certs/` | token | List issued cert serials |
+
+**Quick start**
+```sh
+# 1. Generate root CA
+curl -XPOST https://tuck:8200/v1/pki/generate/root \
+  -H "X-Tuck-Token: $ROOT" \
+  -d '{"common_name":"Tuck Internal CA","ttl":"87600h"}'
+
+# 2. Create a role
+curl -XPUT https://tuck:8200/v1/pki/roles/web \
+  -H "X-Tuck-Token: $ROOT" \
+  -d '{"allowed_domains":["svc.cluster.local"],"allow_subdomains":true,"server_flag":true,"default_ttl":"72h"}'
+
+# 3. Issue a certificate
+curl -XPOST https://tuck:8200/v1/pki/issue/web \
+  -H "X-Tuck-Token: $APP_TOKEN" \
+  -d '{"common_name":"api.svc.cluster.local"}'
+
+# 4. Distribute CA cert to clients
+curl https://tuck:8200/v1/pki/ca/pem
+```
+
+---
+
 ## [0.14.0] — 2026-06-11
 
 ### Added

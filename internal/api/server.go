@@ -108,6 +108,21 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/database/lease/{id}", s.requireToken(s.revokeDBLease))
 	mux.HandleFunc("LIST /v1/database/lease/", s.requireToken(s.listDBLeases))
 
+	// PKI secrets engine
+	// CA setup and CRL are unauthenticated so clients can verify certs without a token.
+	mux.HandleFunc("POST /v1/pki/generate/root", s.requireToken(s.pkiGenerateRoot))
+	mux.HandleFunc("POST /v1/pki/import/ca", s.requireToken(s.pkiImportCA))
+	mux.HandleFunc("GET /v1/pki/ca/pem", s.pkiGetCACert)
+	mux.HandleFunc("GET /v1/pki/crl/pem", s.pkiGetCRL)
+	mux.HandleFunc("PUT /v1/pki/roles/{name}", s.requireToken(s.pkiPutRole))
+	mux.HandleFunc("GET /v1/pki/roles/{name}", s.requireToken(s.pkiGetRole))
+	mux.HandleFunc("DELETE /v1/pki/roles/{name}", s.requireToken(s.pkiDeleteRole))
+	mux.HandleFunc("LIST /v1/pki/roles/", s.requireToken(s.pkiListRoles))
+	mux.HandleFunc("POST /v1/pki/issue/{role}", s.requireToken(s.pkiIssueCert))
+	mux.HandleFunc("POST /v1/pki/revoke/{serial}", s.requireToken(s.pkiRevokeCert))
+	mux.HandleFunc("GET /v1/pki/certs/{serial}", s.requireToken(s.pkiGetCert))
+	mux.HandleFunc("LIST /v1/pki/certs/", s.requireToken(s.pkiListCerts))
+
 	// KV v2 — versioned secrets
 	mux.HandleFunc("PUT /v2/secret/{path...}", s.requireToken(s.v2WriteSecret))
 	mux.HandleFunc("GET /v2/secret/{path...}", s.requireToken(s.v2ReadSecret))

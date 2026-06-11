@@ -84,6 +84,20 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/auth/jwt/role/{name}", s.requireToken(s.deleteJWTRole))
 	mux.HandleFunc("LIST /v1/auth/jwt/role/", s.requireToken(s.listJWTRoles))
 
+	// Transit secrets engine — encryption-as-a-service
+	mux.HandleFunc("POST /v1/transit/keys/{name}", s.requireToken(s.transitCreateKey))
+	mux.HandleFunc("GET /v1/transit/keys/{name}", s.requireToken(s.transitGetKey))
+	mux.HandleFunc("DELETE /v1/transit/keys/{name}", s.requireToken(s.transitDeleteKey))
+	mux.HandleFunc("LIST /v1/transit/keys/", s.requireToken(s.transitListKeys))
+	mux.HandleFunc("POST /v1/transit/keys/{name}/rotate", s.requireToken(s.transitRotate))
+	mux.HandleFunc("POST /v1/transit/keys/{name}/config", s.requireToken(s.transitUpdateKey))
+	mux.HandleFunc("POST /v1/transit/encrypt/{name}", s.requireToken(s.transitEncrypt))
+	mux.HandleFunc("POST /v1/transit/decrypt/{name}", s.requireToken(s.transitDecrypt))
+	mux.HandleFunc("POST /v1/transit/rewrap/{name}", s.requireToken(s.transitRewrap))
+	mux.HandleFunc("POST /v1/transit/sign/{name}", s.requireToken(s.transitSign))
+	mux.HandleFunc("POST /v1/transit/verify/{name}", s.requireToken(s.transitVerify))
+	mux.HandleFunc("POST /v1/transit/hmac/{name}", s.requireToken(s.transitHMAC))
+
 	// AppRole auth — login is unauthenticated; role/secret-id management requires a token
 	mux.HandleFunc("POST /v1/auth/approle/login", s.loginAppRole)
 	mux.HandleFunc("PUT /v1/auth/approle/role/{name}", s.requireToken(s.putAppRole))

@@ -17,6 +17,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/barrier"
 	"github.com/NAGenaev/tuck/internal/dynamic/database"
 	"github.com/NAGenaev/tuck/internal/dynamic/pki"
+	"github.com/NAGenaev/tuck/internal/dynamic/transit"
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
 	"github.com/NAGenaev/tuck/internal/kvv2"
 	"github.com/NAGenaev/tuck/internal/physical"
@@ -72,7 +73,8 @@ type Core struct {
 	jwtStore     *jwt.Store
 	approleStore *approle.Store
 	dbManager    *database.Manager
-	pkiManager   *pki.Manager
+	pkiManager     *pki.Manager
+	transitManager *transit.Manager
 	// optional — nil means k8s auth is disabled
 	k8sReviewer k8sauth.Reviewer
 	k8sRoles    *k8sauth.RoleStore
@@ -105,7 +107,8 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		jwtStore:     jwt.NewStore(b),
 		approleStore: approle.NewStore(b),
 		dbManager:    database.NewManager(b),
-		pkiManager:   pki.NewManager(b),
+		pkiManager:     pki.NewManager(b),
+		transitManager: transit.NewManager(b),
 		k8sReviewer:  reviewer,
 		k8sRoles:    k8sauth.NewRoleStore(b),
 	}
@@ -556,6 +559,45 @@ func (c *Core) LoginJWT(ctx context.Context, tokenStr string) (*token.Token, err
 	}
 	displayName := "jwt:" + result.Subject
 	return c.CreateToken(ctx, displayName, result.Policies, result.TTL)
+}
+
+// --- Transit secrets engine ---
+
+func (c *Core) TransitCreateKey(ctx context.Context, name, keyType string) error {
+	return c.transitManager.CreateKey(ctx, name, keyType)
+}
+func (c *Core) TransitGetKey(ctx context.Context, name string) (*transit.Key, error) {
+	return c.transitManager.GetKey(ctx, name)
+}
+func (c *Core) TransitDeleteKey(ctx context.Context, name string) error {
+	return c.transitManager.DeleteKey(ctx, name)
+}
+func (c *Core) TransitListKeys(ctx context.Context) ([]string, error) {
+	return c.transitManager.ListKeys(ctx)
+}
+func (c *Core) TransitRotate(ctx context.Context, name string) error {
+	return c.transitManager.Rotate(ctx, name)
+}
+func (c *Core) TransitUpdateKey(ctx context.Context, name string, minVersion int, deletable bool) error {
+	return c.transitManager.UpdateKey(ctx, name, minVersion, deletable)
+}
+func (c *Core) TransitEncrypt(ctx context.Context, name string, plaintext []byte) (string, error) {
+	return c.transitManager.Encrypt(ctx, name, plaintext)
+}
+func (c *Core) TransitDecrypt(ctx context.Context, name string, ciphertext string) ([]byte, error) {
+	return c.transitManager.Decrypt(ctx, name, ciphertext)
+}
+func (c *Core) TransitRewrap(ctx context.Context, name string, ciphertext string) (string, error) {
+	return c.transitManager.Rewrap(ctx, name, ciphertext)
+}
+func (c *Core) TransitSign(ctx context.Context, name string, input []byte, hashAlg string) (string, error) {
+	return c.transitManager.Sign(ctx, name, input, hashAlg)
+}
+func (c *Core) TransitVerify(ctx context.Context, name string, input []byte, sig string, hashAlg string) (bool, error) {
+	return c.transitManager.Verify(ctx, name, input, sig, hashAlg)
+}
+func (c *Core) TransitHMAC(ctx context.Context, name string, input []byte, hashAlg string) (string, error) {
+	return c.transitManager.HMAC(ctx, name, input, hashAlg)
 }
 
 // --- PKI secrets engine ---

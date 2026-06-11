@@ -11,6 +11,73 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.16.0] — 2026-06-11
+
+### Added
+
+#### Transit Secrets Engine (`internal/dynamic/transit`)
+
+Encryption-as-a-service. Applications submit data for cryptographic operations without ever handling raw key material. Keys are versioned; old ciphertext can be re-encrypted after rotation without re-querying the source.
+
+**Key types**
+
+| Type | Operations |
+|------|-----------|
+| `aes256-gcm96` (default) | encrypt, decrypt, rewrap, hmac |
+| `ecdsa-p256` | sign, verify, hmac |
+| `ed25519` | sign, verify, hmac |
+| `rsa-2048` | sign (PSS), verify, hmac |
+| `rsa-4096` | sign (PSS), verify, hmac |
+
+**Key features**
+- **Versioned keys** — `Rotate` creates a new key version; all previous versions remain for decryption/verification down to `min_decryption_version`.
+- **Rewrap** — re-encrypt old ciphertext with the current key version; migrate at your own pace after rotation.
+- **Ciphertext format** — `vault:v{N}:{base64url}` — the version prefix is embedded in every ciphertext/signature for unambiguous routing.
+- **HMAC** — deterministic MAC using the key's raw material; all key types supported.
+- **Ed25519** — uses its own internal hash; `hash_algorithm` is ignored (sign/verify take the raw message).
+- **RSA-PSS** — uses PSS padding with SHA-256/384/512 depending on `hash_algorithm`.
+- **Deletion protection** — keys are not deletable by default; set `deletable=true` via the config endpoint first.
+- **Idempotent create** — calling `CreateKey` on an existing key is a no-op.
+- 16 tests covering all operations, key rotation, rewrap, min_version enforcement, deletion guard, type mismatch errors, and invalid ciphertext handling.
+
+**HTTP API**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/transit/keys/{name}` | Create a key (`{"type":"aes256-gcm96"}`) |
+| GET | `/v1/transit/keys/{name}` | Get key metadata (no key material) |
+| DELETE | `/v1/transit/keys/{name}` | Delete key (must be marked deletable) |
+| LIST | `/v1/transit/keys/` | List key names |
+| POST | `/v1/transit/keys/{name}/rotate` | Rotate — add a new key version |
+| POST | `/v1/transit/keys/{name}/config` | Update `min_decryption_version`, `deletable` |
+| POST | `/v1/transit/encrypt/{name}` | Encrypt plaintext (`{"plaintext":"<b64url>"}`) |
+| POST | `/v1/transit/decrypt/{name}` | Decrypt ciphertext → `{"plaintext":"<b64url>"}` |
+| POST | `/v1/transit/rewrap/{name}` | Re-encrypt with latest key version |
+| POST | `/v1/transit/sign/{name}` | Sign input → `{"signature":"vault:v{N}:..."}` |
+| POST | `/v1/transit/verify/{name}` | Verify signature → `{"valid":true}` |
+| POST | `/v1/transit/hmac/{name}` | Compute HMAC → `{"hmac":"vault:v{N}:..."}` |
+
+**Quick start**
+```sh
+# Create an AES key and encrypt
+curl -XPOST https://tuck:8200/v1/transit/keys/payments \
+  -H "X-Tuck-Token: $TOKEN" -d '{"type":"aes256-gcm96"}'
+
+CIPHER=$(curl -s -XPOST https://tuck:8200/v1/transit/encrypt/payments \
+  -H "X-Tuck-Token: $TOKEN" \
+  -d "{\"plaintext\":\"$(echo -n 'card:4242' | base64 -w0)\"}" \
+  | jq -r .ciphertext)
+
+# Rotate the key and rewrap all stored ciphertext
+curl -XPOST https://tuck:8200/v1/transit/keys/payments/rotate \
+  -H "X-Tuck-Token: $TOKEN"
+
+curl -XPOST https://tuck:8200/v1/transit/rewrap/payments \
+  -H "X-Tuck-Token: $TOKEN" -d "{\"ciphertext\":\"$CIPHER\"}"
+```
+
+---
+
 ## [0.15.0] — 2026-06-11
 
 ### Added

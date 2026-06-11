@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/NAGenaev/tuck/internal/auth/jwt"
 	"github.com/NAGenaev/tuck/internal/barrier"
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
 	"github.com/NAGenaev/tuck/internal/kvv2"
@@ -65,6 +66,7 @@ type Core struct {
 	tokens   *token.Store
 	policies *policy.Store
 	kv2      *kvv2.Store
+	jwtStore *jwt.Store
 	// optional — nil means k8s auth is disabled
 	k8sReviewer k8sauth.Reviewer
 	k8sRoles    *k8sauth.RoleStore
@@ -94,6 +96,7 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		tokens:      token.NewStore(b),
 		policies:    policy.NewStore(b),
 		kv2:         kvv2.New(b),
+		jwtStore:    jwt.NewStore(b),
 		k8sReviewer: reviewer,
 		k8sRoles:    k8sauth.NewRoleStore(b),
 	}
@@ -493,6 +496,57 @@ func (c *Core) StartGC(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// --- JWT/OIDC auth ---
+
+// ConfigureJWT stores the JWT auth configuration.
+func (c *Core) ConfigureJWT(ctx context.Context, cfg *jwt.Config) error {
+	return c.jwtStore.PutConfig(ctx, cfg)
+}
+
+// GetJWTConfig returns the current JWT auth configuration.
+func (c *Core) GetJWTConfig(ctx context.Context) (*jwt.Config, error) {
+	return c.jwtStore.GetConfig(ctx)
+}
+
+// PutJWTRole creates or updates a JWT auth role.
+func (c *Core) PutJWTRole(ctx context.Context, role *jwt.Role) error {
+	return c.jwtStore.PutRole(ctx, role)
+}
+
+// GetJWTRole returns a JWT auth role by name.
+func (c *Core) GetJWTRole(ctx context.Context, name string) (*jwt.Role, error) {
+	return c.jwtStore.GetRole(ctx, name)
+}
+
+// DeleteJWTRole removes a JWT auth role.
+func (c *Core) DeleteJWTRole(ctx context.Context, name string) error {
+	return c.jwtStore.DeleteRole(ctx, name)
+}
+
+// ListJWTRoles returns all JWT role names.
+func (c *Core) ListJWTRoles(ctx context.Context) ([]string, error) {
+	return c.jwtStore.ListRoles(ctx)
+}
+
+// LoginJWT validates a JWT against configured roles and issues a Tuck token.
+func (c *Core) LoginJWT(ctx context.Context, tokenStr string) (*token.Token, error) {
+	cfg, err := c.jwtStore.GetConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	roles, err := c.jwtStore.AllRoles(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load jwt roles: %w", err)
+	}
+	provider := jwt.NewProvider(*cfg)
+	result, err := provider.Login(ctx, tokenStr, roles)
+	if err != nil {
+		return nil, err
+	}
+	displayName := "jwt:" + result.Subject
+	return c.CreateToken(ctx, displayName, result.Policies, result.TTL)
 }
 
 func (c *Core) runGC(ctx context.Context) {

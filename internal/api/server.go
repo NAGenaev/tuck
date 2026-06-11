@@ -75,6 +75,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/auth/kubernetes/role/{namespace}/{sa}", s.requireToken(s.getK8sRole))
 	mux.HandleFunc("DELETE /v1/auth/kubernetes/role/{namespace}/{sa}", s.requireToken(s.deleteK8sRole))
 
+	// JWT/OIDC auth — login is unauthenticated; config and role management require a token
+	mux.HandleFunc("POST /v1/auth/jwt/login", s.loginJWT)
+	mux.HandleFunc("GET /v1/auth/jwt/config", s.requireToken(s.getJWTConfig))
+	mux.HandleFunc("PUT /v1/auth/jwt/config", s.requireToken(s.putJWTConfig))
+	mux.HandleFunc("PUT /v1/auth/jwt/role/{name}", s.requireToken(s.putJWTRole))
+	mux.HandleFunc("GET /v1/auth/jwt/role/{name}", s.requireToken(s.getJWTRole))
+	mux.HandleFunc("DELETE /v1/auth/jwt/role/{name}", s.requireToken(s.deleteJWTRole))
+	mux.HandleFunc("LIST /v1/auth/jwt/role/", s.requireToken(s.listJWTRoles))
+
 	// KV v2 — versioned secrets
 	mux.HandleFunc("PUT /v2/secret/{path...}", s.requireToken(s.v2WriteSecret))
 	mux.HandleFunc("GET /v2/secret/{path...}", s.requireToken(s.v2ReadSecret))

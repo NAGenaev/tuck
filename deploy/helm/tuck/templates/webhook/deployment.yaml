@@ -1,0 +1,106 @@
+{{- if .Values.injector.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "tuck.fullname" . }}-injector
+  namespace: {{ include "tuck.namespace" . }}
+  labels:
+    {{- include "tuck.labels" . | nindent 4 }}
+    app.kubernetes.io/component: injector
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "tuck.fullname" . }}-injector
+  namespace: {{ include "tuck.namespace" . }}
+  labels:
+    {{- include "tuck.labels" . | nindent 4 }}
+    app.kubernetes.io/component: injector
+spec:
+  replicas: {{ .Values.injector.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "tuck.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: injector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "tuck.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: injector
+    spec:
+      serviceAccountName: {{ include "tuck.fullname" . }}-injector
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.injector.podSecurityContext | nindent 8 }}
+      containers:
+        - name: injector
+          image: {{ include "tuck.injectorImage" . }}
+          imagePullPolicy: {{ .Values.injector.image.pullPolicy }}
+          args:
+            - --agent-image={{ include "tuck.agentImage" . }}
+          ports:
+            - name: https
+              containerPort: 8443
+          volumeMounts:
+            - name: certs
+              mountPath: /tuck/certs
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.injector.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.injector.securityContext | nindent 12 }}
+      volumes:
+        - name: certs
+          secret:
+            secretName: {{ include "tuck.fullname" . }}-injector-tls
+      {{- with .Values.injector.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.injector.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.injector.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "tuck.fullname" . }}-injector
+  namespace: {{ include "tuck.namespace" . }}
+  labels:
+    {{- include "tuck.labels" . | nindent 4 }}
+    app.kubernetes.io/component: injector
+spec:
+  selector:
+    app.kubernetes.io/name: {{ include "tuck.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: injector
+  ports:
+    - name: https
+      port: {{ .Values.injector.service.port }}
+      targetPort: {{ .Values.injector.service.targetPort }}
+      protocol: TCP
+{{- end }}

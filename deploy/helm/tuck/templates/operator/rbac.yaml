@@ -1,0 +1,42 @@
+{{- if .Values.operator.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "tuck.fullname" . }}-operator
+  namespace: {{ include "tuck.namespace" . }}
+  labels:
+    {{- include "tuck.labels" . | nindent 4 }}
+    app.kubernetes.io/component: operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "tuck.fullname" . }}-operator
+  labels:
+    {{- include "tuck.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["tuck.io"]
+    resources: ["tucksecrets", "tucksecrets/status", "tucksecrets/finalizers"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch", "delete"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "tuck.fullname" . }}-operator
+  labels:
+    {{- include "tuck.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "tuck.fullname" . }}-operator
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "tuck.fullname" . }}-operator
+    namespace: {{ include "tuck.namespace" . }}
+{{- end }}

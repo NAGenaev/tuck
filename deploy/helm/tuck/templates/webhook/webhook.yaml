@@ -1,0 +1,40 @@
+{{- if .Values.injector.enabled }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ include "tuck.fullname" . }}-injector
+  labels:
+    {{- include "tuck.labels" . | nindent 4 }}
+  {{- if .Values.injector.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ include "tuck.namespace" . }}/{{ include "tuck.fullname" . }}-injector-tls
+  {{- end }}
+spec:
+  webhooks:
+    - name: inject.tuck.io
+      admissionReviewVersions: ["v1"]
+      sideEffects: None
+      failurePolicy: Ignore
+      matchPolicy: Equivalent
+      namespaceSelector:
+        matchExpressions:
+          - key: tuck.io/inject
+            operator: In
+            values: ["enabled"]
+      objectSelector:
+        matchExpressions:
+          - key: tuck.io/inject
+            operator: In
+            values: ["true"]
+      rules:
+        - operations: ["CREATE", "UPDATE"]
+          apiGroups: [""]
+          apiVersions: ["v1"]
+          resources: ["pods"]
+      clientConfig:
+        service:
+          name: {{ include "tuck.fullname" . }}-injector
+          namespace: {{ include "tuck.namespace" . }}
+          path: /mutate
+          port: {{ .Values.injector.service.port }}
+{{- end }}

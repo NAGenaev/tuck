@@ -1,0 +1,135 @@
+{{- if .Values.server.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "tuck.fullname" . }}-server
+  namespace: {{ include "tuck.namespace" . }}
+  labels:
+    {{- include "tuck.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  replicas: {{ .Values.server.replicaCount }}
+  serviceName: {{ include "tuck.fullname" . }}-server
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "tuck.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "tuck.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: server
+    spec:
+      serviceAccountName: {{ include "tuck.fullname" . }}-server
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.server.podSecurityContext | nindent 8 }}
+      containers:
+        - name: tuck
+          image: {{ include "tuck.serverImage" . }}
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          args:
+            - --addr=0.0.0.0:{{ .Values.server.service.port }}
+            - --data=/data/tuck.db
+            - --seal-type={{ .Values.server.sealType }}
+            {{- if eq .Values.server.sealType "dev" }}
+            - --dev-seal-key={{ .Values.server.devSeal.keyFile }}
+            {{- else if eq .Values.server.sealType "shamir" }}
+            - --seal-shamir-config={{ .Values.server.shamirSeal.configFile }}
+            - --seal-shamir-n={{ .Values.server.shamirSeal.n }}
+            - --seal-shamir-k={{ .Values.server.shamirSeal.k }}
+            {{- else if eq .Values.server.sealType "transit" }}
+            - --seal-transit-addr={{ .Values.server.transitSeal.addr }}
+            - --seal-transit-key={{ .Values.server.transitSeal.key }}
+            - --seal-transit-key-file={{ .Values.server.transitSeal.keyFile }}
+            {{- end }}
+            {{- if .Values.server.tls.auto }}
+            - --tls-auto
+            {{- else if .Values.server.tls.certSecretName }}
+            - --tls-cert=/tls/tls.crt
+            - --tls-key=/tls/tls.key
+            {{- end }}
+            {{- if .Values.server.otelEndpoint }}
+            - --otel-endpoint={{ .Values.server.otelEndpoint }}
+            {{- end }}
+            {{- if .Values.server.cluster.enabled }}
+            - --cluster
+            - --cluster-bind-addr={{ .Values.server.cluster.bindAddr }}
+            - --cluster-dir={{ .Values.server.cluster.dir }}
+            {{- end }}
+          ports:
+            - name: api
+              containerPort: {{ .Values.server.service.port }}
+            {{- if .Values.server.cluster.enabled }}
+            - name: raft
+              containerPort: 8201
+            {{- end }}
+          env:
+            {{- if .Values.server.transitSeal.tokenSecretName }}
+            - name: TUCK_TRANSIT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.server.transitSeal.tokenSecretName }}
+                  key: token
+            {{- end }}
+            {{- with .Values.server.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            {{- if .Values.server.tls.certSecretName }}
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+            {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.server.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.server.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.server.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.server.securityContext | nindent 12 }}
+      volumes:
+        {{- if not .Values.server.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+        {{- if .Values.server.tls.certSecretName }}
+        - name: tls
+          secret:
+            secretName: {{ .Values.server.tls.certSecretName }}
+        {{- end }}
+      {{- with .Values.server.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if .Values.server.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - {{ .Values.server.persistence.accessMode }}
+        {{- if .Values.server.persistence.storageClass }}
+        storageClassName: {{ .Values.server.persistence.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.server.persistence.size }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,38 @@
+{{- if and .Values.injector.enabled .Values.injector.certManager.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "tuck.fullname" . }}-injector-selfsigned
+  namespace: {{ include "tuck.namespace" . }}
+  labels:
+    {{- include "tuck.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "tuck.fullname" . }}-injector-tls
+  namespace: {{ include "tuck.namespace" . }}
+  labels:
+    {{- include "tuck.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "tuck.fullname" . }}-injector-tls
+  duration: 8760h
+  renewBefore: 360h
+  isCA: false
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  usages:
+    - server auth
+    - digital signature
+    - key encipherment
+  dnsNames:
+    - {{ include "tuck.fullname" . }}-injector.{{ include "tuck.namespace" . }}.svc
+    - {{ include "tuck.fullname" . }}-injector.{{ include "tuck.namespace" . }}.svc.cluster.local
+  issuerRef:
+    name: {{ include "tuck.fullname" . }}-injector-selfsigned
+    kind: Issuer
+    group: cert-manager.io
+{{- end }}

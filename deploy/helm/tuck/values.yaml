@@ -1,0 +1,210 @@
+# Default values for the Tuck Helm chart.
+# Override with --set or a custom values file.
+
+# -- Namespace to deploy into. Creates the namespace if it doesn't exist.
+namespaceOverride: ""
+
+global:
+  # -- Container image registry prefix applied to all images.
+  imageRegistry: "ghcr.io/nagenaev"
+  # -- Image pull secrets applied to all deployments.
+  imagePullSecrets: []
+
+# --------------------------------------------------------------------------- #
+# Tuck Server
+# --------------------------------------------------------------------------- #
+server:
+  enabled: true
+  image:
+    repository: tuck
+    tag: ""          # defaults to .Chart.AppVersion
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  # -- Seal type: dev | shamir | transit
+  sealType: dev
+
+  # -- Dev seal (INSECURE — development only)
+  devSeal:
+    keyFile: "/data/tuck-dev-rootkey"
+
+  # -- Shamir seal
+  shamirSeal:
+    n: 5
+    k: 3
+    configFile: "/data/tuck-shamir.json"
+
+  # -- Transit seal (Vault-compatible)
+  transitSeal:
+    addr: ""
+    key: "tuck-seal"
+    keyFile: "/data/tuck-transit.enc"
+    # tokenSecretName: "tuck-transit-token"  # K8s Secret with key "token"
+
+  # -- Persist data with a PVC. Disable for ephemeral/dev deployments.
+  persistence:
+    enabled: true
+    storageClass: ""      # uses default if empty
+    size: 1Gi
+    accessMode: ReadWriteOnce
+
+  service:
+    type: ClusterIP
+    port: 8200
+
+  # -- TLS configuration
+  tls:
+    enabled: false
+    auto: false           # generate self-signed cert
+    certSecretName: ""    # K8s TLS Secret (tls.crt, tls.key)
+
+  # -- OpenTelemetry OTLP HTTP endpoint. Empty = disabled.
+  otelEndpoint: ""
+
+  # -- Raft HA cluster settings
+  cluster:
+    enabled: false
+    bindAddr: "0.0.0.0:8201"
+    dir: "/data/tuck-raft"
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+  # -- Pod security context
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    fsGroup: 65532
+
+  # -- Container security context
+  securityContext:
+    readOnlyRootFilesystem: false  # server writes to /data
+    allowPrivilegeEscalation: false
+
+  livenessProbe:
+    httpGet:
+      path: /v1/health
+      port: 8200
+    initialDelaySeconds: 10
+    periodSeconds: 15
+
+  readinessProbe:
+    httpGet:
+      path: /v1/sys/ready
+      port: 8200
+    initialDelaySeconds: 5
+    periodSeconds: 5
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  # -- Extra environment variables injected into the server pod.
+  extraEnv: []
+  # - name: TUCK_TRANSIT_TOKEN
+  #   valueFrom:
+  #     secretKeyRef:
+  #       name: tuck-transit-token
+  #       key: token
+
+# --------------------------------------------------------------------------- #
+# Tuck Operator
+# --------------------------------------------------------------------------- #
+operator:
+  enabled: true
+  image:
+    repository: tuck-operator
+    tag: ""
+    pullPolicy: IfNotPresent
+
+  replicaCount: 2   # 2 replicas with leader election
+
+  # -- Namespace(s) to watch. Empty watches all namespaces.
+  watchNamespace: ""
+
+  # -- Tuck server address. Defaults to the in-cluster service.
+  tuckAddr: ""  # auto-computed from server.service if empty
+
+  # -- Name of the K8s Secret containing the operator's Tuck root token.
+  tokenSecretName: "tuck-operator-token"
+
+  leaderElect: true
+
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 20m
+      memory: 32Mi
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+
+  securityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# --------------------------------------------------------------------------- #
+# Webhook Injector
+# --------------------------------------------------------------------------- #
+injector:
+  enabled: false   # opt-in; requires cert-manager
+
+  image:
+    repository: tuck-injector
+    tag: ""
+    pullPolicy: IfNotPresent
+
+  # -- tuck-agent init container image used when no per-pod override is set.
+  agentImage: ""  # defaults to tuck-agent:<appVersion>
+
+  replicaCount: 2
+
+  # -- cert-manager Certificate is created automatically when certManager=true.
+  certManager:
+    enabled: true
+    issuerName: "tuck-injector-selfsigned"
+    issuerKind: "Issuer"
+
+  service:
+    port: 443
+    targetPort: 8443
+
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 32Mi
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+
+  securityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# --------------------------------------------------------------------------- #
+# CRD installation
+# --------------------------------------------------------------------------- #
+crds:
+  # -- Install the TuckSecret CRD. Set false if managing CRDs separately.
+  install: true

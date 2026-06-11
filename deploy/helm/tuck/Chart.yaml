@@ -1,0 +1,18 @@
+apiVersion: v2
+name: tuck
+description: Kubernetes-native secrets manager — single binary, no external DB, auto-unseal by default.
+type: application
+version: 0.13.0
+appVersion: "0.13.0"
+keywords:
+  - secrets
+  - security
+  - kubernetes
+  - vault
+home: https://github.com/NAGenaev/tuck
+sources:
+  - https://github.com/NAGenaev/tuck
+maintainers:
+  - name: NAGenaev
+    url: https://github.com/NAGenaev
+icon: https://raw.githubusercontent.com/NAGenaev/tuck/main/docs/tuck-logo.png

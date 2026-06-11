@@ -11,6 +11,75 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.13.0] — 2026-06-11
+
+### Added
+
+#### JWT/OIDC Auth (`internal/auth/jwt`)
+
+Any OIDC-compatible identity provider (Keycloak, Auth0, Dex, GitHub Actions, Google, …) can now exchange a signed JWT for a short-lived Tuck token.
+
+- **`Provider`** — validates JWTs against a JWKS endpoint; enforces issuer, audience, expiry, and `kid` header.
+- **`JWKS`** — caching JWKS fetcher with configurable TTL (default 10 min); refreshes automatically on cache miss or stale keys.
+- **`Store`** — persists provider config and roles inside the encrypted barrier.
+- **`Role`** — binds `bound_subject`, `bound_claims` (arbitrary JWT claims), `bound_audiences`, and `policies`; TTL per role.
+- Idempotent match: first matching role wins.
+
+**HTTP API**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/auth/jwt/login` | Exchange JWT → Tuck token (unauthenticated) |
+| GET/PUT | `/v1/auth/jwt/config` | Read/write JWKS config (`jwks_uri`, `issuer`, `audience`, `default_ttl`) |
+| GET/PUT/DELETE | `/v1/auth/jwt/role/{name}` | Manage roles |
+| LIST | `/v1/auth/jwt/role/` | List all role names |
+
+**Quick start**
+```sh
+# 1. Configure JWKS
+curl -XPUT https://tuck:8200/v1/auth/jwt/config \
+  -H "X-Tuck-Token: $ROOT" \
+  -d '{"jwks_uri":"https://accounts.google.com/.well-known/jwks","issuer":"https://accounts.google.com"}'
+
+# 2. Create a role
+curl -XPUT https://tuck:8200/v1/auth/jwt/role/ci \
+  -H "X-Tuck-Token: $ROOT" \
+  -d '{"bound_claims":{"repository":"myorg/myrepo"},"policies":["ci-reader"],"ttl":"15m"}'
+
+# 3. Login
+curl -XPOST https://tuck:8200/v1/auth/jwt/login \
+  -d "{\"jwt\":\"$ACTIONS_ID_TOKEN_REQUEST_TOKEN\"}"
+```
+
+#### Helm Chart (`deploy/helm/tuck`)
+
+Single `helm install` deploys the full Tuck stack into Kubernetes.
+
+**Components** (each independently toggleable):
+- **Server** (`server.enabled=true`) — StatefulSet with PVC, configurable seal type, optional TLS, optional Raft HA, OTel endpoint.
+- **Operator** (`operator.enabled=true`) — Deployment (2 replicas, leader election), watches TuckSecrets cluster-wide.
+- **Webhook Injector** (`injector.enabled=false` by default) — opt-in; creates cert-manager Certificate + MutatingWebhookConfiguration.
+- **CRD** (`crds.install=true`) — TuckSecret CRD with `helm.sh/resource-policy: keep`.
+
+**Key values**
+```yaml
+server.sealType: dev | shamir | transit
+server.persistence.enabled: true  # PVC-backed bbolt
+server.cluster.enabled: false     # Raft HA
+injector.enabled: false           # webhook injector (requires cert-manager)
+crds.install: true
+```
+
+**Install**
+```sh
+helm install tuck deploy/helm/tuck \
+  --namespace tuck-system --create-namespace \
+  --set server.sealType=shamir \
+  --set server.shamirSeal.n=5,server.shamirSeal.k=3
+```
+
+---
+
 ## [0.12.0] — 2026-06-11
 
 ### Added
@@ -166,7 +235,8 @@ Pre-release for M10 testing.
 
 ---
 
-[Unreleased]: https://github.com/NAGenaev/tuck/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/NAGenaev/tuck/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/NAGenaev/tuck/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/NAGenaev/tuck/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/NAGenaev/tuck/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/NAGenaev/tuck/compare/v0.9.0...v0.10.0

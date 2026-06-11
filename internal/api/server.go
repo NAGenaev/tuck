@@ -84,6 +84,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/auth/jwt/role/{name}", s.requireToken(s.deleteJWTRole))
 	mux.HandleFunc("LIST /v1/auth/jwt/role/", s.requireToken(s.listJWTRoles))
 
+	// SSH secrets engine — CA mode (signed SSH certificates)
+	// CA public key is unauthenticated so hosts can fetch it for TrustedUserCAKeys.
+	mux.HandleFunc("POST /v1/ssh/generate/ca", s.requireToken(s.sshGenerateCA))
+	mux.HandleFunc("POST /v1/ssh/import/ca", s.requireToken(s.sshImportCA))
+	mux.HandleFunc("GET /v1/ssh/ca/public-key", s.sshGetCAPublicKey)
+	mux.HandleFunc("PUT /v1/ssh/roles/{name}", s.requireToken(s.sshPutRole))
+	mux.HandleFunc("GET /v1/ssh/roles/{name}", s.requireToken(s.sshGetRole))
+	mux.HandleFunc("DELETE /v1/ssh/roles/{name}", s.requireToken(s.sshDeleteRole))
+	mux.HandleFunc("LIST /v1/ssh/roles/", s.requireToken(s.sshListRoles))
+	mux.HandleFunc("POST /v1/ssh/sign/{role}", s.requireToken(s.sshSign))
+
 	// Transit secrets engine — encryption-as-a-service
 	mux.HandleFunc("POST /v1/transit/keys/{name}", s.requireToken(s.transitCreateKey))
 	mux.HandleFunc("GET /v1/transit/keys/{name}", s.requireToken(s.transitGetKey))

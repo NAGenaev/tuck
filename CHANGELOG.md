@@ -11,6 +11,59 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.17.0] — 2026-06-11
+
+### Added
+
+#### SSH Secrets Engine (`internal/dynamic/ssh`)
+
+CA-mode SSH certificate authority. Tuck holds an SSH CA key pair and signs
+short-lived SSH certificates for users or hosts. Target hosts need only a
+one-time `TrustedUserCAKeys` configuration; thereafter any certificate signed
+by Tuck is automatically trusted — no per-user `authorized_keys` management.
+
+**CA key types**
+
+| Type | Details |
+|------|---------|
+| `ed25519` (default) | Fast, small certs |
+| `rsa` | 4096-bit RSA CA |
+
+**Workflow**
+
+1. `POST /v1/ssh/generate/ca` — generate CA (or `POST /v1/ssh/import/ca` to bring your own)
+2. `GET /v1/ssh/ca/public-key` (unauthenticated) — fetch CA pubkey → put in `TrustedUserCAKeys`
+3. `PUT /v1/ssh/roles/{name}` — create a role constraining principals, TTL, cert type
+4. `POST /v1/ssh/sign/{role}` — sign a user's SSH public key → returns `signed_key` for `~/.ssh/id_*-cert.pub`
+
+**Role options**
+
+- `allowed_users` — whitelist of SSH usernames; empty = any principal
+- `cert_type` — `user` (default) or `host`
+- `default_ttl` / `max_ttl` — certificate lifetime (requested TTL capped at max_ttl)
+- `default_extensions` — per-role extensions (default: the five standard `permit-*` extensions)
+
+**API endpoints** (8 total)
+
+| Method | Path | Auth |
+|--------|------|------|
+| `POST` | `/v1/ssh/generate/ca` | required |
+| `POST` | `/v1/ssh/import/ca` | required |
+| `GET` | `/v1/ssh/ca/public-key` | none |
+| `PUT` | `/v1/ssh/roles/{name}` | required |
+| `GET` | `/v1/ssh/roles/{name}` | required |
+| `DELETE` | `/v1/ssh/roles/{name}` | required |
+| `LIST` | `/v1/ssh/roles/` | required |
+| `POST` | `/v1/ssh/sign/{role}` | required |
+
+**Tests**: 12 unit tests covering CA generation (Ed25519 + RSA), CA import,
+role CRUD, user cert signing + chain verification via `gossh.CertChecker`, TTL
+capping, principal enforcement, host certs, and RSA CA signing.
+
+**Dependency**: `golang.org/x/crypto v0.53.0` (added)
+
+---
+
 ## [0.16.0] — 2026-06-11
 
 ### Added

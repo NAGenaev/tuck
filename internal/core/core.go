@@ -17,6 +17,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/barrier"
 	"github.com/NAGenaev/tuck/internal/dynamic/database"
 	"github.com/NAGenaev/tuck/internal/dynamic/pki"
+	dynSSH "github.com/NAGenaev/tuck/internal/dynamic/ssh"
 	"github.com/NAGenaev/tuck/internal/dynamic/transit"
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
 	"github.com/NAGenaev/tuck/internal/kvv2"
@@ -75,6 +76,7 @@ type Core struct {
 	dbManager    *database.Manager
 	pkiManager     *pki.Manager
 	transitManager *transit.Manager
+	sshManager     *dynSSH.Manager
 	// optional — nil means k8s auth is disabled
 	k8sReviewer k8sauth.Reviewer
 	k8sRoles    *k8sauth.RoleStore
@@ -109,6 +111,7 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		dbManager:    database.NewManager(b),
 		pkiManager:     pki.NewManager(b),
 		transitManager: transit.NewManager(b),
+		sshManager:     dynSSH.NewManager(b),
 		k8sReviewer:  reviewer,
 		k8sRoles:    k8sauth.NewRoleStore(b),
 	}
@@ -559,6 +562,33 @@ func (c *Core) LoginJWT(ctx context.Context, tokenStr string) (*token.Token, err
 	}
 	displayName := "jwt:" + result.Subject
 	return c.CreateToken(ctx, displayName, result.Policies, result.TTL)
+}
+
+// --- SSH secrets engine ---
+
+func (c *Core) SSHGenerateCA(ctx context.Context, keyType string) (string, error) {
+	return c.sshManager.GenerateCA(ctx, keyType)
+}
+func (c *Core) SSHImportCA(ctx context.Context, privateKeyPEM string) error {
+	return c.sshManager.ImportCA(ctx, privateKeyPEM)
+}
+func (c *Core) SSHGetCAPublicKey(ctx context.Context) (string, error) {
+	return c.sshManager.GetCAPublicKey(ctx)
+}
+func (c *Core) SSHPutRole(ctx context.Context, r *dynSSH.Role) error {
+	return c.sshManager.PutRole(ctx, r)
+}
+func (c *Core) SSHGetRole(ctx context.Context, name string) (*dynSSH.Role, error) {
+	return c.sshManager.GetRole(ctx, name)
+}
+func (c *Core) SSHDeleteRole(ctx context.Context, name string) error {
+	return c.sshManager.DeleteRole(ctx, name)
+}
+func (c *Core) SSHListRoles(ctx context.Context) ([]string, error) {
+	return c.sshManager.ListRoles(ctx)
+}
+func (c *Core) SSHSignPublicKey(ctx context.Context, roleName, publicKeyStr string, validPrincipals []string, ttl time.Duration) (*dynSSH.SignedCert, error) {
+	return c.sshManager.SignPublicKey(ctx, roleName, publicKeyStr, validPrincipals, ttl)
 }
 
 // --- Transit secrets engine ---

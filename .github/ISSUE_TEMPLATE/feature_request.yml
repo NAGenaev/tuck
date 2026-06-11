@@ -1,0 +1,49 @@
+name: Feature Request
+description: Suggest a new feature or improvement for Tuck.
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion! Please check the [ROADMAP](../docs/ROADMAP.md) first — your feature may already be planned.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / Motivation
+      description: What problem does this feature solve? What is the use case?
+      placeholder: "I find it difficult to... because..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the feature you would like. Include API shape, CLI flags, or config options if relevant.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What workarounds or alternatives have you tried?
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority (your perspective)
+      options:
+        - Nice to have
+        - Important for my use case
+        - Blocking production use
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to implement this feature and open a PR.

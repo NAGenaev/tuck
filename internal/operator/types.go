@@ -19,10 +19,28 @@ type TuckSecretSpec struct {
 	RefreshInterval string `json:"refreshInterval,omitempty"`
 }
 
+// StatusConditionType identifies a condition on a TuckSecret.
+type StatusConditionType = string
+
+const (
+	ConditionSynced StatusConditionType = "Synced"
+	ConditionReady  StatusConditionType = "Ready"
+)
+
+// StatusCondition mirrors the standard Kubernetes condition pattern.
+type StatusCondition struct {
+	Type               StatusConditionType `json:"type"`
+	Status             string              `json:"status"` // "True" | "False" | "Unknown"
+	LastTransitionTime time.Time           `json:"lastTransitionTime"`
+	Reason             string              `json:"reason,omitempty"`
+	Message            string              `json:"message,omitempty"`
+}
+
 type TuckSecretStatus struct {
-	LastSyncTime   time.Time `json:"lastSyncTime,omitempty"`
-	LastSyncError  string    `json:"lastSyncError,omitempty"`
-	SyncedRevision string    `json:"syncedRevision,omitempty"`
+	LastSyncTime   time.Time         `json:"lastSyncTime,omitempty"`
+	LastSyncError  string            `json:"lastSyncError,omitempty"`
+	SyncedRevision string            `json:"syncedRevision,omitempty"`
+	Conditions     []StatusCondition `json:"conditions,omitempty"`
 }
 
 type ObjectMeta struct {
@@ -57,6 +75,23 @@ type KubeSecret struct {
 	Kind       string            `json:"kind"`
 	Metadata   ObjectMeta        `json:"metadata"`
 	Data       map[string][]byte `json:"data,omitempty"`
+}
+
+// Lease is the coordination.k8s.io/v1 Lease resource used for leader election.
+type Lease struct {
+	APIVersion string     `json:"apiVersion"`
+	Kind       string     `json:"kind"`
+	Metadata   ObjectMeta `json:"metadata"`
+	Spec       LeaseSpec  `json:"spec"`
+}
+
+// LeaseSpec mirrors the K8s coordination.k8s.io/v1 LeaseSpec.
+type LeaseSpec struct {
+	HolderIdentity       *string `json:"holderIdentity,omitempty"`
+	LeaseDurationSeconds *int32  `json:"leaseDurationSeconds,omitempty"`
+	AcquireTime          *string `json:"acquireTime,omitempty"` // RFC3339Nano
+	RenewTime            *string `json:"renewTime,omitempty"`   // RFC3339Nano
+	LeaseTransitions     *int32  `json:"leaseTransitions,omitempty"`
 }
 
 // RefreshDuration parses the spec's refreshInterval or returns the default.

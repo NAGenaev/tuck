@@ -22,6 +22,7 @@ type KubeClientIface interface {
 	List(ctx context.Context, namespace string) (*TuckSecretList, error)
 	Watch(ctx context.Context, namespace, resourceVersion string) (<-chan WatchEvent, error)
 	ApplySecret(ctx context.Context, secret *KubeSecret) error
+	UpdateStatus(ctx context.Context, ts *TuckSecret) error
 }
 
 // TuckClientIface is the subset of TuckClient used by the controller.
@@ -160,7 +161,15 @@ func (ctrl *Controller) handleEvent(ctx context.Context, ev WatchEvent) error {
 }
 
 // reconcile fetches the secret value from Tuck and writes it to the K8s Secret.
-func (ctrl *Controller) reconcile(ctx context.Context, ts TuckSecret) error {
+// It always updates the TuckSecret status via the status subresource on return.
+func (ctrl *Controller) reconcile(ctx context.Context, ts TuckSecret) (err error) {
+	defer func() {
+		ts.Status = buildStatus(ts.Status, err)
+		if statusErr := ctrl.kube.UpdateStatus(ctx, &ts); statusErr != nil {
+			slog.Warn("operator: update status", "namespace", ts.Metadata.Namespace, "name", ts.Metadata.Name, "err", statusErr)
+		}
+	}()
+
 	spec := ts.Spec
 	if spec.TuckPath == "" || spec.SecretName == "" || spec.SecretKey == "" {
 		return fmt.Errorf("invalid TuckSecret spec: tuckPath, secretName, secretKey are all required")
@@ -198,6 +207,48 @@ func (ctrl *Controller) reconcile(ctx context.Context, ts TuckSecret) error {
 	ctrl.mu.Unlock()
 
 	return nil
+}
+
+// buildStatus constructs a new TuckSecretStatus from the current status and
+// the outcome of a reconcile attempt. It preserves LastTransitionTime when
+// the condition status hasn't changed.
+func buildStatus(current TuckSecretStatus, syncErr error) TuckSecretStatus {
+	now := time.Now().UTC()
+	st := current
+	st.LastSyncTime = now
+
+	cond := StatusCondition{
+		Type:               ConditionSynced,
+		LastTransitionTime: now,
+	}
+	if syncErr == nil {
+		cond.Status = "True"
+		cond.Reason = "SyncSucceeded"
+		cond.Message = ""
+		st.LastSyncError = ""
+	} else {
+		cond.Status = "False"
+		cond.Reason = "SyncFailed"
+		cond.Message = syncErr.Error()
+		st.LastSyncError = syncErr.Error()
+	}
+	st.Conditions = setCondition(st.Conditions, cond)
+	return st
+}
+
+// setCondition upserts c into conditions, preserving LastTransitionTime when
+// the status value is unchanged.
+func setCondition(conditions []StatusCondition, c StatusCondition) []StatusCondition {
+	for i, existing := range conditions {
+		if existing.Type == c.Type {
+			if existing.Status == c.Status {
+				c.LastTransitionTime = existing.LastTransitionTime
+			}
+			conditions[i] = c
+			return conditions
+		}
+	}
+	return append(conditions, c)
 }
 
 // runDueRefreshes reconciles all tracked resources whose refresh interval

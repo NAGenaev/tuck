@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tuck — Secrets Manager</title>
+<style>
+:root {
+  --sidebar-bg: #1a1f36;
+  --sidebar-fg: #8792b0;
+  --sidebar-active: #fff;
+  --sidebar-accent: #635bff;
+  --bg: #f6f9fc;
+  --card: #fff;
+  --border: #e3e8ee;
+  --text: #1a1f36;
+  --muted: #697386;
+  --success: #09825d;
+  --success-bg: #cbf4c9;
+  --danger: #9e2146;
+  --danger-bg: #fde8ec;
+  --warning: #7a4f01;
+  --warning-bg: #fcefc7;
+  --primary: #635bff;
+  --primary-hover: #4f47e0;
+  --radius: 6px;
+  --shadow: 0 1px 3px rgba(0,0,0,.08);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+a { color: var(--primary); text-decoration: none; }
+input, textarea, select { font: inherit; }
+
+/* Layout */
+#app { display: flex; min-height: 100vh; }
+#app.login-mode { align-items: center; justify-content: center; background: var(--sidebar-bg); }
+
+/* Sidebar */
+#sidebar {
+  width: 220px; flex-shrink: 0;
+  background: var(--sidebar-bg); color: var(--sidebar-fg);
+  display: flex; flex-direction: column;
+  padding: 0; min-height: 100vh;
+}
+.sidebar-logo {
+  padding: 20px 20px 16px;
+  font-size: 18px; font-weight: 700;
+  color: #fff; letter-spacing: -.3px;
+  border-bottom: 1px solid rgba(255,255,255,.07);
+  display: flex; align-items: center; gap: 8px;
+}
+.sidebar-logo svg { flex-shrink: 0; }
+.seal-badge {
+  display: inline-block; padding: 1px 7px;
+  border-radius: 12px; font-size: 10px; font-weight: 600;
+  margin-left: auto;
+}
+.seal-badge.unsealed { background: var(--success-bg); color: var(--success); }
+.seal-badge.sealed   { background: var(--danger-bg); color: var(--danger); }
+.seal-badge.unknown  { background: var(--warning-bg); color: var(--warning); }
+
+nav { padding: 8px 0; flex: 1; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 20px; cursor: pointer;
+  color: var(--sidebar-fg); font-size: 13px;
+  border-left: 3px solid transparent;
+  transition: color .15s, background .15s;
+}
+.nav-item:hover { color: #c9d1e8; background: rgba(255,255,255,.05); }
+.nav-item.active { color: var(--sidebar-active); background: rgba(255,255,255,.07); border-left-color: var(--sidebar-accent); }
+.nav-icon { width: 16px; text-align: center; opacity: .7; }
+
+.sidebar-footer { padding: 14px 20px; border-top: 1px solid rgba(255,255,255,.07); }
+.logout-btn {
+  width: 100%; padding: 7px; border-radius: var(--radius);
+  background: rgba(255,255,255,.07); border: none; color: var(--sidebar-fg);
+  cursor: pointer; font-size: 12px; transition: background .15s;
+}
+.logout-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
+
+/* Main */
+#main { flex: 1; display: flex; flex-direction: column; overflow: auto; }
+.page-header {
+  padding: 20px 28px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+.page-header h1 { font-size: 18px; font-weight: 600; }
+.page-header p  { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.page-body { padding: 24px 28px; }
+
+/* Cards */
+.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 16px; }
+.card-header { padding: 14px 18px; border-bottom: 1px solid var(--border); font-weight: 600; display: flex; align-items: center; justify-content: space-between; }
+.card-body { padding: 18px; }
+.card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+/* Status */
+.status-big { display: flex; align-items: center; gap: 12px; }
+.status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.status-dot.green { background: #1cb87e; box-shadow: 0 0 0 3px #cbf4c9; }
+.status-dot.red   { background: #e56f84; box-shadow: 0 0 0 3px #fde8ec; }
+.status-label { font-size: 16px; font-weight: 600; }
+.kv-grid { display: grid; grid-template-columns: 90px 1fr; gap: 4px 10px; font-size: 12px; }
+.kv-grid dt { color: var(--muted); }
+.kv-grid dd { font-family: monospace; word-break: break-all; }
+
+/* Forms */
+.form-row { margin-bottom: 12px; }
+.form-row label { display: block; font-size: 12px; font-weight: 500; margin-bottom: 4px; color: var(--muted); }
+.form-row input, .form-row textarea, .form-row select {
+  width: 100%; padding: 7px 10px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: #fff; outline: none; transition: border-color .15s;
+}
+.form-row input:focus, .form-row textarea:focus { border-color: var(--primary); }
+.form-row textarea { min-height: 80px; resize: vertical; font-family: monospace; font-size: 12px; }
+.form-actions { display: flex; gap: 8px; margin-top: 16px; }
+
+/* Buttons */
+.btn {
+  padding: 7px 14px; border-radius: var(--radius); border: none;
+  font-size: 13px; font-weight: 500; cursor: pointer; transition: background .15s, opacity .15s;
+}
+.btn:disabled { opacity: .5; cursor: default; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+.btn-danger  { background: var(--danger-bg); color: var(--danger); }
+.btn-danger:hover:not(:disabled) { background: #fbd0d9; }
+.btn-ghost   { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+.btn-ghost:hover:not(:disabled) { background: var(--bg); }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+
+/* Table */
+.table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.table th { padding: 8px 12px; text-align: left; color: var(--muted); font-weight: 500; border-bottom: 2px solid var(--border); }
+.table td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.table tr:last-child td { border-bottom: none; }
+.table tr:hover td { background: var(--bg); }
+.mono { font-family: monospace; font-size: 11px; word-break: break-all; }
+
+/* Alerts */
+.alert { padding: 10px 14px; border-radius: var(--radius); font-size: 13px; margin-bottom: 14px; }
+.alert-error   { background: var(--danger-bg); color: var(--danger); }
+.alert-success { background: var(--success-bg); color: var(--success); }
+.alert-info    { background: #e8f4fd; color: #0c5c8a; }
+
+/* Login */
+.login-card {
+  width: 360px; background: var(--card); border-radius: 10px;
+  padding: 36px; box-shadow: 0 4px 24px rgba(0,0,0,.3);
+}
+.login-card h1 { font-size: 22px; text-align: center; margin-bottom: 6px; }
+.login-card p  { text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+
+/* Spinner */
+.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Tag */
+.tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; background: #eee; color: var(--muted); margin: 1px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// ─────────── State ───────────
+const S = {
+  token:     sessionStorage.getItem('tuck_token') || '',
+  page:      'status',
+  sealed:    null,   // null = unknown
+  sealType:  '',
+  pollTimer: null,
+  msg:       null,   // {type:'success'|'error', text}
+};
+
+// ─────────── API ───────────
+async function api(method, path, body) {
+  const headers = {};
+  if (S.token) headers['X-Tuck-Token'] = S.token;
+  const opts = { method, headers };
+  if (body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  const r = await fetch(path, opts);
+  let d;
+  try { d = await r.json(); } catch { d = {}; }
+  if (r.status === 401) { logout(); return null; }
+  if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+  return d;
+}
+
+async function apiRaw(method, path, body) {
+  const headers = {};
+  if (S.token) headers['X-Tuck-Token'] = S.token;
+  const opts = { method, headers };
+  if (body !== undefined) opts.body = body;
+  const r = await fetch(path, opts);
+  if (r.status === 401) { logout(); return null; }
+  return r;
+}
+
+// ─────────── Helpers ───────────
+function logout() {
+  sessionStorage.removeItem('tuck_token');
+  S.token = ''; S.sealed = null;
+  stopPoll(); render();
+}
+
+function setPage(p) { S.page = p; S.msg = null; render(); }
+function flash(type, text) { S.msg = {type, text}; render(); }
+
+function stopPoll() { if (S.pollTimer) { clearInterval(S.pollTimer); S.pollTimer = null; } }
+
+async function refreshSeal() {
+  try {
+    const d = await api('GET', '/v1/sys/seal-status');
+    if (!d) return;
+    S.sealed = d.sealed;
+    S.sealType = d.type || '';
+    S.sealRequired = d.required_shards;
+    S.sealReceived = d.received_shards;
+    // update badge without full re-render
+    document.querySelectorAll('.seal-badge').forEach(el => {
+      el.className = 'seal-badge ' + (S.sealed ? 'sealed' : 'unsealed');
+      el.textContent = S.sealed ? 'SEALED' : 'OPEN';
+    });
+  } catch (_) {}
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─────────── Render ───────────
+function render() {
+  const root = document.getElementById('app');
+  if (!S.token) {
+    root.className = 'login-mode';
+    root.innerHTML = renderLogin();
+  } else {
+    root.className = '';
+    root.innerHTML = renderApp();
+  }
+  bind();
+}
+
+function badgeClass() { return S.sealed === null ? 'unknown' : S.sealed ? 'sealed' : 'unsealed'; }
+function badgeText()  { return S.sealed === null ? '…' : S.sealed ? 'SEALED' : 'OPEN'; }
+
+function renderLogin() {
+  return `
+<div class="login-card">
+  <h1>🔐 Tuck</h1>
+  <p>Enter your root or service token to continue.</p>
+  ${S.msg ? `<div class="alert alert-${S.msg.type}">${esc(S.msg.text)}</div>` : ''}
+  <form id="login-form">
+    <div class="form-row">
+      <label>Token</label>
+      <input type="password" id="token-input" placeholder="tuck_…" autocomplete="current-password">
+    </div>
+    <button class="btn btn-primary" style="width:100%" type="submit">Sign In</button>
+  </form>
+</div>`;
+}
+
+function renderApp() {
+  return `
+<div id="sidebar">
+  <div class="sidebar-logo">
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <rect width="20" height="20" rx="5" fill="#635bff"/>
+      <path d="M6 8.5V7a4 4 0 0 1 8 0v1.5" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>
+      <rect x="4" y="9" width="12" height="8" rx="2" fill="#fff"/>
+      <circle cx="10" cy="13" r="1.5" fill="#635bff"/>
+    </svg>
+    Tuck
+    <span class="seal-badge ${badgeClass()}">${badgeText()}</span>
+  </div>
+  <nav>
+    ${navItem('status', '⬡', 'Status')}
+    ${navItem('secrets', '🗝', 'Secrets')}
+    ${navItem('tokens', '🎟', 'Tokens')}
+    ${navItem('policies', '📋', 'Policies')}
+  </nav>
+  <div class="sidebar-footer">
+    <button class="logout-btn" id="logout-btn">Sign out</button>
+  </div>
+</div>
+<div id="main">
+  ${S.msg ? `<div style="padding:12px 28px 0"><div class="alert alert-${S.msg.type}">${esc(S.msg.text)}</div></div>` : ''}
+  ${renderPage()}
+</div>`;
+}
+
+function navItem(page, icon, label) {
+  return `<div class="nav-item${S.page===page?' active':''}" data-page="${page}">
+    <span class="nav-icon">${icon}</span>${label}
+  </div>`;
+}
+
+function renderPage() {
+  switch (S.page) {
+    case 'status':   return pageStatus();
+    case 'secrets':  return pageSecrets();
+    case 'tokens':   return pageTokens();
+    case 'policies': return pagePolicies();
+    default: return '';
+  }
+}
+
+// ─────────── Status page ───────────
+function pageStatus() {
+  const sealed = S.sealed;
+  const dot = sealed === null ? '' : sealed ? 'red' : 'green';
+  const label = sealed === null ? 'Loading…' : sealed ? 'Sealed' : 'Unsealed';
+  return `
+<div class="page-header">
+  <h1>System Status</h1>
+  <p>Seal state and maintenance operations</p>
+</div>
+<div class="page-body">
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-header">Seal Status</div>
+      <div class="card-body">
+        <div class="status-big" style="margin-bottom:14px">
+          <span class="status-dot ${dot}"></span>
+          <span class="status-label">${label}</span>
+        </div>
+        <dl class="kv-grid">
+          <dt>Seal type</dt><dd>${esc(S.sealType || '–')}</dd>
+          ${S.sealRequired ? `<dt>Shards</dt><dd>${S.sealReceived||0} / ${S.sealRequired} required</dd>` : ''}
+        </dl>
+      </div>
+    </div>
+    ${sealed ? `
+    <div class="card">
+      <div class="card-header">Unseal</div>
+      <div class="card-body">
+        <form id="unseal-form">
+          <div class="form-row">
+            <label>Shamir shard (base64url)</label>
+            <textarea name="key" placeholder="Paste one key shard…" style="min-height:60px"></textarea>
+          </div>
+          <button class="btn btn-primary" type="submit">Submit Shard</button>
+        </form>
+      </div>
+    </div>` : `
+    <div class="card">
+      <div class="card-header">Actions</div>
+      <div class="card-body" style="display:flex;flex-direction:column;gap:8px">
+        <button class="btn btn-ghost" id="rotate-btn">🔄 Rotate Key</button>
+        <button class="btn btn-danger" id="seal-btn">🔒 Seal Server</button>
+      </div>
+    </div>`}
+  </div>
+</div>`;
+}
+
+// ─────────── Secrets page ───────────
+function pageSecrets() {
+  return `
+<div class="page-header">
+  <h1>KV Secrets</h1>
+  <p>Browse, read, and manage key-value secrets</p>
+</div>
+<div class="page-body">
+  <div class="card">
+    <div class="card-header">List</div>
+    <div class="card-body">
+      <form id="list-form" style="display:flex;gap:8px;margin-bottom:14px">
+        <input name="prefix" placeholder="Prefix (leave blank for all)" style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius)">
+        <button class="btn btn-primary" type="submit">List</button>
+      </form>
+      <div id="secret-list"></div>
+    </div>
+  </div>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-header">Get Secret</div>
+      <div class="card-body">
+        <form id="get-form">
+          <div class="form-row"><label>Path</label><input name="path" placeholder="db/password"></div>
+          <button class="btn btn-primary" type="submit">Get</button>
+        </form>
+        <div id="get-result" style="margin-top:12px"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">Put Secret</div>
+      <div class="card-body">
+        <form id="put-form">
+          <div class="form-row"><label>Path</label><input name="path" placeholder="db/password"></div>
+          <div class="form-row"><label>Value (raw bytes)</label><textarea name="value" placeholder="secret value"></textarea></div>
+          <button class="btn btn-primary" type="submit">Save</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>`;
+}
+
+// ─────────── Tokens page ───────────
+function pageTokens() {
+  return `
+<div class="page-header">
+  <h1>Tokens</h1>
+  <p>Manage bearer tokens and their policies</p>
+</div>
+<div class="page-body">
+  <div class="card">
+    <div class="card-header">
+      Token List
+      <button class="btn btn-primary btn-sm" id="list-tokens-btn">Refresh</button>
+    </div>
+    <div class="card-body">
+      <div id="token-list"><em style="color:var(--muted)">Click Refresh to load tokens.</em></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">Create Token</div>
+    <div class="card-body">
+      <form id="create-token-form">
+        <div class="card-grid">
+          <div class="form-row"><label>Display Name</label><input name="name" placeholder="ci-pipeline"></div>
+          <div class="form-row"><label>TTL (e.g. 24h, blank = never)</label><input name="ttl" placeholder="24h"></div>
+        </div>
+        <div class="form-row"><label>Policies (comma-separated)</label><input name="policies" placeholder="read-only,db-rw"></div>
+        <button class="btn btn-primary" type="submit">Create Token</button>
+      </form>
+      <div id="new-token-result" style="margin-top:12px"></div>
+    </div>
+  </div>
+</div>`;
+}
+
+// ─────────── Policies page ───────────
+function pagePolicies() {
+  return `
+<div class="page-header">
+  <h1>Policies</h1>
+  <p>Define path-based access control rules</p>
+</div>
+<div class="page-body">
+  <div class="card">
+    <div class="card-header">
+      Policy List
+      <button class="btn btn-primary btn-sm" id="list-policies-btn">Refresh</button>
+    </div>
+    <div class="card-body">
+      <div id="policy-list"><em style="color:var(--muted)">Click Refresh to load policies.</em></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">Create / Update Policy</div>
+    <div class="card-body">
+      <form id="create-policy-form">
+        <div class="form-row"><label>Name</label><input name="name" placeholder="read-only"></div>
+        <div class="form-row">
+          <label>Rules (JSON array)</label>
+          <textarea name="rules" placeholder='[{"path":"secret/*","capabilities":["read","list"]}]'></textarea>
+        </div>
+        <button class="btn btn-primary" type="submit">Save Policy</button>
+      </form>
+    </div>
+  </div>
+</div>`;
+}
+
+// ─────────── Bind events ───────────
+function bind() {
+  on('click', '#logout-btn', logout);
+  on('click', '[data-page]', e => setPage(e.currentTarget.dataset.page));
+
+  // Login
+  onSubmit('#login-form', async fd => {
+    const t = fd.get('token-input') || document.getElementById('token-input')?.value;
+    if (!t) return;
+    // Validate by fetching seal-status
+    try {
+      const r = await fetch('/v1/sys/seal-status', { headers: { 'X-Tuck-Token': t } });
+      if (!r.ok && r.status === 401) { flash('error', 'Invalid token'); return; }
+      S.token = t.trim();
+      sessionStorage.setItem('tuck_token', S.token);
+      S.msg = null;
+      render();
+      startPoll();
+    } catch (e) { flash('error', e.message); }
+  });
+
+  // Status page actions
+  onSubmit('#unseal-form', async fd => {
+    try {
+      const d = await api('POST', '/v1/sys/unseal', { key: fd.get('key').trim() });
+      flash(d.sealed ? 'info' : 'success', d.message || (d.sealed ? `Shard accepted (${d.received_shards}/${d.required_shards})` : 'Unsealed successfully'));
+      await refreshSeal();
+      setPage('status');
+    } catch (e) { flash('error', e.message); }
+  });
+
+  on('click', '#seal-btn', async () => {
+    if (!confirm('Re-seal the server? All in-flight requests will return 503.')) return;
+    try { await api('POST', '/v1/sys/seal'); flash('success', 'Server sealed'); await refreshSeal(); render(); }
+    catch (e) { flash('error', e.message); }
+  });
+
+  on('click', '#rotate-btn', async () => {
+    if (!confirm('Rotate the root key? For Shamir seals the new shares will be shown here.')) return;
+    try {
+      const d = await api('POST', '/v1/sys/rotate');
+      if (d.shares?.length) {
+        flash('success', 'Key rotated. New shares: ' + d.shares.join(' | '));
+      } else {
+        flash('success', 'Root key rotated successfully.');
+      }
+      render();
+    } catch (e) { flash('error', e.message); }
+  });
+
+  // Secrets
+  onSubmit('#list-form', async fd => {
+    const prefix = fd.get('prefix').trim();
+    try {
+      const r = await fetch(`/v1/secret/${prefix}`, {
+        method: 'LIST',
+        headers: S.token ? { 'X-Tuck-Token': S.token } : {},
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || r.status);
+      const el = document.getElementById('secret-list');
+      if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No secrets found.</em>'; return; }
+      el.innerHTML = `<table class="table">
+        <thead><tr><th>Path</th><th></th></tr></thead>
+        <tbody>${d.keys.map(k => `<tr>
+          <td class="mono">${esc(k)}</td>
+          <td style="width:80px">
+            <button class="btn btn-ghost btn-sm" data-get="${esc(k)}">Get</button>
+            <button class="btn btn-danger btn-sm" data-del="${esc(k)}" style="margin-left:4px">Del</button>
+          </td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+      el.querySelectorAll('[data-get]').forEach(b => b.onclick = () => {
+        document.querySelector('#get-form input[name=path]').value = b.dataset.get;
+        document.getElementById('get-form').dispatchEvent(new Event('submit'));
+      });
+      el.querySelectorAll('[data-del]').forEach(b => b.onclick = () => deleteSecret(b.dataset.del));
+    } catch (e) { flash('error', e.message); }
+  });
+
+  onSubmit('#get-form', async fd => {
+    const path = fd.get('path').trim();
+    if (!path) return;
+    try {
+      const d = await api('GET', `/v1/secret/${path}`);
+      const res = document.getElementById('get-result');
+      const v = d.encoding === 'base64' ? `[base64] ${d.value}` : d.value;
+      res.innerHTML = `<div class="alert alert-info"><strong>Value:</strong><br><span class="mono">${esc(v)}</span></div>`;
+    } catch (e) {
+      document.getElementById('get-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
+    }
+  });
+
+  onSubmit('#put-form', async fd => {
+    const path = fd.get('path').trim();
+    const value = fd.get('value');
+    if (!path) return;
+    try {
+      const r = await fetch(`/v1/secret/${path}`, {
+        method: 'PUT',
+        headers: { 'X-Tuck-Token': S.token },
+        body: value,
+      });
+      if (!r.ok) { const d = await r.json(); throw new Error(d.error || r.status); }
+      flash('success', `Secret "${path}" saved.`); render();
+    } catch (e) { flash('error', e.message); }
+  });
+
+  // Tokens
+  on('click', '#list-tokens-btn', loadTokens);
+
+  onSubmit('#create-token-form', async fd => {
+    const policies = (fd.get('policies')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const body = { display_name: fd.get('name'), policies };
+    if (fd.get('ttl')) body.ttl = fd.get('ttl').trim();
+    try {
+      const d = await api('POST', '/v1/auth/token', body);
+      document.getElementById('new-token-result').innerHTML =
+        `<div class="alert alert-success">
+          <strong>Token created (shown once):</strong><br>
+          <span class="mono">${esc(d.id)}</span>
+        </div>`;
+    } catch (e) { flash('error', e.message); }
+  });
+
+  // Policies
+  on('click', '#list-policies-btn', loadPolicies);
+
+  onSubmit('#create-policy-form', async fd => {
+    const name = fd.get('name').trim();
+    if (!name) return;
+    let rules;
+    try { rules = JSON.parse(fd.get('rules')); } catch { flash('error', 'Invalid JSON rules'); return; }
+    try {
+      await api('PUT', `/v1/policy/${name}`, { rules });
+      flash('success', `Policy "${name}" saved.`); render();
+    } catch (e) { flash('error', e.message); }
+  });
+}
+
+async function deleteSecret(path) {
+  if (!confirm(`Delete secret "${path}"?`)) return;
+  try {
+    const r = await fetch(`/v1/secret/${path}`, {
+      method: 'DELETE',
+      headers: { 'X-Tuck-Token': S.token },
+    });
+    if (!r.ok) { const d = await r.json(); throw new Error(d.error || r.status); }
+    flash('success', `Secret "${path}" deleted.`); render();
+  } catch (e) { flash('error', e.message); }
+}
+
+async function loadTokens() {
+  try {
+    const r = await fetch('/v1/auth/token/', {
+      method: 'LIST',
+      headers: { 'X-Tuck-Token': S.token },
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || r.status);
+    const el = document.getElementById('token-list');
+    if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No tokens.</em>'; return; }
+    el.innerHTML = `<table class="table">
+      <thead><tr><th>ID</th><th>Name</th><th>Policies</th><th>Expires</th><th></th></tr></thead>
+      <tbody>${await Promise.all(d.keys.map(async id => {
+        try {
+          const t = await api('GET', `/v1/auth/token/${id}`);
+          const exp = t.expires_at ? new Date(t.expires_at).toLocaleString() : 'never';
+          const pols = (t.policies||[]).map(p=>`<span class="tag">${esc(p)}</span>`).join('');
+          return `<tr>
+            <td class="mono" style="max-width:180px;overflow:hidden;text-overflow:ellipsis">${esc(id.substring(0,28))}…</td>
+            <td>${esc(t.display_name||'')}</td>
+            <td>${pols}</td>
+            <td>${esc(exp)}</td>
+            <td><button class="btn btn-danger btn-sm" data-revoke="${esc(id)}">Revoke</button></td>
+          </tr>`;
+        } catch { return `<tr><td class="mono" colspan="5">${esc(id)}</td></tr>`; }
+      })).then(rows=>rows.join(''))}</tbody>
+    </table>`;
+    el.querySelectorAll('[data-revoke]').forEach(b => b.onclick = async () => {
+      if (!confirm('Revoke token?')) return;
+      try {
+        const r = await fetch(`/v1/auth/token/${b.dataset.revoke}`, {
+          method: 'DELETE', headers: { 'X-Tuck-Token': S.token }
+        });
+        if (!r.ok) { const d = await r.json(); throw new Error(d.error || r.status); }
+        flash('success', 'Token revoked.'); render();
+      } catch (e) { flash('error', e.message); }
+    });
+  } catch (e) { flash('error', e.message); }
+}
+
+async function loadPolicies() {
+  try {
+    const r = await fetch('/v1/policy/', {
+      method: 'LIST',
+      headers: { 'X-Tuck-Token': S.token },
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || r.status);
+    const el = document.getElementById('policy-list');
+    if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No policies.</em>'; return; }
+    el.innerHTML = `<table class="table">
+      <thead><tr><th>Name</th><th></th></tr></thead>
+      <tbody>${d.keys.map(name=>`<tr>
+        <td>${esc(name)}</td>
+        <td style="width:120px">
+          <button class="btn btn-ghost btn-sm" data-view-policy="${esc(name)}">View</button>
+          <button class="btn btn-danger btn-sm" data-del-policy="${esc(name)}" style="margin-left:4px">Delete</button>
+        </td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+    el.querySelectorAll('[data-view-policy]').forEach(b => b.onclick = async () => {
+      try {
+        const p = await api('GET', `/v1/policy/${b.dataset.viewPolicy}`);
+        alert(JSON.stringify(p, null, 2));
+      } catch (e) { flash('error', e.message); }
+    });
+    el.querySelectorAll('[data-del-policy]').forEach(b => b.onclick = async () => {
+      if (!confirm(`Delete policy "${b.dataset.delPolicy}"?`)) return;
+      try {
+        const r = await fetch(`/v1/policy/${b.dataset.delPolicy}`, {
+          method: 'DELETE', headers: { 'X-Tuck-Token': S.token }
+        });
+        if (!r.ok) { const d = await r.json(); throw new Error(d.error || r.status); }
+        flash('success', 'Policy deleted.'); render();
+      } catch (e) { flash('error', e.message); }
+    });
+  } catch (e) { flash('error', e.message); }
+}
+
+// ─────────── Event helpers ───────────
+function on(ev, sel, fn) {
+  document.querySelectorAll(sel).forEach(el => el.addEventListener(ev, fn));
+}
+
+function onSubmit(sel, fn) {
+  document.querySelectorAll(sel).forEach(form => form.addEventListener('submit', e => {
+    e.preventDefault();
+    fn(new FormData(form));
+  }));
+}
+
+// ─────────── Poll ───────────
+function startPoll() {
+  stopPoll();
+  refreshSeal();
+  S.pollTimer = setInterval(refreshSeal, 5000);
+}
+
+// ─────────── Boot ───────────
+render();
+if (S.token) startPoll();
+</script>
+</body>
+</html>

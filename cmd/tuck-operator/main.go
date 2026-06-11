@@ -27,6 +27,15 @@ func main() {
 		"path to the Kubernetes cluster CA certificate")
 	k8sAPI := flag.String("k8s-api", "https://kubernetes.default.svc",
 		"Kubernetes API server base URL")
+
+	// Leader election flags (OP-1)
+	leaderElect := flag.Bool("leader-elect", false,
+		"enable Lease-based leader election for HA (multiple replicas)")
+	leaderNamespace := flag.String("leader-namespace", "tuck-system",
+		"namespace in which to create the leader election Lease")
+	leaderID := flag.String("leader-id", "",
+		"unique identity for this replica in leader election (default: hostname)")
+
 	flag.Parse()
 
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
@@ -44,17 +53,37 @@ func main() {
 	}
 
 	tuckClient := operator.NewTuckClient(*tuckAddr, *saTokenFile)
-
 	ctrl := operator.New(kubeClient, tuckClient, *namespace)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	slog.Info("operator: starting", "tuck", *tuckAddr, "k8s", *k8sAPI, "namespace", *namespace)
+	slog.Info("operator: starting", "tuck", *tuckAddr, "k8s", *k8sAPI, "namespace", *namespace, "leaderElect", *leaderElect)
 
-	if err := ctrl.Run(ctx); err != nil && ctx.Err() == nil {
-		slog.Error("operator: fatal error", "err", err)
-		os.Exit(1)
+	if *leaderElect {
+		elector, err := operator.NewLeaderElector(kubeClient, operator.LeaderConfig{
+			LeaseName:      "tuck-operator-leader",
+			LeaseNamespace: *leaderNamespace,
+			HolderIdentity: *leaderID,
+		})
+		if err != nil {
+			slog.Error("operator: create leader elector", "err", err)
+			os.Exit(1)
+		}
+		if err := elector.Run(ctx, func(leadCtx context.Context) {
+			slog.Info("operator: became leader — starting controller")
+			if err := ctrl.Run(leadCtx); err != nil && leadCtx.Err() == nil {
+				slog.Error("operator: controller error", "err", err)
+			}
+		}); err != nil && ctx.Err() == nil {
+			slog.Error("operator: leader election error", "err", err)
+			os.Exit(1)
+		}
+	} else {
+		if err := ctrl.Run(ctx); err != nil && ctx.Err() == nil {
+			slog.Error("operator: fatal error", "err", err)
+			os.Exit(1)
+		}
 	}
 	slog.Info("operator: shutdown complete")
 }

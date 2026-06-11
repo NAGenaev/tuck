@@ -11,6 +11,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/barrier"
 	"github.com/NAGenaev/tuck/internal/core"
 	"github.com/NAGenaev/tuck/internal/metrics"
+	"github.com/NAGenaev/tuck/internal/ui"
 )
 
 const maxBodyBytes = 1 << 20 // 1 MiB
@@ -36,6 +37,9 @@ func NewWithAudit(c *core.Core, l *audit.Logger) *Server {
 // Handler builds the route table.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+
+	// Embedded web dashboard — served at /ui/
+	mux.Handle("/ui/", http.StripPrefix("/ui", ui.Handler()))
 
 	mux.HandleFunc("GET /v1/health", s.health)
 

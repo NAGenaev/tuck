@@ -1,0 +1,76 @@
+name: Bug Report
+description: Report a bug or unexpected behaviour in Tuck.
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug! Please fill out all sections so we can reproduce and fix the issue quickly.
+        **Do NOT include secrets, tokens, or sensitive values in this report.**
+
+  - type: input
+    id: version
+    attributes:
+      label: Tuck Version
+      description: Run `tuck --version` or check the container image tag.
+      placeholder: "v0.9.0 / dev"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: seal_type
+    attributes:
+      label: Seal Type
+      options:
+        - dev
+        - shamir
+        - transit
+        - not applicable
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Deployment Environment
+      options:
+        - local (binary)
+        - Docker / docker-compose
+        - Kubernetes (minikube)
+        - Kubernetes (cloud)
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: What happened? What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      placeholder: |
+        1. Start server with `tuck --seal-type=dev`
+        2. PUT a secret: `tuckcli kv put test/key hello`
+        3. GET the secret: `tuckcli kv get test/key`
+        4. See error: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Paste server logs or error output. Remove any tokens or secret values.
+      render: text
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Go version, OS, any other relevant information.

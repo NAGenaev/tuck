@@ -1,0 +1,23 @@
+# CODEOWNERS — reviewers are automatically requested for PRs touching these paths.
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default: all files require review from the core maintainer.
+*                          @NAGenaev
+
+# Cryptographic core — extra scrutiny required.
+internal/barrier/          @NAGenaev
+internal/seal/             @NAGenaev
+internal/shamir/           @NAGenaev
+
+# Authentication and policy.
+internal/token/            @NAGenaev
+internal/policy/           @NAGenaev
+internal/k8s/              @NAGenaev
+
+# Operator.
+internal/operator/         @NAGenaev
+cmd/tuck-operator/         @NAGenaev
+
+# CI / release pipeline.
+.github/                   @NAGenaev
+build/                     @NAGenaev

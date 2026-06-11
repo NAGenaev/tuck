@@ -10,11 +10,12 @@ import (
 // ---- Mock KubeClient ----
 
 type mockKube struct {
-	mu      sync.Mutex
-	items   []TuckSecret
-	rv      string
-	events  []WatchEvent
-	applied []*KubeSecret
+	mu       sync.Mutex
+	items    []TuckSecret
+	rv       string
+	events   []WatchEvent
+	applied  []*KubeSecret
+	statuses []TuckSecret
 }
 
 func (m *mockKube) List(_ context.Context, _ string) (*TuckSecretList, error) {
@@ -38,6 +39,13 @@ func (m *mockKube) ApplySecret(_ context.Context, s *KubeSecret) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.applied = append(m.applied, s)
+	return nil
+}
+
+func (m *mockKube) UpdateStatus(_ context.Context, ts *TuckSecret) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.statuses = append(m.statuses, *ts)
 	return nil
 }
 

@@ -195,9 +195,113 @@ func (c *KubeClient) ApplySecret(ctx context.Context, secret *KubeSecret) error 
 	return nil
 }
 
+// UpdateStatus updates the status subresource of a TuckSecret.
+// Silently skips when ResourceVersion is empty (e.g. in tests without a real cluster).
+func (c *KubeClient) UpdateStatus(ctx context.Context, ts *TuckSecret) error {
+	if ts.Metadata.ResourceVersion == "" {
+		return nil
+	}
+	ns := ts.Metadata.Namespace
+	name := ts.Metadata.Name
+	url := fmt.Sprintf("%s/apis/tuck.io/v1alpha1/namespaces/%s/tucksecrets/%s/status",
+		c.apiURL, ns, name)
+	body, err := json.Marshal(ts)
+	if err != nil {
+		return fmt.Errorf("marshal status: %w", err)
+	}
+	req, err := c.newReq(ctx, http.MethodPut, url, body)
+	if err != nil {
+		return err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("update status %s/%s: %w", ns, name, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("update status %s/%s: unexpected status %d", ns, name, resp.StatusCode)
+	}
+	return nil
+}
+
+// --- Lease (leader election) ---
+
+// GetLease fetches the named Lease. Returns (nil, nil) when not found.
+func (c *KubeClient) GetLease(ctx context.Context, namespace, name string) (*Lease, error) {
+	req, err := c.newReq(ctx, http.MethodGet, c.leaseURL(namespace, name), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("get lease: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("get lease: status %d", resp.StatusCode)
+	}
+	var lease Lease
+	return &lease, json.NewDecoder(resp.Body).Decode(&lease)
+}
+
+// CreateLease creates a new Lease resource.
+func (c *KubeClient) CreateLease(ctx context.Context, namespace string, lease *Lease) (*Lease, error) {
+	body, err := json.Marshal(lease)
+	if err != nil {
+		return nil, err
+	}
+	req, err := c.newReq(ctx, http.MethodPost, c.leaseURL(namespace, ""), body)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("create lease: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("create lease: status %d", resp.StatusCode)
+	}
+	var created Lease
+	return &created, json.NewDecoder(resp.Body).Decode(&created)
+}
+
+// UpdateLease replaces a Lease resource (carries ResourceVersion for optimistic lock).
+func (c *KubeClient) UpdateLease(ctx context.Context, namespace string, lease *Lease) (*Lease, error) {
+	body, err := json.Marshal(lease)
+	if err != nil {
+		return nil, err
+	}
+	req, err := c.newReq(ctx, http.MethodPut, c.leaseURL(namespace, lease.Metadata.Name), body)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("update lease: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("update lease: status %d", resp.StatusCode)
+	}
+	var updated Lease
+	return &updated, json.NewDecoder(resp.Body).Decode(&updated)
+}
+
 func (c *KubeClient) tucksecretURL(namespace string) string {
 	if namespace == "" {
 		return c.apiURL + "/apis/tuck.io/v1alpha1/tucksecrets"
 	}
 	return fmt.Sprintf("%s/apis/tuck.io/v1alpha1/namespaces/%s/tucksecrets", c.apiURL, namespace)
+}
+
+func (c *KubeClient) leaseURL(namespace, name string) string {
+	base := fmt.Sprintf("%s/apis/coordination.k8s.io/v1/namespaces/%s/leases", c.apiURL, namespace)
+	if name != "" {
+		return base + "/" + name
+	}
+	return base
 }

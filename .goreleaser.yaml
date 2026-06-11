@@ -1,0 +1,184 @@
+version: 2
+
+project_name: tuck
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: tuck
+    main: ./cmd/tuck
+    binary: tuck
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.Version={{.Version}}
+
+  - id: tuckcli
+    main: ./cmd/tuckcli
+    binary: tuckcli
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+
+  - id: tuck-operator
+    main: ./cmd/tuck-operator
+    binary: tuck-operator
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+
+archives:
+  - id: tuck
+    builds: [tuck, tuckcli]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+      - CHANGELOG.md
+
+  - id: operator
+    builds: [tuck-operator]
+    name_template: "tuck-operator_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - deploy/**/*
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+signs:
+  - cmd: cosign
+    env:
+      - COSIGN_EXPERIMENTAL=1
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
+sboms:
+  - artifacts: archive
+    args: ["$artifact", "--file", "$document", "--output", "spdx-json"]
+
+dockers:
+  - id: tuck-server
+    ids: [tuck]
+    image_templates:
+      - "ghcr.io/nagenaev/tuck:{{ .Version }}-amd64"
+      - "ghcr.io/nagenaev/tuck:latest-amd64"
+    dockerfile: build/Dockerfile.server
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title=tuck"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source=https://github.com/NAGenaev/tuck"
+      - "--label=org.opencontainers.image.licenses=Apache-2.0"
+
+  - id: tuck-server-arm64
+    ids: [tuck]
+    image_templates:
+      - "ghcr.io/nagenaev/tuck:{{ .Version }}-arm64"
+      - "ghcr.io/nagenaev/tuck:latest-arm64"
+    dockerfile: build/Dockerfile.server
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.title=tuck"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source=https://github.com/NAGenaev/tuck"
+      - "--label=org.opencontainers.image.licenses=Apache-2.0"
+
+  - id: tuck-operator
+    ids: [tuck-operator]
+    image_templates:
+      - "ghcr.io/nagenaev/tuck-operator:{{ .Version }}-amd64"
+      - "ghcr.io/nagenaev/tuck-operator:latest-amd64"
+    dockerfile: build/Dockerfile.operator
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+
+  - id: tuck-operator-arm64
+    ids: [tuck-operator]
+    image_templates:
+      - "ghcr.io/nagenaev/tuck-operator:{{ .Version }}-arm64"
+      - "ghcr.io/nagenaev/tuck-operator:latest-arm64"
+    dockerfile: build/Dockerfile.operator
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+
+docker_manifests:
+  - name_template: "ghcr.io/nagenaev/tuck:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/nagenaev/tuck:{{ .Version }}-amd64"
+      - "ghcr.io/nagenaev/tuck:{{ .Version }}-arm64"
+
+  - name_template: "ghcr.io/nagenaev/tuck:latest"
+    image_templates:
+      - "ghcr.io/nagenaev/tuck:latest-amd64"
+      - "ghcr.io/nagenaev/tuck:latest-arm64"
+
+  - name_template: "ghcr.io/nagenaev/tuck-operator:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/nagenaev/tuck-operator:{{ .Version }}-amd64"
+      - "ghcr.io/nagenaev/tuck-operator:{{ .Version }}-arm64"
+
+  - name_template: "ghcr.io/nagenaev/tuck-operator:latest"
+    image_templates:
+      - "ghcr.io/nagenaev/tuck-operator:latest-amd64"
+      - "ghcr.io/nagenaev/tuck-operator:latest-arm64"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
+
+release:
+  github:
+    owner: NAGenaev
+    name: tuck
+  draft: false
+  prerelease: auto
+  name_template: "{{.ProjectName}} {{.Tag}}"
+  footer: |
+    ## Docker images
+
+    ```sh
+    docker pull ghcr.io/nagenaev/tuck:{{ .Version }}
+    docker pull ghcr.io/nagenaev/tuck-operator:{{ .Version }}
+    ```
+
+    ## Verify checksums
+
+    ```sh
+    cosign verify-blob \
+      --certificate checksums.txt.pem \
+      --signature checksums.txt.sig \
+      checksums.txt
+    ```

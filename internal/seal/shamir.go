@@ -75,6 +75,12 @@ func NewShamirFromConfig(configPath string) (*ShamirSeal, error) {
 
 func (s *ShamirSeal) Type() string { return "shamir" }
 
+// N returns the total number of shares this seal was configured with.
+func (s *ShamirSeal) N() int { return s.n }
+
+// K returns the minimum number of shares required to unseal.
+func (s *ShamirSeal) K() int { return s.k }
+
 // Init generates a fresh root key, splits it into s.n shares, writes only the
 // config (N/K) to disk, and returns all shares as base64url strings in
 // InitResult.Shares.

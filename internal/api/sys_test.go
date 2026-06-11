@@ -177,6 +177,57 @@ func TestPostUnseal_MissingKey(t *testing.T) {
 	}
 }
 
+// TestReady_Unsealed verifies GET /v1/sys/ready returns 200 when the barrier is open.
+func TestReady_Unsealed(t *testing.T) {
+	ts, _, _ := newTestServer(t)
+	resp, err := http.Get(ts.URL + "/v1/sys/ready")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("ready (unsealed): status = %d, want 200; body: %s", resp.StatusCode, body)
+	}
+	var result map[string]any
+	json.Unmarshal(body, &result) //nolint:errcheck
+	if result["ready"] != true {
+		t.Errorf("ready = %v, want true", result["ready"])
+	}
+}
+
+// TestReady_Sealed verifies GET /v1/sys/ready returns 503 when sealed — so
+// Kubernetes readinessProbe stops routing traffic during unseal.
+func TestReady_Sealed(t *testing.T) {
+	ts, c, _ := newTestServer(t)
+	c.Seal()
+
+	resp, err := http.Get(ts.URL + "/v1/sys/ready")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("ready (sealed): status = %d, want 503; body: %s", resp.StatusCode, body)
+	}
+	var result map[string]any
+	json.Unmarshal(body, &result) //nolint:errcheck
+	if result["sealed"] != true {
+		t.Errorf("sealed = %v, want true", result["sealed"])
+	}
+}
+
+// TestReady_NoAuth verifies GET /v1/sys/ready needs no token.
+func TestReady_NoAuth(t *testing.T) {
+	ts, _, _ := newTestServer(t)
+	resp, _ := http.Get(ts.URL + "/v1/sys/ready")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("ready without token: status = %d, want 200", resp.StatusCode)
+	}
+}
+
 // TestShamirUnsealFlow drives the complete Shamir unseal ceremony:
 // server starts sealed, three shard POSTs open the barrier.
 func TestShamirUnsealFlow(t *testing.T) {

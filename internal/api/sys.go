@@ -86,6 +86,19 @@ func (s *Server) postUnseal(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// getReady handles GET /v1/sys/ready (no authentication required).
+//
+// Returns 200 when the server is unsealed and ready to serve requests.
+// Returns 503 when sealed — use this as the Kubernetes readinessProbe target.
+// GET /v1/health can serve as the livenessProbe (always 200 while process runs).
+func (s *Server) getReady(w http.ResponseWriter, _ *http.Request) {
+	if s.core.Sealed() {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"ready": false, "sealed": true})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ready": true, "sealed": false})
+}
+
 // postSeal handles POST /v1/sys/seal (requires X-Tuck-Token with root policy).
 //
 // Re-seals the server immediately, dropping the barrier key from memory. All

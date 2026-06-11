@@ -33,6 +33,7 @@ func (s *Server) Handler() http.Handler {
 
 	// Sys endpoints: seal-status and unseal are unauthenticated; seal requires root.
 	mux.HandleFunc("GET /v1/sys/seal-status", s.getSealStatus)
+	mux.HandleFunc("GET /v1/sys/ready", s.getReady)
 	mux.HandleFunc("POST /v1/sys/unseal", s.postUnseal)
 	mux.HandleFunc("POST /v1/sys/seal", s.requireToken(s.postSeal))
 

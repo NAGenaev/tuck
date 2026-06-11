@@ -14,6 +14,7 @@ import (
 
 	"github.com/NAGenaev/tuck/internal/barrier"
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
+	"github.com/NAGenaev/tuck/internal/kvv2"
 	"github.com/NAGenaev/tuck/internal/physical"
 	"github.com/NAGenaev/tuck/internal/policy"
 	"github.com/NAGenaev/tuck/internal/seal"
@@ -53,6 +54,7 @@ type Core struct {
 	seal     seal.Seal
 	tokens   *token.Store
 	policies *policy.Store
+	kv2      *kvv2.Store
 	// optional — nil means k8s auth is disabled
 	k8sReviewer k8sauth.Reviewer
 	k8sRoles    *k8sauth.RoleStore
@@ -81,6 +83,7 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		seal:        s,
 		tokens:      token.NewStore(b),
 		policies:    policy.NewStore(b),
+		kv2:         kvv2.New(b),
 		k8sReviewer: reviewer,
 		k8sRoles:    k8sauth.NewRoleStore(b),
 	}
@@ -422,6 +425,9 @@ func (c *Core) DeleteSecret(ctx context.Context, p string) error {
 func secretKey(p string) string {
 	return secretPrefix + path.Clean("/"+p)[1:]
 }
+
+// KVv2 returns the versioned KV store.
+func (c *Core) KVv2() *kvv2.Store { return c.kv2 }
 
 // RotateKey generates a new root key via the seal and re-wraps the barrier DEK.
 // No data re-encryption is needed — only the keyring envelope changes.

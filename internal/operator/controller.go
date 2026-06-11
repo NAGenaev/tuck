@@ -22,7 +22,10 @@ type KubeClientIface interface {
 	List(ctx context.Context, namespace string) (*TuckSecretList, error)
 	Watch(ctx context.Context, namespace, resourceVersion string) (<-chan WatchEvent, error)
 	ApplySecret(ctx context.Context, secret *KubeSecret) error
+	DeleteSecret(ctx context.Context, namespace, name string) error
 	UpdateStatus(ctx context.Context, ts *TuckSecret) error
+	AddFinalizer(ctx context.Context, ts *TuckSecret, finalizer string) error
+	RemoveFinalizer(ctx context.Context, ts *TuckSecret, finalizer string) error
 }
 
 // TuckClientIface is the subset of TuckClient used by the controller.
@@ -92,6 +95,13 @@ func (ctrl *Controller) runOnce(ctx context.Context) error {
 
 	for _, ts := range list.Items {
 		ctrl.addTracked(ts)
+		if ts.Metadata.DeletionTimestamp != nil {
+			if err := ctrl.runDeletion(ctx, ts); err != nil {
+				slog.Error("operator: deletion", "namespace", ts.Metadata.Namespace, "name", ts.Metadata.Name, "err", err)
+			}
+			continue
+		}
+		ctrl.ensureFinalizer(ctx, ts)
 		if err := ctrl.reconcile(ctx, ts); err != nil {
 			slog.Error("operator: reconcile", "namespace", ts.Metadata.Namespace, "name", ts.Metadata.Name, "err", err)
 		}
@@ -134,14 +144,19 @@ func (ctrl *Controller) handleEvent(ctx context.Context, ev WatchEvent) error {
 	switch ev.Type {
 	case "ADDED", "MODIFIED":
 		ctrl.addTracked(ev.Object)
+		// If the object is being deleted (DeletionTimestamp set) run cleanup.
+		if ev.Object.Metadata.DeletionTimestamp != nil {
+			return ctrl.runDeletion(ctx, ev.Object)
+		}
+		// Ensure our finalizer is present before syncing.
+		if err := ctrl.ensureFinalizer(ctx, ev.Object); err != nil {
+			return err
+		}
 		return ctrl.reconcile(ctx, ev.Object)
 
 	case "DELETED":
 		ctrl.removeTracked(ev.Object)
-		// The operator does NOT delete the K8s Secret on TuckSecret deletion.
-		// It only manages Secret content, not its lifecycle. This is
-		// conservative: the user deletes the K8s Secret explicitly if desired.
-		slog.Info("operator: TuckSecret deleted — K8s Secret left in place", "namespace", ev.Object.Metadata.Namespace, "name", ev.Object.Metadata.Name)
+		slog.Info("operator: TuckSecret fully deleted", "namespace", ev.Object.Metadata.Namespace, "name", ev.Object.Metadata.Name)
 		return nil
 
 	case "BOOKMARK":
@@ -288,4 +303,44 @@ func (ctrl *Controller) removeTracked(ts TuckSecret) {
 
 func resourceKey(ts TuckSecret) string {
 	return ts.Metadata.Namespace + "/" + ts.Metadata.Name
+}
+
+// ensureFinalizer adds FinalizerCleanup to ts if it's not already present.
+func (ctrl *Controller) ensureFinalizer(ctx context.Context, ts TuckSecret) error {
+	for _, f := range ts.Metadata.Finalizers {
+		if f == FinalizerCleanup {
+			return nil
+		}
+	}
+	if ts.Metadata.ResourceVersion == "" {
+		return nil // skip in tests without a real cluster
+	}
+	if err := ctrl.kube.AddFinalizer(ctx, &ts, FinalizerCleanup); err != nil {
+		slog.Warn("operator: add finalizer", "namespace", ts.Metadata.Namespace, "name", ts.Metadata.Name, "err", err)
+	}
+	return nil
+}
+
+// runDeletion handles TuckSecret deletion: cleans up the K8s Secret if
+// DeletionPolicy=="Delete", then removes our finalizer.
+func (ctrl *Controller) runDeletion(ctx context.Context, ts TuckSecret) error {
+	ctrl.removeTracked(ts)
+
+	if ts.Spec.DeletionPolicy == "Delete" {
+		if err := ctrl.kube.DeleteSecret(ctx, ts.Metadata.Namespace, ts.Spec.SecretName); err != nil {
+			slog.Warn("operator: delete K8s Secret on TuckSecret deletion",
+				"namespace", ts.Metadata.Namespace, "secret", ts.Spec.SecretName, "err", err)
+		} else {
+			slog.Info("operator: deleted K8s Secret (DeletionPolicy=Delete)",
+				"namespace", ts.Metadata.Namespace, "secret", ts.Spec.SecretName)
+		}
+	} else {
+		slog.Info("operator: TuckSecret deleted — K8s Secret retained (DeletionPolicy=Retain)",
+			"namespace", ts.Metadata.Namespace, "name", ts.Metadata.Name)
+	}
+
+	if ts.Metadata.ResourceVersion == "" {
+		return nil
+	}
+	return ctrl.kube.RemoveFinalizer(ctx, &ts, FinalizerCleanup)
 }

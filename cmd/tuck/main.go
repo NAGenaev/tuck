@@ -20,6 +20,7 @@ import (
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
 	"github.com/NAGenaev/tuck/internal/physical"
 	"github.com/NAGenaev/tuck/internal/seal"
+	"github.com/NAGenaev/tuck/internal/telemetry"
 	"github.com/NAGenaev/tuck/internal/tlsutil"
 )
 
@@ -54,6 +55,9 @@ func main() {
 	transitKey := flag.String("seal-transit-key", "tuck-seal", "Transit seal: Transit encryption key name")
 	transitToken := flag.String("seal-transit-token", "", "Transit seal: bearer token (use env TUCK_TRANSIT_TOKEN to avoid ps exposure)")
 	transitKeyFile := flag.String("seal-transit-key-file", "tuck-transit.enc", "Transit seal: file to store wrapped root key ciphertext")
+
+	// Observability
+	otelEndpoint := flag.String("otel-endpoint", "", "OpenTelemetry OTLP HTTP endpoint (e.g. http://otel-collector:4318); empty = disabled")
 
 	// Kubernetes auth
 	k8sAPI := flag.String("k8s-api", "https://kubernetes.default.svc", "Kubernetes API server URL; empty = disable k8s auth")
@@ -136,6 +140,17 @@ func main() {
 	c := core.NewWithK8s(backend, s, reviewer)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+
+	// --- OpenTelemetry ---
+	otelShutdown, err := telemetry.Init(ctx, *otelEndpoint)
+	if err != nil {
+		log.Fatalf("init telemetry: %v", err)
+	}
+	defer func() {
+		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = otelShutdown(shutCtx)
+	}()
 	defer stop()
 
 	c.StartGC(ctx)
@@ -180,7 +195,7 @@ func main() {
 
 	// --- HTTP server with production timeouts ---
 	srv := &http.Server{
-		Handler:           api.New(c).Handler(),
+		Handler:           telemetry.Middleware(api.New(c).Handler()),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,

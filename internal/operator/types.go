@@ -17,6 +17,10 @@ type TuckSecretSpec struct {
 	SecretKey       string `json:"secretKey"`
 	TuckServer      string `json:"tuckServer,omitempty"`
 	RefreshInterval string `json:"refreshInterval,omitempty"`
+	// DeletionPolicy controls what happens to the K8s Secret when the TuckSecret
+	// is deleted. "Retain" (default) leaves the K8s Secret in place. "Delete"
+	// removes it together with the TuckSecret.
+	DeletionPolicy string `json:"deletionPolicy,omitempty"`
 }
 
 // StatusConditionType identifies a condition on a TuckSecret.
@@ -43,12 +47,19 @@ type TuckSecretStatus struct {
 	Conditions     []StatusCondition `json:"conditions,omitempty"`
 }
 
+// FinalizerCleanup is added to every TuckSecret. When deletion is requested the
+// controller removes the managed K8s Secret (if DeletionPolicy=="Delete") then
+// strips the finalizer so Kubernetes can garbage-collect the TuckSecret.
+const FinalizerCleanup = "tuck.io/cleanup"
+
 type ObjectMeta struct {
-	Name            string            `json:"name"`
-	Namespace       string            `json:"namespace"`
-	ResourceVersion string            `json:"resourceVersion,omitempty"`
-	Labels          map[string]string `json:"labels,omitempty"`
-	Annotations     map[string]string `json:"annotations,omitempty"`
+	Name              string            `json:"name"`
+	Namespace         string            `json:"namespace"`
+	ResourceVersion   string            `json:"resourceVersion,omitempty"`
+	DeletionTimestamp *string           `json:"deletionTimestamp,omitempty"`
+	Finalizers        []string          `json:"finalizers,omitempty"`
+	Labels            map[string]string `json:"labels,omitempty"`
+	Annotations       map[string]string `json:"annotations,omitempty"`
 }
 
 // TuckSecretList is returned by the k8s list API.

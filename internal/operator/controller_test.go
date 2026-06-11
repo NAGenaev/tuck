@@ -49,6 +49,12 @@ func (m *mockKube) UpdateStatus(_ context.Context, ts *TuckSecret) error {
 	return nil
 }
 
+func (m *mockKube) DeleteSecret(_ context.Context, _, _ string) error { return nil }
+
+func (m *mockKube) AddFinalizer(_ context.Context, _ *TuckSecret, _ string) error { return nil }
+
+func (m *mockKube) RemoveFinalizer(_ context.Context, _ *TuckSecret, _ string) error { return nil }
+
 // ---- Mock TuckClient ----
 
 type mockTuck struct {

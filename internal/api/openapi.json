@@ -1,0 +1,334 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Tuck API",
+    "description": "Open-source Kubernetes-native secrets manager. Single binary, no external DB.",
+    "version": "0.9.0",
+    "contact": { "email": "genaevlive@gmail.com" },
+    "license": { "name": "Apache-2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0" }
+  },
+  "servers": [
+    { "url": "https://localhost:8200", "description": "Local dev server" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "TuckToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Tuck-Token"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": { "error": { "type": "string" } }
+      },
+      "SealStatus": {
+        "type": "object",
+        "properties": {
+          "sealed": { "type": "boolean" },
+          "type": { "type": "string", "enum": ["dev", "shamir", "transit"] },
+          "required_shards": { "type": "integer" },
+          "received_shards": { "type": "integer" }
+        }
+      },
+      "Token": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "example": "tuck_abc123" },
+          "display_name": { "type": "string" },
+          "policies": { "type": "array", "items": { "type": "string" } },
+          "expires_at": { "type": "string", "format": "date-time" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Policy": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "rules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": { "type": "string", "example": "secret/db/*" },
+                "capabilities": {
+                  "type": "array",
+                  "items": { "type": "string", "enum": ["read", "write", "delete", "list"] }
+                }
+              }
+            }
+          }
+        }
+      },
+      "KVv1Response": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string" },
+          "value": { "type": "string" },
+          "encoding": { "type": "string", "enum": ["base64"], "description": "Present only for non-UTF-8 values" }
+        }
+      },
+      "KVv2Response": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string" },
+          "version": { "type": "integer" },
+          "value": { "type": "string" },
+          "encoding": { "type": "string", "enum": ["base64"] },
+          "deleted": { "type": "boolean" },
+          "metadata": { "$ref": "#/components/schemas/VerMeta" }
+        }
+      },
+      "VerMeta": {
+        "type": "object",
+        "properties": {
+          "version": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "deleted_at": { "type": "string", "format": "date-time", "nullable": true },
+          "destroyed": { "type": "boolean" }
+        }
+      },
+      "KVMeta": {
+        "type": "object",
+        "properties": {
+          "current_version": { "type": "integer" },
+          "max_versions": { "type": "integer" },
+          "versions": {
+            "type": "object",
+            "additionalProperties": { "$ref": "#/components/schemas/VerMeta" }
+          }
+        }
+      }
+    }
+  },
+  "security": [{ "TuckToken": [] }],
+  "paths": {
+    "/v1/health": {
+      "get": {
+        "summary": "Liveness probe",
+        "security": [],
+        "responses": {
+          "200": { "description": "Server is alive", "content": { "application/json": { "schema": { "type": "object", "properties": { "sealed": { "type": "boolean" } } } } } }
+        }
+      }
+    },
+    "/v1/sys/seal-status": {
+      "get": {
+        "summary": "Seal status",
+        "security": [],
+        "responses": {
+          "200": { "description": "Seal state", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SealStatus" } } } }
+        }
+      }
+    },
+    "/v1/sys/ready": {
+      "get": {
+        "summary": "Readiness probe — 503 when sealed",
+        "security": [],
+        "responses": {
+          "200": { "description": "Unsealed and ready" },
+          "503": { "description": "Sealed" }
+        }
+      }
+    },
+    "/v1/sys/unseal": {
+      "post": {
+        "summary": "Submit a Shamir share",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "key": { "type": "string" } }, "required": ["key"] } } }
+        },
+        "responses": {
+          "200": { "description": "Share accepted; returns seal status" },
+          "400": { "description": "Invalid share" }
+        }
+      }
+    },
+    "/v1/sys/seal": {
+      "post": {
+        "summary": "Seal the server (drops DEK from memory)",
+        "responses": {
+          "204": { "description": "Sealed" },
+          "403": { "description": "Forbidden" }
+        }
+      }
+    },
+    "/v1/sys/rotate": {
+      "post": {
+        "summary": "Rotate root key — re-wraps DEK, returns new Shamir shares if applicable",
+        "responses": {
+          "200": { "description": "Key rotated", "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "type": "boolean" }, "shares": { "type": "array", "items": { "type": "string" } } } } } } },
+          "403": { "description": "Root policy required" }
+        }
+      }
+    },
+    "/v1/sys/snapshot": {
+      "get": {
+        "summary": "Download a bbolt database snapshot (for backup)",
+        "responses": {
+          "200": { "description": "Binary snapshot", "content": { "application/octet-stream": {} } },
+          "403": { "description": "Root policy required" }
+        }
+      }
+    },
+    "/v1/secret/{path}": {
+      "parameters": [{ "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "summary": "Read a secret (KV v1)",
+        "responses": {
+          "200": { "description": "Secret value", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KVv1Response" } } } },
+          "404": { "description": "Not found" }
+        }
+      },
+      "put": {
+        "summary": "Write a secret (KV v1)",
+        "requestBody": { "required": true, "content": { "application/octet-stream": {}, "text/plain": {} } },
+        "responses": {
+          "204": { "description": "Written" }
+        }
+      },
+      "delete": {
+        "summary": "Delete a secret (KV v1)",
+        "responses": {
+          "204": { "description": "Deleted" }
+        }
+      }
+    },
+    "/v1/auth/token": {
+      "post": {
+        "summary": "Create a token",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "display_name": { "type": "string" }, "policies": { "type": "array", "items": { "type": "string" } }, "ttl": { "type": "string", "example": "24h" } } } } }
+        },
+        "responses": {
+          "200": { "description": "Token created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Token" } } } }
+        }
+      }
+    },
+    "/v1/auth/token/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "summary": "Look up a token",
+        "responses": {
+          "200": { "description": "Token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Token" } } } },
+          "404": { "description": "Not found" }
+        }
+      },
+      "delete": {
+        "summary": "Revoke a token",
+        "responses": { "204": { "description": "Revoked" } }
+      }
+    },
+    "/v1/auth/token/{id}/renew": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "summary": "Renew a token's TTL",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "ttl": { "type": "string", "example": "48h" } } } } } },
+        "responses": {
+          "200": { "description": "Token renewed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Token" } } } }
+        }
+      }
+    },
+    "/v1/policy/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "summary": "Get a policy",
+        "responses": { "200": { "description": "Policy", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Policy" } } } } }
+      },
+      "put": {
+        "summary": "Create or update a policy",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Policy" } } } },
+        "responses": { "204": { "description": "Saved" } }
+      },
+      "delete": {
+        "summary": "Delete a policy",
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/v1/auth/kubernetes/login": {
+      "post": {
+        "summary": "Exchange a Kubernetes ServiceAccount token for a Tuck token",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "token": { "type": "string" } }, "required": ["token"] } } } },
+        "responses": { "200": { "description": "Tuck token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Token" } } } } }
+      }
+    },
+    "/v2/secret/{path}": {
+      "parameters": [
+        { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "get": {
+        "summary": "Read a versioned secret (KV v2)",
+        "parameters": [{ "name": "version", "in": "query", "schema": { "type": "integer" }, "description": "Version number (0 = current)" }],
+        "responses": {
+          "200": { "description": "Secret value and metadata", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KVv2Response" } } } },
+          "404": { "description": "Not found or deleted" }
+        }
+      },
+      "put": {
+        "summary": "Write a new version (KV v2)",
+        "parameters": [{ "name": "cas", "in": "query", "schema": { "type": "integer" }, "description": "Check-and-set: reject if current version != cas" }],
+        "requestBody": { "required": true, "content": { "application/octet-stream": {}, "text/plain": {} } },
+        "responses": {
+          "200": { "description": "Version written", "content": { "application/json": { "schema": { "type": "object", "properties": { "version": { "type": "integer" }, "path": { "type": "string" } } } } } },
+          "409": { "description": "CAS mismatch" }
+        }
+      },
+      "delete": {
+        "summary": "Soft-delete versions (KV v2)",
+        "parameters": [{ "name": "versions", "in": "query", "schema": { "type": "string" }, "description": "Comma-separated version numbers (default: current)" }],
+        "responses": { "204": { "description": "Soft-deleted" } }
+      }
+    },
+    "/v2/secret/undelete/{path}": {
+      "parameters": [{ "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "summary": "Undelete versions (KV v2)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "versions": { "type": "array", "items": { "type": "integer" } } } } } } },
+        "responses": { "204": { "description": "Undeleted" } }
+      }
+    },
+    "/v2/secret/destroy/{path}": {
+      "parameters": [{ "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "summary": "Permanently destroy versions — data is unrecoverable (KV v2)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "versions": { "type": "array", "items": { "type": "integer" } } } } } } },
+        "responses": { "204": { "description": "Destroyed" } }
+      }
+    },
+    "/v2/secret/metadata/{path}": {
+      "parameters": [{ "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "summary": "Get version metadata (KV v2)",
+        "responses": {
+          "200": { "description": "Metadata", "content": { "application/json": { "schema": { "type": "object", "properties": { "path": { "type": "string" }, "metadata": { "$ref": "#/components/schemas/KVMeta" } } } } } }
+        }
+      },
+      "put": {
+        "summary": "Update metadata config (KV v2)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "max_versions": { "type": "integer" } } } } } },
+        "responses": { "204": { "description": "Updated" } }
+      },
+      "delete": {
+        "summary": "Delete all versions and metadata (KV v2)",
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "summary": "Prometheus metrics",
+        "security": [],
+        "responses": { "200": { "description": "Prometheus text format", "content": { "text/plain": {} } } }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "summary": "This OpenAPI specification",
+        "security": [],
+        "responses": { "200": { "description": "OpenAPI 3.0 JSON", "content": { "application/json": {} } } }
+      }
+    }
+  }
+}

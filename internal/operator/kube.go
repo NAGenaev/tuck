@@ -291,6 +291,78 @@ func (c *KubeClient) UpdateLease(ctx context.Context, namespace string, lease *L
 	return &updated, json.NewDecoder(resp.Body).Decode(&updated)
 }
 
+// DeleteSecret removes a K8s v1 Secret. Returns nil if the secret does not exist.
+func (c *KubeClient) DeleteSecret(ctx context.Context, namespace, name string) error {
+	url := fmt.Sprintf("%s/api/v1/namespaces/%s/secrets/%s", c.apiURL, namespace, name)
+	req, err := c.newReq(ctx, http.MethodDelete, url, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("delete secret %s/%s: %w", namespace, name, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("delete secret %s/%s: unexpected status %d", namespace, name, resp.StatusCode)
+	}
+	return nil
+}
+
+// AddFinalizer adds finalizer to ts.Metadata.Finalizers via a JSON merge-patch.
+func (c *KubeClient) AddFinalizer(ctx context.Context, ts *TuckSecret, finalizer string) error {
+	finalizers := append(append([]string{}, ts.Metadata.Finalizers...), finalizer)
+	return c.patchFinalizers(ctx, ts, finalizers)
+}
+
+// RemoveFinalizer removes finalizer from ts.Metadata.Finalizers via a JSON merge-patch.
+func (c *KubeClient) RemoveFinalizer(ctx context.Context, ts *TuckSecret, finalizer string) error {
+	var finalizers []string
+	for _, f := range ts.Metadata.Finalizers {
+		if f != finalizer {
+			finalizers = append(finalizers, f)
+		}
+	}
+	return c.patchFinalizers(ctx, ts, finalizers)
+}
+
+func (c *KubeClient) patchFinalizers(ctx context.Context, ts *TuckSecret, finalizers []string) error {
+	ns := ts.Metadata.Namespace
+	name := ts.Metadata.Name
+	url := fmt.Sprintf("%s/apis/tuck.io/v1alpha1/namespaces/%s/tucksecrets/%s", c.apiURL, ns, name)
+
+	patch := map[string]any{
+		"metadata": map[string]any{"finalizers": finalizers},
+	}
+	body, err := json.Marshal(patch)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	token, err := c.bearerToken()
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/merge-patch+json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("patch finalizers %s/%s: %w", ns, name, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("patch finalizers %s/%s: unexpected status %d", ns, name, resp.StatusCode)
+	}
+	return nil
+}
+
 func (c *KubeClient) tucksecretURL(namespace string) string {
 	if namespace == "" {
 		return c.apiURL + "/apis/tuck.io/v1alpha1/tucksecrets"

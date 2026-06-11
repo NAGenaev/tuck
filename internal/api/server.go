@@ -74,6 +74,21 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/auth/kubernetes/role/{namespace}/{sa}", s.requireToken(s.getK8sRole))
 	mux.HandleFunc("DELETE /v1/auth/kubernetes/role/{namespace}/{sa}", s.requireToken(s.deleteK8sRole))
 
+	// KV v2 — versioned secrets
+	mux.HandleFunc("PUT /v2/secret/{path...}", s.requireToken(s.v2WriteSecret))
+	mux.HandleFunc("GET /v2/secret/{path...}", s.requireToken(s.v2ReadSecret))
+	mux.HandleFunc("DELETE /v2/secret/{path...}", s.requireToken(s.v2DeleteSecret))
+	mux.HandleFunc("LIST /v2/secret/{path...}", s.requireToken(s.v2ListSecrets))
+	mux.HandleFunc("POST /v2/secret/undelete/{path...}", s.requireToken(s.v2Undelete))
+	mux.HandleFunc("POST /v2/secret/destroy/{path...}", s.requireToken(s.v2Destroy))
+	mux.HandleFunc("GET /v2/secret/metadata/{path...}", s.requireToken(s.v2GetMeta))
+	mux.HandleFunc("PUT /v2/secret/metadata/{path...}", s.requireToken(s.v2UpdateMeta))
+	mux.HandleFunc("DELETE /v2/secret/metadata/{path...}", s.requireToken(s.v2DeleteMeta))
+	mux.HandleFunc("LIST /v2/secret/metadata/{path...}", s.requireToken(s.v2ListMeta))
+
+	// OpenAPI spec
+	mux.HandleFunc("GET /openapi.json", serveOpenAPI)
+
 	return audit.Middleware(s.audit, mux)
 }
 

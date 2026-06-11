@@ -12,8 +12,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/NAGenaev/tuck/internal/auth/approle"
 	"github.com/NAGenaev/tuck/internal/auth/jwt"
 	"github.com/NAGenaev/tuck/internal/barrier"
+	"github.com/NAGenaev/tuck/internal/dynamic/database"
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
 	"github.com/NAGenaev/tuck/internal/kvv2"
 	"github.com/NAGenaev/tuck/internal/physical"
@@ -66,7 +68,9 @@ type Core struct {
 	tokens   *token.Store
 	policies *policy.Store
 	kv2      *kvv2.Store
-	jwtStore *jwt.Store
+	jwtStore     *jwt.Store
+	approleStore *approle.Store
+	dbManager    *database.Manager
 	// optional — nil means k8s auth is disabled
 	k8sReviewer k8sauth.Reviewer
 	k8sRoles    *k8sauth.RoleStore
@@ -96,8 +100,10 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		tokens:      token.NewStore(b),
 		policies:    policy.NewStore(b),
 		kv2:         kvv2.New(b),
-		jwtStore:    jwt.NewStore(b),
-		k8sReviewer: reviewer,
+		jwtStore:     jwt.NewStore(b),
+		approleStore: approle.NewStore(b),
+		dbManager:    database.NewManager(b),
+		k8sReviewer:  reviewer,
 		k8sRoles:    k8sauth.NewRoleStore(b),
 	}
 }
@@ -549,6 +555,76 @@ func (c *Core) LoginJWT(ctx context.Context, tokenStr string) (*token.Token, err
 	return c.CreateToken(ctx, displayName, result.Policies, result.TTL)
 }
 
+// --- AppRole auth ---
+
+func (c *Core) PutAppRole(ctx context.Context, r *approle.Role) error {
+	return c.approleStore.PutRole(ctx, r)
+}
+func (c *Core) GetAppRole(ctx context.Context, name string) (*approle.Role, error) {
+	return c.approleStore.GetRole(ctx, name)
+}
+func (c *Core) DeleteAppRole(ctx context.Context, name string) error {
+	return c.approleStore.DeleteRole(ctx, name)
+}
+func (c *Core) ListAppRoles(ctx context.Context) ([]string, error) {
+	return c.approleStore.ListRoles(ctx)
+}
+func (c *Core) GenerateSecretID(ctx context.Context, roleName string) (*approle.SecretID, error) {
+	return c.approleStore.GenerateSecretID(ctx, roleName)
+}
+func (c *Core) LookupSecretID(ctx context.Context, id string) (*approle.SecretID, error) {
+	return c.approleStore.LookupSecretID(ctx, id)
+}
+func (c *Core) DestroySecretID(ctx context.Context, id string) error {
+	return c.approleStore.DestroySecretID(ctx, id)
+}
+func (c *Core) LoginAppRole(ctx context.Context, roleID, secretID string) (*token.Token, error) {
+	result, err := c.approleStore.Login(ctx, roleID, secretID)
+	if err != nil {
+		return nil, err
+	}
+	return c.CreateToken(ctx, result.Subject, result.Policies, result.TTL)
+}
+
+// --- Dynamic secrets: Database engine ---
+
+func (c *Core) PutDBConfig(ctx context.Context, cfg *database.Config) error {
+	return c.dbManager.PutConfig(ctx, cfg)
+}
+func (c *Core) GetDBConfig(ctx context.Context, name string) (*database.Config, error) {
+	return c.dbManager.GetConfig(ctx, name)
+}
+func (c *Core) DeleteDBConfig(ctx context.Context, name string) error {
+	return c.dbManager.DeleteConfig(ctx, name)
+}
+func (c *Core) ListDBConfigs(ctx context.Context) ([]string, error) {
+	return c.dbManager.ListConfigs(ctx)
+}
+func (c *Core) PutDBRole(ctx context.Context, r *database.Role) error {
+	return c.dbManager.PutRole(ctx, r)
+}
+func (c *Core) GetDBRole(ctx context.Context, name string) (*database.Role, error) {
+	return c.dbManager.GetRole(ctx, name)
+}
+func (c *Core) DeleteDBRole(ctx context.Context, name string) error {
+	return c.dbManager.DeleteRole(ctx, name)
+}
+func (c *Core) ListDBRoles(ctx context.Context) ([]string, error) {
+	return c.dbManager.ListRoles(ctx)
+}
+func (c *Core) GenerateDBCreds(ctx context.Context, roleName string) (*database.Credentials, error) {
+	return c.dbManager.GenerateCreds(ctx, roleName)
+}
+func (c *Core) RevokeDBLease(ctx context.Context, leaseID string) error {
+	return c.dbManager.RevokeLease(ctx, leaseID)
+}
+func (c *Core) GetDBLease(ctx context.Context, leaseID string) (*database.Lease, error) {
+	return c.dbManager.GetLease(ctx, leaseID)
+}
+func (c *Core) ListDBLeases(ctx context.Context) ([]string, error) {
+	return c.dbManager.ListLeases(ctx)
+}
+
 func (c *Core) runGC(ctx context.Context) {
 	expired, err := c.tokens.ListExpired(ctx)
 	if err != nil {
@@ -557,5 +633,6 @@ func (c *Core) runGC(ctx context.Context) {
 	for _, id := range expired {
 		_ = c.tokens.Delete(ctx, id)
 	}
+	_ = c.dbManager.RevokeExpired(ctx)
 }
 

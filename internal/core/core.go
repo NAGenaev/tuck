@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/NAGenaev/tuck/internal/barrier"
+	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
 	"github.com/NAGenaev/tuck/internal/physical"
 	"github.com/NAGenaev/tuck/internal/policy"
 	"github.com/NAGenaev/tuck/internal/seal"
@@ -19,8 +20,9 @@ import (
 const secretPrefix = "secret/"
 
 var (
-	ErrUnauthorized = errors.New("permission denied")
-	ErrTokenInvalid = errors.New("invalid or expired token")
+	ErrUnauthorized    = errors.New("permission denied")
+	ErrTokenInvalid    = errors.New("invalid or expired token")
+	ErrK8sAuthDisabled = errors.New("kubernetes auth is not configured")
 )
 
 // Core is Tuck's runtime: storage + crypto + seal, plus the logical KV and identity APIs.
@@ -30,17 +32,28 @@ type Core struct {
 	seal     seal.Seal
 	tokens   *token.Store
 	policies *policy.Store
+	// optional — nil means k8s auth is disabled
+	k8sReviewer k8sauth.Reviewer
+	k8sRoles    *k8sauth.RoleStore
 }
 
-// New builds a Core over the given backend and seal.
+// New builds a Core without Kubernetes auth support.
 func New(backend physical.Backend, s seal.Seal) *Core {
+	return NewWithK8s(backend, s, nil)
+}
+
+// NewWithK8s builds a Core with an optional Kubernetes Reviewer.
+// Pass nil to disable Kubernetes auth.
+func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer) *Core {
 	b := barrier.New(backend)
 	return &Core{
-		backend:  backend,
-		barrier:  b,
-		seal:     s,
-		tokens:   token.NewStore(b),
-		policies: policy.NewStore(b),
+		backend:     backend,
+		barrier:     b,
+		seal:        s,
+		tokens:      token.NewStore(b),
+		policies:    policy.NewStore(b),
+		k8sReviewer: reviewer,
+		k8sRoles:    k8sauth.NewRoleStore(b),
 	}
 }
 
@@ -172,6 +185,50 @@ func (c *Core) GetPolicy(ctx context.Context, name string) (*policy.Policy, erro
 
 func (c *Core) DeletePolicy(ctx context.Context, name string) error {
 	return c.policies.Delete(ctx, name)
+}
+
+// --- Kubernetes auth ---
+
+// LoginK8s validates a Kubernetes ServiceAccount JWT via the configured
+// Reviewer, looks up the bound role, and returns a short-lived Tuck token.
+func (c *Core) LoginK8s(ctx context.Context, saToken string) (*token.Token, error) {
+	if c.k8sReviewer == nil {
+		return nil, ErrK8sAuthDisabled
+	}
+	result, err := c.k8sReviewer.Review(saToken)
+	if err != nil {
+		return nil, fmt.Errorf("k8s token review: %w", err)
+	}
+	if !result.Authenticated {
+		return nil, ErrTokenInvalid
+	}
+	namespace, sa, err := k8sauth.ParseUsername(result.Username)
+	if err != nil {
+		return nil, ErrTokenInvalid
+	}
+	role, err := c.k8sRoles.Get(ctx, namespace, sa)
+	if err != nil {
+		if errors.Is(err, k8sauth.ErrRoleNotFound) {
+			return nil, ErrUnauthorized
+		}
+		return nil, fmt.Errorf("get k8s role: %w", err)
+	}
+	return c.CreateToken(ctx, "k8s:"+namespace+"/"+sa, role.Policies, role.TTL)
+}
+
+// CreateK8sRole stores a role binding for a Kubernetes ServiceAccount.
+func (c *Core) CreateK8sRole(ctx context.Context, role *k8sauth.K8sRole) error {
+	return c.k8sRoles.Put(ctx, role)
+}
+
+// GetK8sRole retrieves the role bound to a Kubernetes ServiceAccount.
+func (c *Core) GetK8sRole(ctx context.Context, namespace, sa string) (*k8sauth.K8sRole, error) {
+	return c.k8sRoles.Get(ctx, namespace, sa)
+}
+
+// DeleteK8sRole removes the role binding for a Kubernetes ServiceAccount.
+func (c *Core) DeleteK8sRole(ctx context.Context, namespace, sa string) error {
+	return c.k8sRoles.Delete(ctx, namespace, sa)
 }
 
 // --- KV secrets ---

@@ -43,6 +43,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/policy/{name}", s.requireToken(s.getPolicy))
 	mux.HandleFunc("DELETE /v1/policy/{name}", s.requireToken(s.deletePolicy))
 
+	mux.HandleFunc("POST /v1/auth/kubernetes/login", s.loginK8s)
+	mux.HandleFunc("PUT /v1/auth/kubernetes/role/{namespace}/{sa}", s.requireToken(s.putK8sRole))
+	mux.HandleFunc("GET /v1/auth/kubernetes/role/{namespace}/{sa}", s.requireToken(s.getK8sRole))
+	mux.HandleFunc("DELETE /v1/auth/kubernetes/role/{namespace}/{sa}", s.requireToken(s.deleteK8sRole))
+
 	return mux
 }
 

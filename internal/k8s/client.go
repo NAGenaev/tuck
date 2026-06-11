@@ -18,13 +18,34 @@ const reviewTimeout = 10 * time.Second
 // Client calls the Kubernetes TokenReview API over HTTPS.
 type Client struct {
 	apiURL     string
-	token      string
+	token      string // static bearer token; ignored when tokenFile is set
+	tokenFile  string // if set, read per-Review call to handle projected token rotation
 	httpClient *http.Client
 }
 
-// NewClient builds a Client. caFile is used to build the TLS config.
-// If caFile is empty, the system cert pool is used.
+// NewClient builds a Client with a static bearer token.
 func NewClient(apiURL, token, caFile string) (*Client, error) {
+	c, err := newClient(apiURL, caFile)
+	if err != nil {
+		return nil, err
+	}
+	c.token = token
+	return c, nil
+}
+
+// NewClientFromFiles builds a Client that reads its own bearer token from
+// tokenFile on every Review call, transparently handling Kubernetes projected
+// token rotation.
+func NewClientFromFiles(apiURL, tokenFile, caFile string) (*Client, error) {
+	c, err := newClient(apiURL, caFile)
+	if err != nil {
+		return nil, err
+	}
+	c.tokenFile = tokenFile
+	return c, nil
+}
+
+func newClient(apiURL, caFile string) (*Client, error) {
 	tlsCfg := &tls.Config{}
 	if caFile != "" {
 		pem, err := os.ReadFile(caFile)
@@ -39,12 +60,22 @@ func NewClient(apiURL, token, caFile string) (*Client, error) {
 	}
 	return &Client{
 		apiURL: apiURL,
-		token:  token,
 		httpClient: &http.Client{
 			Timeout:   reviewTimeout,
 			Transport: &http.Transport{TLSClientConfig: tlsCfg},
 		},
 	}, nil
+}
+
+func (c *Client) bearerToken() (string, error) {
+	if c.tokenFile != "" {
+		b, err := os.ReadFile(c.tokenFile)
+		if err != nil {
+			return "", fmt.Errorf("read k8s token file: %w", err)
+		}
+		return strings.TrimSpace(string(b)), nil
+	}
+	return c.token, nil
 }
 
 // Review submits a TokenReview to the Kubernetes API and returns the result.
@@ -63,8 +94,12 @@ func (c *Client) Review(saToken string) (*ReviewResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
+	bearer, err := c.bearerToken()
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", "Bearer "+bearer)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

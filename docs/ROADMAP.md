@@ -1,7 +1,7 @@
 # Tuck — Production Roadmap
 
-> Состояние: M0–M4 завершены (crypto core, auth, k8s auth, CRD operator, production seals).
-> Этот документ описывает путь от текущего состояния до v1.0 GA.
+> Состояние: M0–M8 завершены (v0.9 pre-GA). Следующий шаг: внешний security audit (QA-3) → v1.0 GA.
+> P2-фичи (Raft HA, KV v2, Webhook Injector) запланированы на v1.x.
 
 ---
 

@@ -1,0 +1,8 @@
+# Compiled binaries
+/tuck
+/tuck.exe
+*.exe
+
+# Local dev data — NEVER commit secrets or root keys
+*.db
+tuck-dev-rootkey

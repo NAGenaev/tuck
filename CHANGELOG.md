@@ -11,6 +11,40 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.30.0] — 2026-06-12
+
+### Added
+
+#### UI: Auth Methods (`internal/ui`)
+
+New **Auth Methods** page in the embedded dashboard covering all four authentication
+backends:
+
+- **AppRole** — list roles, create/update role (policies, token TTL, secret-ID TTL &
+  max-uses), generate secret-ID (shown once)
+- **JWT/OIDC** — load/save config (JWKS URI, issuer, audience, default TTL), list
+  roles, create/update role (bound_subject, policies, TTL)
+- **LDAP** — load/save config (URL, base DN, bind DN, user attribute), list roles,
+  create/update role (groups, policies, TTL)
+- **Kubernetes** — create/update/lookup/delete role keyed by namespace + service account
+
+#### UI: Dynamic Secrets (`internal/ui`)
+
+New **Dynamic Secrets** page with five tabs:
+
+- **Database** — manage connections (plugin + connection URL), roles (SQL templates),
+  generate credentials (username + password shown once)
+- **AWS** — config (access key, region), roles (iam_user / assumed_role, policy/role
+  ARNs), generate credentials
+- **GCP** — config (service account JSON), roles (credential type, SA email, OAuth2
+  scopes), generate credentials
+- **Azure** — config (tenant/client ID + secret), roles (application object ID +
+  application ID, TTL), generate credentials
+- **Leases** — list all active leases across Database / AWS / GCP / Azure engines with
+  per-lease revocation
+
+---
+
 ## [0.29.0] — 2026-06-12
 
 ### Added

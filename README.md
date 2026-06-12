@@ -4,7 +4,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.29.0-green)](https://github.com/NAGenaev/tuck/releases)
+[![Release](https://img.shields.io/badge/release-v0.30.0-green)](https://github.com/NAGenaev/tuck/releases)
 
 Tuck is an open-source secrets manager built for Kubernetes. The pitch: **anti-Vault** — a single static binary, no external database, auto-unseal by default. `kubectl apply` and it runs.
 
@@ -614,6 +614,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 | M27 — Policy deny rules (CapDeny; deny-first evaluation overrides any allow) | v0.27 | ✅ |
 | M28 — Renewable tokens with MaxTTL (renewable flag, max_ttl cap, lookup-self, renew-self) | v0.28 | ✅ |
 | M29 — Token MaxUses (num_uses; auto-revoke after N authenticated calls) | v0.29 | ✅ |
+| M30 — UI: Auth Methods (AppRole/JWT/LDAP/K8s) + Dynamic Secrets (DB/AWS/GCP/Azure) + Leases | v0.30 | ✅ |
+| M31 — UI: Crypto Engines (PKI / Transit / SSH / TOTP in browser) | v0.31 | 🔜 |
+| M32 — CLI completeness (db/aws/gcp/azure creds, pki/transit/ssh/totp ops) | v0.32 | 🔜 |
 | v1.0 GA — External security audit | — | 🔜 |
 
 ---

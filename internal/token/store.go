@@ -2,10 +2,11 @@ package token
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/NAGenaev/tuck/internal/barrier"
@@ -102,20 +103,25 @@ func (s *Store) DeleteByAccessor(ctx context.Context, accessor string) error {
 }
 
 // List returns all token IDs currently persisted in the store.
+// Because token IDs are stored under their SHA-256 hash, we read each entry
+// to recover the original ID from the token value.
 func (s *Store) List(ctx context.Context) ([]string, error) {
 	keys, err := s.barrier.List(ctx, tokenPrefix)
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]string, len(keys))
-	for i, k := range keys {
-		ids[i] = strings.TrimPrefix(k, tokenPrefix)
+	ids := make([]string, 0, len(keys))
+	for _, k := range keys {
+		tok, err := s.getByStorageKey(ctx, k)
+		if err != nil {
+			continue
+		}
+		ids = append(ids, tok.ID)
 	}
 	return ids, nil
 }
 
 // ListExpired returns the IDs of all tokens whose TTL has elapsed.
-// Tokens with no expiry (ExpiresAt.IsZero()) are never returned.
 func (s *Store) ListExpired(ctx context.Context) ([]string, error) {
 	keys, err := s.barrier.List(ctx, tokenPrefix)
 	if err != nil {
@@ -124,9 +130,9 @@ func (s *Store) ListExpired(ctx context.Context) ([]string, error) {
 	now := time.Now()
 	var expired []string
 	for _, key := range keys {
-		tok, err := s.Get(ctx, strings.TrimPrefix(key, tokenPrefix))
+		tok, err := s.getByStorageKey(ctx, key)
 		if err != nil {
-			continue // skip unreadable tokens
+			continue
 		}
 		if !tok.ExpiresAt.IsZero() && tok.ExpiresAt.Before(now) {
 			expired = append(expired, tok.ID)
@@ -135,5 +141,25 @@ func (s *Store) ListExpired(ctx context.Context) ([]string, error) {
 	return expired, nil
 }
 
-func tokenKey(id string) string       { return tokenPrefix + id }
-func accessorKey(acc string) string   { return accessorPrefix + acc }
+// getByStorageKey reads a token directly by its full barrier storage key
+// (i.e. the hashed path), without requiring the original token ID.
+func (s *Store) getByStorageKey(ctx context.Context, storageKey string) (*Token, error) {
+	e, err := s.barrier.Get(ctx, storageKey)
+	if err != nil {
+		return nil, err
+	}
+	if e == nil {
+		return nil, ErrNotFound
+	}
+	return unmarshal(e.Value)
+}
+
+// tokenKey returns the barrier storage key for a given token ID.
+// The ID is hashed with SHA-256 so that raw bearer credentials are never
+// visible as bbolt keys in a database dump.
+func tokenKey(id string) string {
+	h := sha256.Sum256([]byte(id))
+	return tokenPrefix + hex.EncodeToString(h[:])
+}
+
+func accessorKey(acc string) string { return accessorPrefix + acc }

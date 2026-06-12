@@ -1,10 +1,10 @@
 # Tuck — Production Roadmap
 
-> Состояние: M0–M26 завершены (v0.26.0). Следующий шаг: внешний security audit (QA-3) → v1.0 GA.
+> Состояние: M0–M27 завершены (v0.27.0). Следующий шаг: внешний security audit (QA-3) → v1.0 GA.
 
 ---
 
-## Текущее состояние (v0.26.0)
+## Текущее состояние (v0.27.0)
 
 | Компонент | Статус |
 |---|---|
@@ -34,6 +34,7 @@
 | Response wrapping (single-use tokens, tuck_wrap_ prefix, 4 endpoints, background GC) | ✅ |
 | Cubbyhole engine (per-token private storage, auto-purge on token revocation) | ✅ |
 | Token accessor (tuck_acc_ alias; lookup/revoke without raw token; accessor index in barrier) | ✅ |
+| Policy deny rules (CapDeny; deny-first evaluation overrides any allow) | ✅ |
 | TLS (self-signed ECDSA P-256 или custom cert) | ✅ |
 | Graceful shutdown (30s drain + seal) | ✅ |
 | Audit log (SHA-256 hash chain, values never logged) | ✅ |

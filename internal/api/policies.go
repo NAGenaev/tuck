@@ -126,6 +126,8 @@ func parseCaps(ss []string) policy.Capability {
 			c |= policy.CapDelete
 		case "list":
 			c |= policy.CapList
+		case "deny":
+			c |= policy.CapDeny
 		}
 	}
 	return c
@@ -144,6 +146,9 @@ func capsToStrings(c policy.Capability) []string {
 	}
 	if c&policy.CapList != 0 {
 		ss = append(ss, "list")
+	}
+	if c&policy.CapDeny != 0 {
+		ss = append(ss, "deny")
 	}
 	return ss
 }

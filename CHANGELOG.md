@@ -11,6 +11,45 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.27.0] — 2026-06-12
+
+### Added
+
+#### Policy Deny Rules (`internal/policy`)
+
+The policy engine now supports an explicit **deny** capability that overrides
+any allow rules, regardless of policy order.
+
+**How it works:**
+
+1. Before checking allow rules, `Allowed` scans every rule in every attached
+   policy. If any matching rule carries `CapDeny`, the request is rejected
+   immediately — no allow rule can override it.
+2. Only if no deny rule fires does the usual allow-matching proceed.
+
+**Changes:**
+- `CapDeny Capability = 1 << 4` added to the capability bitmask
+- `Allowed` performs a deny-first two-pass evaluation
+- `parseCaps` in the API layer accepts `"deny"` as a capability string
+- `capsToStrings` emits `"deny"` when `CapDeny` is set
+- 7 new unit tests in `internal/policy/policy_test.go`
+
+**Example policy with a deny rule:**
+
+```json
+{
+  "rules": [
+    { "path": "secret/**",      "capabilities": ["read", "write"] },
+    { "path": "secret/prod/*",  "capabilities": ["deny"] }
+  ]
+}
+```
+
+Tokens carrying this policy can read/write `secret/dev/key` but are
+unconditionally blocked from anything under `secret/prod/`.
+
+---
+
 ## [0.26.0] — 2026-06-12
 
 ### Added

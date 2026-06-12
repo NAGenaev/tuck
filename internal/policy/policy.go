@@ -12,7 +12,8 @@ const (
 	CapRead   Capability = 1 << iota // GET
 	CapWrite                         // PUT
 	CapDelete                        // DELETE
-	CapList                          // LIST (future)
+	CapList                          // LIST
+	CapDeny                          // explicit deny; overrides any allow
 )
 
 // Rule binds a glob path pattern to a set of allowed capabilities.
@@ -35,9 +36,17 @@ var RootPolicy = Policy{
 	},
 }
 
-// Allowed returns true if at least one rule in any of the given policies
-// matches path and permits cap.
+// Allowed returns true if cap is permitted on path by the given policies.
+// Deny rules take precedence: if any matching rule carries CapDeny the request
+// is rejected regardless of any allow rules elsewhere.
 func Allowed(policies []Policy, path string, cap Capability) bool {
+	for _, p := range policies {
+		for _, r := range p.Rules {
+			if matchGlob(r.Path, path) && r.Capabilities&CapDeny != 0 {
+				return false
+			}
+		}
+	}
 	for _, p := range policies {
 		for _, r := range p.Rules {
 			if matchGlob(r.Path, path) && r.Capabilities&cap != 0 {

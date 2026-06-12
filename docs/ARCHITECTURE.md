@@ -278,9 +278,13 @@ Token GC runs every 15 minutes (background goroutine) and removes entries where 
 }
 ```
 
-Capabilities: `read`, `write`, `delete`, `list`.
+Capabilities: `read`, `write`, `delete`, `list`, `deny`.
 
 Path matching is glob-based: `secret/db/*` matches `secret/db/password` but not `secret/db/sub/key`. Use `secret/**` for recursive depth. The root policy matches everything with all capabilities.
+
+**Deny rules** take precedence over any allow rule across all attached policies.
+`Allowed` performs a two-pass evaluation: deny-pass first, then allow-pass.
+A single matching deny rule blocks the request unconditionally.
 
 ---
 

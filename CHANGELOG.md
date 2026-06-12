@@ -11,6 +11,49 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.33.0] — 2026-06-12
+
+### Added
+
+#### OPS-6: Config file support (`internal/config`, `cmd/tuck`)
+
+Tuck server now accepts a YAML configuration file in addition to CLI flags.
+
+- New `--config` flag (or `$TUCK_CONFIG` env var, or auto-detected `tuck.yaml` in the working directory)
+- Priority order: **CLI flag > environment variable > config file > built-in default**
+- All server flags are configurable: addr, data path, TLS, seal type + all seal backends, cluster/Raft, Kubernetes auth, telemetry
+- Sensitive values (e.g. Transit seal token) should use env vars (`TUCK_TRANSIT_TOKEN`), not the config file; the YAML field is supported as a last resort but not recommended
+
+Example `tuck.yaml`:
+
+```yaml
+addr: "0.0.0.0:8200"
+data: "/var/lib/tuck/tuck.db"
+tls:
+  cert: "/etc/tuck/tls.crt"
+  key:  "/etc/tuck/tls.key"
+seal:
+  type: "shamir"
+  shamir:
+    n: 5
+    k: 3
+```
+
+#### Getting Started Guide (`docs/getting-started.md`)
+
+New step-by-step guide covering:
+- Install (pre-built binary or build from source)
+- Dev mode (local, TLS auto, under 5 minutes)
+- First secret via `tuckcli` and `curl`
+- Scoped tokens and policies
+- Config file usage + sensitive value best practices
+- Shamir seal (production)
+- Kubernetes deployment (Helm, TuckSecret CRD, agent injector)
+- Dynamic credentials and PKI
+- Quick reference card
+
+---
+
 ## [0.32.0] — 2026-06-12
 
 ### Added

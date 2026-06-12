@@ -1,6 +1,6 @@
 module github.com/NAGenaev/tuck
 
-go 1.25.8
+go 1.25.11
 
 require go.etcd.io/bbolt v1.4.3
 

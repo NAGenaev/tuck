@@ -17,8 +17,8 @@ import (
 var ErrNotFound = errors.New("token not found")
 
 const (
-	tokenPrefix    = "auth/token/"
-	accessorPrefix = "auth/accessor/"
+	tokenPrefix    = "auth/token/"    // #nosec G101 — storage path prefix, not a credential
+	accessorPrefix = "auth/accessor/" // #nosec G101 — storage path prefix, not a credential
 )
 
 // accessorRecord is stored at auth/accessor/<accessor>.

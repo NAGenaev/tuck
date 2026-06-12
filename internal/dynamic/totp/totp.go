@@ -25,7 +25,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha1"
+	"crypto/sha1" // #nosec G505 — SHA-1 is mandatory per RFC 6238 (TOTP) / RFC 4226 (HOTP); we support it alongside SHA-256/512
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/base32"
@@ -233,7 +233,7 @@ func (m *Manager) ValidateCode(ctx context.Context, name, code string) (bool, er
 // --- TOTP math (RFC 6238 / RFC 4226) ---
 
 func totpCode(key []byte, t time.Time, digits, period int, h func() hash.Hash) string {
-	counter := uint64(t.Unix()) / uint64(period)
+	counter := uint64(t.Unix()) / uint64(period) // #nosec G115 — Unix() is positive post-epoch; period is a positive config value
 	return hotpCode(key, counter, digits, h)
 }
 

@@ -55,7 +55,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := os.MkdirAll(outputDir, 0700); err != nil {
+	if err := os.MkdirAll(outputDir, 0700); err != nil { // #nosec G703 — outputDir comes from operator-controlled K8s annotation
 		log.Error("create output dir", "dir", outputDir, "err", err)
 		os.Exit(1)
 	}
@@ -105,10 +105,10 @@ func main() {
 // with mode 0400 so only the owning process can read it.
 func writeSecretFile(dest string, val []byte) error {
 	tmp := dest + ".tmp"
-	if err := os.WriteFile(tmp, val, 0400); err != nil {
+	if err := os.WriteFile(tmp, val, 0400); err != nil { // #nosec G703 G304 — dest is operator-configured output path
 		return fmt.Errorf("write tmp: %w", err)
 	}
-	return os.Rename(tmp, dest)
+	return os.Rename(tmp, dest) // #nosec G703 — operator-configured destination path
 }
 
 // resolveToken reads the bearer token from TUCK_TOKEN or TUCK_TOKEN_FILE.
@@ -120,7 +120,7 @@ func resolveToken() (string, error) {
 	if f == "" {
 		return "", fmt.Errorf("neither TUCK_TOKEN nor TUCK_TOKEN_FILE is set")
 	}
-	data, err := os.ReadFile(f)
+	data, err := os.ReadFile(f) // #nosec G304 G703 — f is from TUCK_TOKEN_FILE env var, operator-controlled
 	if err != nil {
 		return "", fmt.Errorf("read token file %q: %w", f, err)
 	}

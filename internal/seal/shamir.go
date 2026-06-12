@@ -62,7 +62,7 @@ func NewShamir(configPath string, n, k int) (*ShamirSeal, error) {
 // NewShamirFromConfig loads N and K from a previously written config file.
 // Use this on restarts when N and K are not available from flags.
 func NewShamirFromConfig(configPath string) (*ShamirSeal, error) {
-	data, err := os.ReadFile(configPath)
+	data, err := os.ReadFile(configPath) // #nosec G304 — operator-configured seal config path
 	if err != nil {
 		return nil, fmt.Errorf("shamir seal: read config: %w", err)
 	}

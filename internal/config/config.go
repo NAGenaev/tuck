@@ -101,7 +101,7 @@ func Load(path string) (*Config, string, error) {
 		return nil, "", nil
 	}
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 G703 — path is operator-supplied via flag/env, not user input
 	if err != nil {
 		return nil, "", fmt.Errorf("read config %q: %w", path, err)
 	}

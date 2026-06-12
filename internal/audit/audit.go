@@ -51,7 +51,7 @@ func NewLogger(w io.Writer) *Logger {
 // NewFileLogger opens path for append-only writing and returns a Logger.
 // The file is created if it doesn't exist.
 func NewFileLogger(path string) (*Logger, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600) // #nosec G304 — operator-configured audit log path
 	if err != nil {
 		return nil, fmt.Errorf("audit: open %q: %w", path, err)
 	}

@@ -53,6 +53,7 @@ type LoginResult struct {
 	Subject  string
 	Policies []string
 	TTL      time.Duration
+	Groups   []string // extracted from the "groups" JWT claim, if present
 }
 
 // Provider validates JWTs and resolves the matching Role.
@@ -94,6 +95,7 @@ func (p *Provider) Login(ctx context.Context, tokenStr string, roles []*Role) (*
 		Subject:  sub,
 		Policies: role.Policies,
 		TTL:      ttl,
+		Groups:   extractGroups(claims),
 	}, nil
 }
 
@@ -177,6 +179,28 @@ func claimString(claims jwt.MapClaims, key string) (string, error) {
 		return string(b), nil
 	}
 	return s, nil
+}
+
+// extractGroups reads the "groups" claim from a JWT as []string.
+// Returns nil when the claim is absent or not a string array.
+func extractGroups(claims jwt.MapClaims) []string {
+	raw, ok := claims["groups"]
+	if !ok {
+		return nil
+	}
+	switch v := raw.(type) {
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	case []string:
+		return v
+	}
+	return nil
 }
 
 func anyMatch(haystack, needles []string) bool {

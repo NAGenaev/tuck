@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/NAGenaev/tuck/internal/api"
+	"github.com/NAGenaev/tuck/internal/config"
 	"github.com/NAGenaev/tuck/internal/core"
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
 	"github.com/NAGenaev/tuck/internal/physical"
@@ -31,6 +32,7 @@ var Version = "dev"
 
 func main() {
 	versionFlag := flag.Bool("version", false, "print version and exit")
+	configFile := flag.String("config", "", "path to YAML config file (default: $TUCK_CONFIG, then tuck.yaml if it exists)")
 
 	// Network
 	addr := flag.String("addr", "127.0.0.1:8200", "HTTP(S) listen address")
@@ -96,6 +98,85 @@ func main() {
 	if *versionFlag {
 		fmt.Fprintf(os.Stdout, "tuck %s\n", Version)
 		os.Exit(0)
+	}
+
+	// Load config file and apply values for flags that were NOT set on the CLI.
+	// Priority: CLI flag > env var > config file > built-in default.
+	cfg, resolvedCfgPath, cfgErr := config.Load(*configFile)
+	if cfgErr != nil {
+		log.Fatalf("config: %v", cfgErr)
+	}
+	if cfg != nil {
+		// Track which flags were explicitly provided on the command line.
+		explicit := make(map[string]bool)
+		flag.Visit(func(f *flag.Flag) { explicit[f.Name] = true })
+
+		apply := func(name, val string) {
+			if !explicit[name] && val != "" {
+				_ = flag.Set(name, val)
+			}
+		}
+		applyBool := func(name string, val bool) {
+			if !explicit[name] && val {
+				_ = flag.Set(name, "true")
+			}
+		}
+		applyInt := func(name string, val int) {
+			if !explicit[name] && val != 0 {
+				_ = flag.Set(name, fmt.Sprintf("%d", val))
+			}
+		}
+
+		apply("addr", cfg.Addr)
+		apply("data", cfg.Data)
+
+		apply("tls-cert", cfg.TLS.Cert)
+		apply("tls-key", cfg.TLS.Key)
+		applyBool("tls-auto", cfg.TLS.Auto)
+
+		apply("seal-type", cfg.Seal.Type)
+		apply("dev-seal-key", cfg.Seal.Dev.Key)
+
+		apply("seal-shamir-config", cfg.Seal.Shamir.Config)
+		applyInt("seal-shamir-n", cfg.Seal.Shamir.N)
+		applyInt("seal-shamir-k", cfg.Seal.Shamir.K)
+
+		apply("seal-transit-addr", cfg.Seal.Transit.Addr)
+		apply("seal-transit-key", cfg.Seal.Transit.Key)
+		apply("seal-transit-key-file", cfg.Seal.Transit.KeyFile)
+		// Transit token: config file value only if env is also absent.
+		if !explicit["seal-transit-token"] && os.Getenv("TUCK_TRANSIT_TOKEN") == "" && cfg.Seal.Transit.Token != "" {
+			_ = flag.Set("seal-transit-token", cfg.Seal.Transit.Token)
+		}
+
+		apply("seal-awskms-key-id", cfg.Seal.AWSKMS.KeyID)
+		apply("seal-awskms-region", cfg.Seal.AWSKMS.Region)
+		apply("seal-awskms-key-file", cfg.Seal.AWSKMS.KeyFile)
+
+		apply("seal-gcpkms-key-name", cfg.Seal.GCPKMS.KeyName)
+		apply("seal-gcpkms-key-file", cfg.Seal.GCPKMS.KeyFile)
+
+		apply("seal-azurekv-vault-url", cfg.Seal.AzureKV.VaultURL)
+		apply("seal-azurekv-key-name", cfg.Seal.AzureKV.KeyName)
+		apply("seal-azurekv-algorithm", cfg.Seal.AzureKV.Algorithm)
+		apply("seal-azurekv-key-file", cfg.Seal.AzureKV.KeyFile)
+
+		applyBool("cluster", cfg.Cluster.Enabled)
+		apply("cluster-node-id", cfg.Cluster.NodeID)
+		apply("cluster-bind-addr", cfg.Cluster.BindAddr)
+		apply("cluster-advertise", cfg.Cluster.Advertise)
+		apply("cluster-dir", cfg.Cluster.Dir)
+		applyBool("cluster-bootstrap", cfg.Cluster.Bootstrap)
+		apply("cluster-join", cfg.Cluster.Join)
+		apply("cluster-peers", cfg.Cluster.Peers)
+
+		apply("k8s-api", cfg.Kubernetes.API)
+		apply("k8s-token-file", cfg.Kubernetes.TokenFile)
+		apply("k8s-ca-file", cfg.Kubernetes.CAFile)
+
+		apply("otel-endpoint", cfg.Telemetry.OtelEndpoint)
+
+		log.Printf("tuck: loaded config from %q", resolvedCfgPath)
 	}
 
 	// --- Backend ---

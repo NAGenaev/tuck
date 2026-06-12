@@ -19,26 +19,31 @@ import (
 )
 
 // Storage key layout (all under the barrier):
-//   identity/entity/id/<id>              → Entity JSON
-//   identity/entity/name/<name>          → entity id (pointer)
-//   identity/alias/id/<id>              → EntityAlias JSON
-//   identity/alias/mount/<mount>/<name> → alias id (index)
-//   identity/group/id/<id>              → Group JSON
-//   identity/group/name/<name>          → group id (pointer)
+//   identity/entity/id/<id>                    → Entity JSON
+//   identity/entity/name/<name>                → entity id (pointer)
+//   identity/alias/id/<id>                    → EntityAlias JSON
+//   identity/alias/mount/<mount>/<name>       → alias id (index)
+//   identity/group/id/<id>                    → Group JSON
+//   identity/group/name/<name>                → group id (pointer)
+//   identity/group-alias/id/<id>              → GroupAlias JSON
+//   identity/group-alias/mount/<mount>/<name> → group-alias id (index)
 
 const (
-	entityIDPrefix   = "identity/entity/id/"
-	entityNamePrefix = "identity/entity/name/"
-	aliasIDPrefix    = "identity/alias/id/"
-	aliasMountPrefix = "identity/alias/mount/"
-	groupIDPrefix    = "identity/group/id/"
-	groupNamePrefix  = "identity/group/name/"
+	entityIDPrefix    = "identity/entity/id/"
+	entityNamePrefix  = "identity/entity/name/"
+	aliasIDPrefix     = "identity/alias/id/"
+	aliasMountPrefix  = "identity/alias/mount/"
+	groupIDPrefix     = "identity/group/id/"
+	groupNamePrefix   = "identity/group/name/"
+	gAliasIDPrefix    = "identity/group-alias/id/"
+	gAliasMountPrefix = "identity/group-alias/mount/"
 )
 
 var (
-	ErrEntityNotFound = errors.New("identity: entity not found")
-	ErrGroupNotFound  = errors.New("identity: group not found")
-	ErrAliasNotFound  = errors.New("identity: entity alias not found")
+	ErrEntityNotFound     = errors.New("identity: entity not found")
+	ErrGroupNotFound      = errors.New("identity: group not found")
+	ErrAliasNotFound      = errors.New("identity: entity alias not found")
+	ErrGroupAliasNotFound = errors.New("identity: group alias not found")
 )
 
 // Entity is a canonical identity that can be linked to multiple auth method
@@ -60,6 +65,20 @@ type EntityAlias struct {
 	EntityID      string            `json:"entity_id"`
 	MountAccessor string            `json:"mount_accessor"`
 	Name          string            `json:"name"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
+	Created       time.Time         `json:"created_at"`
+	Updated       time.Time         `json:"updated_at"`
+}
+
+// GroupAlias links an external group identity (e.g. an LDAP group DN, a JWT
+// "groups" claim value) to a Tuck Group. When a user logs in and their
+// external groups are resolved, Tuck looks up matching GroupAliases and adds
+// those groups' policies to the issued token.
+type GroupAlias struct {
+	ID            string            `json:"id"`
+	GroupID       string            `json:"group_id"`
+	MountAccessor string            `json:"mount_accessor"`
+	Name          string            `json:"name"` // external group name, e.g. LDAP DN
 	Metadata      map[string]string `json:"metadata,omitempty"`
 	Created       time.Time         `json:"created_at"`
 	Updated       time.Time         `json:"updated_at"`
@@ -354,6 +373,80 @@ func (s *Store) ListGroupIDs(ctx context.Context) ([]string, error) {
 	return ids, nil
 }
 
+// ── GroupAlias CRUD ──────────────────────────────────────────────────────────
+
+// CreateGroupAlias creates a new alias linking (mount, name) to groupID.
+func (s *Store) CreateGroupAlias(ctx context.Context, groupID, mount, name string, meta map[string]string) (*GroupAlias, error) {
+	id, err := newID()
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	a := &GroupAlias{ID: id, GroupID: groupID, MountAccessor: mount, Name: name, Metadata: meta, Created: now, Updated: now}
+	return a, s.PutGroupAlias(ctx, a)
+}
+
+// PutGroupAlias stores (create or update) a group alias.
+func (s *Store) PutGroupAlias(ctx context.Context, a *GroupAlias) error {
+	a.Updated = time.Now().UTC()
+	data, err := json.Marshal(a)
+	if err != nil {
+		return err
+	}
+	if err := s.b.Put(ctx, &physical.Entry{Key: gAliasIDPrefix + a.ID, Value: data}); err != nil {
+		return err
+	}
+	return s.b.Put(ctx, &physical.Entry{Key: gAliasMountPrefix + a.MountAccessor + "/" + a.Name, Value: []byte(a.ID)})
+}
+
+// GetGroupAliasByID returns the group alias with the given ID.
+func (s *Store) GetGroupAliasByID(ctx context.Context, id string) (*GroupAlias, error) {
+	e, err := s.b.Get(ctx, gAliasIDPrefix+id)
+	if err != nil {
+		return nil, err
+	}
+	if e == nil {
+		return nil, ErrGroupAliasNotFound
+	}
+	var a GroupAlias
+	return &a, json.Unmarshal(e.Value, &a)
+}
+
+// GetGroupAliasByMount looks up a group alias by mount accessor + external name.
+func (s *Store) GetGroupAliasByMount(ctx context.Context, mount, name string) (*GroupAlias, error) {
+	e, err := s.b.Get(ctx, gAliasMountPrefix+mount+"/"+name)
+	if err != nil {
+		return nil, err
+	}
+	if e == nil {
+		return nil, ErrGroupAliasNotFound
+	}
+	return s.GetGroupAliasByID(ctx, string(e.Value))
+}
+
+// DeleteGroupAlias removes a group alias by ID.
+func (s *Store) DeleteGroupAlias(ctx context.Context, id string) error {
+	a, err := s.GetGroupAliasByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	_ = s.b.Delete(ctx, gAliasMountPrefix+a.MountAccessor+"/"+a.Name)
+	return s.b.Delete(ctx, gAliasIDPrefix+id)
+}
+
+// ListGroupAliasIDs returns all group alias IDs.
+func (s *Store) ListGroupAliasIDs(ctx context.Context) ([]string, error) {
+	keys, err := s.b.List(ctx, gAliasIDPrefix)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, len(keys))
+	for i, k := range keys {
+		ids[i] = strings.TrimPrefix(k, gAliasIDPrefix)
+	}
+	return ids, nil
+}
+
 // ── Policy resolution ────────────────────────────────────────────────────────
 
 // ResolveEntityPolicies returns the union of policies that apply to an entity:
@@ -427,6 +520,83 @@ func (s *Store) ResolveEntityPolicies(ctx context.Context, entityID string) []st
 		for _, g := range allGroups {
 			if g.ID == gid {
 				add(g.Policies)
+				break
+			}
+		}
+	}
+	return result
+}
+
+// ResolveExternalGroupPolicies returns policies from Tuck groups that are
+// aliased to any of the given external group names under the given mount
+// accessor (e.g. "auth_ldap", "auth_jwt"). It also follows nested group
+// memberships upward via the same BFS used by ResolveEntityPolicies.
+func (s *Store) ResolveExternalGroupPolicies(ctx context.Context, mount string, externalGroups []string) []string {
+	if len(externalGroups) == 0 {
+		return nil
+	}
+
+	// Collect Tuck group IDs that are aliased to any external group.
+	matchedGroupIDs := make(map[string]bool)
+	for _, extGroup := range externalGroups {
+		ga, err := s.GetGroupAliasByMount(ctx, mount, extGroup)
+		if err == nil {
+			matchedGroupIDs[ga.GroupID] = true
+		}
+	}
+	if len(matchedGroupIDs) == 0 {
+		return nil
+	}
+
+	// Load all groups once for BFS.
+	groupIDs, err := s.ListGroupIDs(ctx)
+	if err != nil {
+		return nil
+	}
+	allGroups := make([]*Group, 0, len(groupIDs))
+	for _, gid := range groupIDs {
+		if g, err := s.GetGroupByID(ctx, gid); err == nil {
+			allGroups = append(allGroups, g)
+		}
+	}
+
+	// BFS upward: expand matched groups to include their parent groups.
+	queue := make([]string, 0, len(matchedGroupIDs))
+	for gid := range matchedGroupIDs {
+		queue = append(queue, gid)
+	}
+	visited := make(map[string]bool)
+	for len(queue) > 0 {
+		gid := queue[0]
+		queue = queue[1:]
+		if visited[gid] {
+			continue
+		}
+		visited[gid] = true
+		for _, pg := range allGroups {
+			if visited[pg.ID] {
+				continue
+			}
+			for _, childID := range pg.MemberGroupIDs {
+				if childID == gid {
+					queue = append(queue, pg.ID)
+					break
+				}
+			}
+		}
+	}
+
+	seen := make(map[string]bool)
+	var result []string
+	for gid := range visited {
+		for _, g := range allGroups {
+			if g.ID == gid {
+				for _, p := range g.Policies {
+					if !seen[p] {
+						seen[p] = true
+						result = append(result, p)
+					}
+				}
 				break
 			}
 		}

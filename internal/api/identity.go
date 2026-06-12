@@ -560,6 +560,75 @@ func (s *Server) identityLookupGroup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"id": g.ID, "data": g})
 }
 
+// ── Group-alias handlers ─────────────────────────────────────────────────────
+
+// POST /v1/identity/group-alias
+func (s *Server) identityCreateGroupAlias(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		GroupID       string            `json:"group_id"`
+		MountAccessor string            `json:"mount_accessor"`
+		Name          string            `json:"name"`
+		Metadata      map[string]string `json:"metadata"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if req.GroupID == "" || req.MountAccessor == "" || req.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "group_id, mount_accessor and name required"})
+		return
+	}
+	ga, err := s.core.IdentityCreateGroupAlias(r.Context(), req.GroupID, req.MountAccessor, req.Name, req.Metadata)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": ga.ID, "data": ga})
+}
+
+// GET /v1/identity/group-alias/id/:id
+func (s *Server) identityGetGroupAliasByID(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "id required"})
+		return
+	}
+	ga, err := s.core.IdentityGetGroupAliasByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, identity.ErrGroupAliasNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "group alias not found"})
+			return
+		}
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": ga.ID, "data": ga})
+}
+
+// DELETE /v1/identity/group-alias/id/:id
+func (s *Server) identityDeleteGroupAlias(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "id required"})
+		return
+	}
+	if err := s.core.IdentityDeleteGroupAlias(r.Context(), id); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusNoContent, nil)
+}
+
+// GET /v1/identity/group-alias?list=true
+func (s *Server) identityListGroupAliases(w http.ResponseWriter, r *http.Request) {
+	ids, err := s.core.IdentityListGroupAliasIDs(r.Context())
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"keys": ids})
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 func readJSON(r *http.Request, v any) error {

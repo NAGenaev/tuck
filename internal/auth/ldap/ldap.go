@@ -124,6 +124,7 @@ type LoginResult struct {
 	Username string
 	Policies []string
 	TTL      time.Duration
+	Groups   []string // LDAP group DNs the user belongs to
 }
 
 // Entry is a single row from an LDAP search result.
@@ -343,7 +344,7 @@ func (a *Authenticator) Login(ctx context.Context, roles []*Role, username, pass
 		return nil, ErrNoRole
 	}
 
-	return &LoginResult{UserDN: userDN, Username: username, Policies: policies, TTL: ttl}, nil
+	return &LoginResult{UserDN: userDN, Username: username, Policies: policies, TTL: ttl, Groups: userGroups}, nil
 }
 
 // matchRoles returns the union of policies and the maximum TTL from all

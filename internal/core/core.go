@@ -501,7 +501,7 @@ func (c *Core) LoginK8s(ctx context.Context, saToken string) (*token.Token, erro
 	if err != nil {
 		return nil, err
 	}
-	c.attachEntityToToken(ctx, tok, "auth_kubernetes", namespace+"/"+sa)
+	c.attachEntityToToken(ctx, tok, "auth_kubernetes", namespace+"/"+sa, nil)
 	return tok, nil
 }
 
@@ -685,7 +685,7 @@ func (c *Core) LoginJWT(ctx context.Context, tokenStr string) (*token.Token, err
 	if err != nil {
 		return nil, err
 	}
-	c.attachEntityToToken(ctx, tok, "auth_jwt", result.Subject)
+	c.attachEntityToToken(ctx, tok, "auth_jwt", result.Subject, result.Groups)
 	return tok, nil
 }
 
@@ -847,7 +847,7 @@ func (c *Core) LoginAppRole(ctx context.Context, roleID, secretID string) (*toke
 	if err != nil {
 		return nil, err
 	}
-	c.attachEntityToToken(ctx, tok, "auth_approle", result.Subject)
+	c.attachEntityToToken(ctx, tok, "auth_approle", result.Subject, nil)
 	return tok, nil
 }
 
@@ -1116,7 +1116,7 @@ func (c *Core) LoginLDAP(ctx context.Context, username, password string) (*token
 	if err != nil {
 		return nil, err
 	}
-	c.attachEntityToToken(ctx, tok, "auth_ldap", result.Username)
+	c.attachEntityToToken(ctx, tok, "auth_ldap", result.Username, result.Groups)
 	return tok, nil
 }
 
@@ -1145,24 +1145,27 @@ func (c *Core) RevokeWrappingToken(ctx context.Context, token string) error {
 // given auth-method mount and alias name, merges entity+group policies into
 // tok.Policies, and persists the updated token. Errors are silently swallowed
 // — identity enrichment is best-effort and must not break auth.
-func (c *Core) attachEntityToToken(ctx context.Context, tok *token.Token, mount, aliasName string) {
+func (c *Core) attachEntityToToken(ctx context.Context, tok *token.Token, mount, aliasName string, externalGroups []string) {
 	entity, err := c.identity.EnsureAlias(ctx, mount, aliasName)
 	if err != nil {
 		return
 	}
 	tok.EntityID = entity.ID
 	extra := c.identity.ResolveEntityPolicies(ctx, entity.ID)
-	tok.Policies = mergePolicies(tok.Policies, extra)
+	extGroupPolicies := c.identity.ResolveExternalGroupPolicies(ctx, mount, externalGroups)
+	tok.Policies = mergePolicies(tok.Policies, extra, extGroupPolicies)
 	_ = c.tokens.Put(ctx, tok)
 }
 
-func mergePolicies(a, b []string) []string {
-	seen := make(map[string]bool, len(a)+len(b))
-	result := make([]string, 0, len(a)+len(b))
-	for _, p := range append(a, b...) {
-		if !seen[p] {
-			seen[p] = true
-			result = append(result, p)
+func mergePolicies(slices ...[]string) []string {
+	seen := make(map[string]bool)
+	var result []string
+	for _, s := range slices {
+		for _, p := range s {
+			if !seen[p] {
+				seen[p] = true
+				result = append(result, p)
+			}
 		}
 	}
 	return result
@@ -1223,6 +1226,22 @@ func (c *Core) IdentityDeleteGroup(ctx context.Context, id string) error {
 }
 func (c *Core) IdentityListGroupIDs(ctx context.Context) ([]string, error) {
 	return c.identity.ListGroupIDs(ctx)
+}
+
+func (c *Core) IdentityCreateGroupAlias(ctx context.Context, groupID, mount, name string, meta map[string]string) (*identity.GroupAlias, error) {
+	return c.identity.CreateGroupAlias(ctx, groupID, mount, name, meta)
+}
+func (c *Core) IdentityPutGroupAlias(ctx context.Context, ga *identity.GroupAlias) error {
+	return c.identity.PutGroupAlias(ctx, ga)
+}
+func (c *Core) IdentityGetGroupAliasByID(ctx context.Context, id string) (*identity.GroupAlias, error) {
+	return c.identity.GetGroupAliasByID(ctx, id)
+}
+func (c *Core) IdentityDeleteGroupAlias(ctx context.Context, id string) error {
+	return c.identity.DeleteGroupAlias(ctx, id)
+}
+func (c *Core) IdentityListGroupAliasIDs(ctx context.Context) ([]string, error) {
+	return c.identity.ListGroupAliasIDs(ctx)
 }
 
 // --- Cubbyhole (per-token private storage) ---

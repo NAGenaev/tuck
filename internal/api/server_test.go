@@ -15,27 +15,27 @@ import (
 	"github.com/NAGenaev/tuck/internal/seal"
 )
 
-func newTestServer(t *testing.T) (*httptest.Server, *core.Core, string) {
-	t.Helper()
-	c := core.New(physical.NewInMem(), seal.NewDev(filepath.Join(t.TempDir(), "rootkey")))
+func newTestServer(tb testing.TB) (*httptest.Server, *core.Core, string) {
+	tb.Helper()
+	c := core.New(physical.NewInMem(), seal.NewDev(filepath.Join(tb.TempDir(), "rootkey")))
 	result, err := c.Start(context.Background())
 	if err != nil {
-		t.Fatalf("core start: %v", err)
+		tb.Fatalf("core start: %v", err)
 	}
 	ts := httptest.NewServer(New(c).Handler())
-	t.Cleanup(ts.Close)
+	tb.Cleanup(ts.Close)
 	return ts, c, result.RootToken.ID
 }
 
-func authedReq(t *testing.T, method, url, body, tokenID string) *http.Request {
-	t.Helper()
+func authedReq(tb testing.TB, method, url, body, tokenID string) *http.Request {
+	tb.Helper()
 	var r io.Reader
 	if body != "" {
 		r = strings.NewReader(body)
 	}
 	req, err := http.NewRequest(method, url, r)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 	req.Header.Set("X-Tuck-Token", tokenID)
 	return req

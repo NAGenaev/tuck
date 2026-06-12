@@ -667,6 +667,51 @@ func cmdIdentityGroupList(c *client) {
 	printJSON(mustJSON(resp, 200))
 }
 
+func cmdIdentityGroupAliasCreate(c *client, groupID, mount, name string, meta map[string]string) {
+	body := map[string]any{
+		"group_id":       groupID,
+		"mount_accessor": mount,
+		"name":           name,
+	}
+	if len(meta) > 0 {
+		body["metadata"] = meta
+	}
+	resp, err := c.do("POST", "/v1/identity/group-alias", body)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
+func cmdIdentityGroupAliasGet(c *client, id string) {
+	resp, err := c.do("GET", "/v1/identity/group-alias/id/"+id, nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
+func cmdIdentityGroupAliasDelete(c *client, id string) {
+	resp, err := c.do("DELETE", "/v1/identity/group-alias/id/"+id, nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 204 {
+		body, _ := io.ReadAll(resp.Body)
+		fatalf("HTTP %d: %s", resp.StatusCode, body)
+	}
+	fmt.Println("OK")
+}
+
+func cmdIdentityGroupAliasList(c *client) {
+	resp, err := c.doRaw("LIST", "/v1/identity/group-alias/", nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
 func cmdIdentityLookupEntity(c *client, id, name, aliasName, aliasMount string) {
 	body := map[string]any{}
 	switch {
@@ -788,6 +833,11 @@ Identity:
   identity group update <id> [--policy=p ...] [--member-entity=id ...] [--member-group=id ...]
   identity group delete <id>
   identity group list
+
+  identity group-alias create --group-id=<id> --mount=<accessor> --name=<external-name>
+  identity group-alias get <id>
+  identity group-alias delete <id>
+  identity group-alias list
 
   identity lookup entity [--id=...] [--name=...] [--alias-name=... --alias-mount=...]
   identity lookup group [--id=...] [--name=...]
@@ -1202,6 +1252,37 @@ func main() {
 				cmdIdentityGroupList(c)
 			default:
 				fatalf("unknown identity group subcommand %q", args[2])
+			}
+
+		case "group-alias":
+			if len(args) < 3 {
+				fatalf("identity group-alias requires a subcommand: create, get, delete, list")
+			}
+			switch args[2] {
+			case "create":
+				fs := flag.NewFlagSet("identity group-alias create", flag.ExitOnError)
+				groupID := fs.String("group-id", "", "Tuck group ID")
+				mount := fs.String("mount", "", "auth mount accessor (e.g. auth_ldap)")
+				name := fs.String("name", "", "external group name / DN")
+				_ = fs.Parse(args[3:])
+				if *groupID == "" || *mount == "" || *name == "" {
+					fatalf("identity group-alias create requires --group-id, --mount, --name")
+				}
+				cmdIdentityGroupAliasCreate(c, *groupID, *mount, *name, nil)
+			case "get":
+				if len(args) < 4 {
+					fatalf("identity group-alias get requires an id")
+				}
+				cmdIdentityGroupAliasGet(c, args[3])
+			case "delete":
+				if len(args) < 4 {
+					fatalf("identity group-alias delete requires an id")
+				}
+				cmdIdentityGroupAliasDelete(c, args[3])
+			case "list":
+				cmdIdentityGroupAliasList(c)
+			default:
+				fatalf("unknown identity group-alias subcommand %q", args[2])
 			}
 
 		case "lookup":

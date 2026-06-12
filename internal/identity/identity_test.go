@@ -186,3 +186,72 @@ func TestDisabledEntityReturnsNoPolicies(t *testing.T) {
 		t.Errorf("expected no policies for disabled entity, got %v", policies)
 	}
 }
+
+func TestGroupAliasCRUD(t *testing.T) {
+	ctx := context.Background()
+	s := newStore()
+
+	g, _ := s.CreateGroup(ctx, "devs", []string{"dev-pol"}, nil, nil, nil)
+
+	ga, err := s.CreateGroupAlias(ctx, g.ID, "auth_ldap", "cn=devs,ou=groups,dc=example,dc=com", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ga.GroupID != g.ID {
+		t.Errorf("group_id mismatch")
+	}
+
+	got, err := s.GetGroupAliasByID(ctx, ga.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != ga.Name {
+		t.Errorf("name mismatch: %q vs %q", got.Name, ga.Name)
+	}
+
+	ids, err := s.ListGroupAliasIDs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 1 {
+		t.Errorf("list len = %d, want 1", len(ids))
+	}
+
+	if err := s.DeleteGroupAlias(ctx, ga.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetGroupAliasByID(ctx, ga.ID); err == nil {
+		t.Error("expected ErrGroupAliasNotFound after delete")
+	}
+}
+
+func TestResolveExternalGroupPolicies(t *testing.T) {
+	ctx := context.Background()
+	s := newStore()
+
+	// Create Tuck group hierarchy: parent → child.
+	child, _ := s.CreateGroup(ctx, "ldap-devs", []string{"dev-pol"}, nil, nil, nil)
+	parent, _ := s.CreateGroup(ctx, "ldap-all", []string{"all-pol"}, nil, []string{child.ID}, nil)
+	_ = parent
+
+	// Map external LDAP group DN → child Tuck group.
+	_, _ = s.CreateGroupAlias(ctx, child.ID, "auth_ldap", "cn=devs,ou=groups,dc=example,dc=com", nil)
+
+	// Resolve: external group belongs to child → picks up child + parent policies.
+	policies := s.ResolveExternalGroupPolicies(ctx, "auth_ldap", []string{"cn=devs,ou=groups,dc=example,dc=com"})
+	pset := make(map[string]bool)
+	for _, p := range policies {
+		pset[p] = true
+	}
+	for _, want := range []string{"dev-pol", "all-pol"} {
+		if !pset[want] {
+			t.Errorf("policy %q not in resolved set %v", want, policies)
+		}
+	}
+
+	// Unmapped external group → no policies.
+	none := s.ResolveExternalGroupPolicies(ctx, "auth_ldap", []string{"cn=unknown,ou=groups,dc=example,dc=com"})
+	if len(none) != 0 {
+		t.Errorf("expected no policies for unmapped group, got %v", none)
+	}
+}

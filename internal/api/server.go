@@ -257,6 +257,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/identity/group/name/{name}", s.requireToken(s.identityDeleteGroupByName))
 	mux.HandleFunc("LIST /v1/identity/group/", s.requireToken(s.identityListGroups))
 
+	mux.HandleFunc("POST /v1/identity/group-alias", s.requireToken(s.identityCreateGroupAlias))
+	mux.HandleFunc("GET /v1/identity/group-alias/id/{id}", s.requireToken(s.identityGetGroupAliasByID))
+	mux.HandleFunc("DELETE /v1/identity/group-alias/id/{id}", s.requireToken(s.identityDeleteGroupAlias))
+	mux.HandleFunc("LIST /v1/identity/group-alias/", s.requireToken(s.identityListGroupAliases))
+
 	mux.HandleFunc("POST /v1/identity/lookup/entity", s.requireToken(s.identityLookupEntity))
 	mux.HandleFunc("POST /v1/identity/lookup/group", s.requireToken(s.identityLookupGroup))
 

@@ -232,6 +232,34 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v2/secret/metadata/{path...}", s.requireToken(s.v2DeleteMeta))
 	mux.HandleFunc("LIST /v2/secret/metadata/{path...}", s.requireToken(s.v2ListMeta))
 
+	// Entity & Identity system
+	mux.HandleFunc("POST /v1/identity/entity", s.requireToken(s.identityCreateEntity))
+	mux.HandleFunc("GET /v1/identity/entity/id/{id}", s.requireToken(s.identityGetEntityByID))
+	mux.HandleFunc("POST /v1/identity/entity/id/{id}", s.requireToken(s.identityUpdateEntityByID))
+	mux.HandleFunc("DELETE /v1/identity/entity/id/{id}", s.requireToken(s.identityDeleteEntityByID))
+	mux.HandleFunc("GET /v1/identity/entity/name/{name}", s.requireToken(s.identityGetEntityByName))
+	mux.HandleFunc("POST /v1/identity/entity/name/{name}", s.requireToken(s.identityUpsertEntityByName))
+	mux.HandleFunc("DELETE /v1/identity/entity/name/{name}", s.requireToken(s.identityDeleteEntityByName))
+	mux.HandleFunc("LIST /v1/identity/entity/", s.requireToken(s.identityListEntities))
+
+	mux.HandleFunc("POST /v1/identity/entity-alias", s.requireToken(s.identityCreateAlias))
+	mux.HandleFunc("GET /v1/identity/entity-alias/id/{id}", s.requireToken(s.identityGetAlias))
+	mux.HandleFunc("POST /v1/identity/entity-alias/id/{id}", s.requireToken(s.identityUpdateAlias))
+	mux.HandleFunc("DELETE /v1/identity/entity-alias/id/{id}", s.requireToken(s.identityDeleteAlias))
+	mux.HandleFunc("LIST /v1/identity/entity-alias/id/", s.requireToken(s.identityListAliases))
+
+	mux.HandleFunc("POST /v1/identity/group", s.requireToken(s.identityCreateGroup))
+	mux.HandleFunc("GET /v1/identity/group/id/{id}", s.requireToken(s.identityGetGroupByID))
+	mux.HandleFunc("POST /v1/identity/group/id/{id}", s.requireToken(s.identityUpdateGroupByID))
+	mux.HandleFunc("DELETE /v1/identity/group/id/{id}", s.requireToken(s.identityDeleteGroupByID))
+	mux.HandleFunc("GET /v1/identity/group/name/{name}", s.requireToken(s.identityGetGroupByName))
+	mux.HandleFunc("POST /v1/identity/group/name/{name}", s.requireToken(s.identityUpsertGroupByName))
+	mux.HandleFunc("DELETE /v1/identity/group/name/{name}", s.requireToken(s.identityDeleteGroupByName))
+	mux.HandleFunc("LIST /v1/identity/group/", s.requireToken(s.identityListGroups))
+
+	mux.HandleFunc("POST /v1/identity/lookup/entity", s.requireToken(s.identityLookupEntity))
+	mux.HandleFunc("POST /v1/identity/lookup/group", s.requireToken(s.identityLookupGroup))
+
 	// OpenAPI spec
 	mux.HandleFunc("GET /openapi.json", serveOpenAPI)
 

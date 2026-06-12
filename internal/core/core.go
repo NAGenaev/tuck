@@ -26,6 +26,7 @@ import (
 	dynSSH "github.com/NAGenaev/tuck/internal/dynamic/ssh"
 	dynTOTP "github.com/NAGenaev/tuck/internal/dynamic/totp"
 	"github.com/NAGenaev/tuck/internal/dynamic/transit"
+	"github.com/NAGenaev/tuck/internal/identity"
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
 	"github.com/NAGenaev/tuck/internal/kvv2"
 	"github.com/NAGenaev/tuck/internal/physical"
@@ -93,6 +94,8 @@ type Core struct {
 	transitManager *transit.Manager
 	sshManager     *dynSSH.Manager
 	totpManager    *dynTOTP.Manager
+	identity *identity.Store
+
 	// optional — nil means k8s auth is disabled
 	k8sReviewer k8sauth.Reviewer
 	k8sRoles    *k8sauth.RoleStore
@@ -135,6 +138,7 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		transitManager: transit.NewManager(b),
 		sshManager:     dynSSH.NewManager(b),
 		totpManager:    dynTOTP.NewManager(b),
+		identity:     identity.NewStore(b),
 		k8sReviewer:  reviewer,
 		k8sRoles:    k8sauth.NewRoleStore(b),
 	}
@@ -493,7 +497,12 @@ func (c *Core) LoginK8s(ctx context.Context, saToken string) (*token.Token, erro
 		}
 		return nil, fmt.Errorf("get k8s role: %w", err)
 	}
-	return c.CreateToken(ctx, "k8s:"+namespace+"/"+sa, role.Policies, role.TTL)
+	tok, err := c.CreateToken(ctx, "k8s:"+namespace+"/"+sa, role.Policies, role.TTL)
+	if err != nil {
+		return nil, err
+	}
+	c.attachEntityToToken(ctx, tok, "auth_kubernetes", namespace+"/"+sa)
+	return tok, nil
 }
 
 // CreateK8sRole stores a role binding for a Kubernetes ServiceAccount.
@@ -672,8 +681,12 @@ func (c *Core) LoginJWT(ctx context.Context, tokenStr string) (*token.Token, err
 	if err != nil {
 		return nil, err
 	}
-	displayName := "jwt:" + result.Subject
-	return c.CreateToken(ctx, displayName, result.Policies, result.TTL)
+	tok, err := c.CreateToken(ctx, "jwt:"+result.Subject, result.Policies, result.TTL)
+	if err != nil {
+		return nil, err
+	}
+	c.attachEntityToToken(ctx, tok, "auth_jwt", result.Subject)
+	return tok, nil
 }
 
 // --- TOTP secrets engine ---
@@ -830,7 +843,12 @@ func (c *Core) LoginAppRole(ctx context.Context, roleID, secretID string) (*toke
 	if err != nil {
 		return nil, err
 	}
-	return c.CreateToken(ctx, result.Subject, result.Policies, result.TTL)
+	tok, err := c.CreateToken(ctx, result.Subject, result.Policies, result.TTL)
+	if err != nil {
+		return nil, err
+	}
+	c.attachEntityToToken(ctx, tok, "auth_approle", result.Subject)
+	return tok, nil
 }
 
 // --- Dynamic secrets: Database engine ---
@@ -1094,8 +1112,12 @@ func (c *Core) LoginLDAP(ctx context.Context, username, password string) (*token
 	if err != nil {
 		return nil, err
 	}
-	displayName := "ldap:" + result.Username
-	return c.CreateToken(ctx, displayName, result.Policies, result.TTL)
+	tok, err := c.CreateToken(ctx, "ldap:"+result.Username, result.Policies, result.TTL)
+	if err != nil {
+		return nil, err
+	}
+	c.attachEntityToToken(ctx, tok, "auth_ldap", result.Username)
+	return tok, nil
 }
 
 
@@ -1115,6 +1137,92 @@ func (c *Core) LookupWrappingToken(ctx context.Context, token string) (*wrapping
 
 func (c *Core) RevokeWrappingToken(ctx context.Context, token string) error {
 	return c.wrapping.Revoke(ctx, token)
+}
+
+// --- Entity & Identity ---
+
+// attachEntityToToken auto-creates (or looks up) the entity alias for the
+// given auth-method mount and alias name, merges entity+group policies into
+// tok.Policies, and persists the updated token. Errors are silently swallowed
+// — identity enrichment is best-effort and must not break auth.
+func (c *Core) attachEntityToToken(ctx context.Context, tok *token.Token, mount, aliasName string) {
+	entity, err := c.identity.EnsureAlias(ctx, mount, aliasName)
+	if err != nil {
+		return
+	}
+	tok.EntityID = entity.ID
+	extra := c.identity.ResolveEntityPolicies(ctx, entity.ID)
+	tok.Policies = mergePolicies(tok.Policies, extra)
+	_ = c.tokens.Put(ctx, tok)
+}
+
+func mergePolicies(a, b []string) []string {
+	seen := make(map[string]bool, len(a)+len(b))
+	result := make([]string, 0, len(a)+len(b))
+	for _, p := range append(a, b...) {
+		if !seen[p] {
+			seen[p] = true
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+func (c *Core) IdentityCreateEntity(ctx context.Context, name string, policies []string, meta map[string]string) (*identity.Entity, error) {
+	return c.identity.CreateEntity(ctx, name, policies, meta)
+}
+func (c *Core) IdentityPutEntity(ctx context.Context, e *identity.Entity) error {
+	return c.identity.PutEntity(ctx, e)
+}
+func (c *Core) IdentityGetEntityByID(ctx context.Context, id string) (*identity.Entity, error) {
+	return c.identity.GetEntityByID(ctx, id)
+}
+func (c *Core) IdentityGetEntityByName(ctx context.Context, name string) (*identity.Entity, error) {
+	return c.identity.GetEntityByName(ctx, name)
+}
+func (c *Core) IdentityDeleteEntity(ctx context.Context, id string) error {
+	return c.identity.DeleteEntity(ctx, id)
+}
+func (c *Core) IdentityListEntityIDs(ctx context.Context) ([]string, error) {
+	return c.identity.ListEntityIDs(ctx)
+}
+
+func (c *Core) IdentityCreateAlias(ctx context.Context, entityID, mount, name string, meta map[string]string) (*identity.EntityAlias, error) {
+	return c.identity.CreateAlias(ctx, entityID, mount, name, meta)
+}
+func (c *Core) IdentityPutAlias(ctx context.Context, a *identity.EntityAlias) error {
+	return c.identity.PutAlias(ctx, a)
+}
+func (c *Core) IdentityGetAliasByID(ctx context.Context, id string) (*identity.EntityAlias, error) {
+	return c.identity.GetAliasByID(ctx, id)
+}
+func (c *Core) IdentityGetAliasByMount(ctx context.Context, mount, name string) (*identity.EntityAlias, error) {
+	return c.identity.GetAliasByMount(ctx, mount, name)
+}
+func (c *Core) IdentityDeleteAlias(ctx context.Context, id string) error {
+	return c.identity.DeleteAlias(ctx, id)
+}
+func (c *Core) IdentityListAliasIDs(ctx context.Context) ([]string, error) {
+	return c.identity.ListAliasIDs(ctx)
+}
+
+func (c *Core) IdentityCreateGroup(ctx context.Context, name string, policies []string, memberEntityIDs, memberGroupIDs []string, meta map[string]string) (*identity.Group, error) {
+	return c.identity.CreateGroup(ctx, name, policies, memberEntityIDs, memberGroupIDs, meta)
+}
+func (c *Core) IdentityPutGroup(ctx context.Context, g *identity.Group) error {
+	return c.identity.PutGroup(ctx, g)
+}
+func (c *Core) IdentityGetGroupByID(ctx context.Context, id string) (*identity.Group, error) {
+	return c.identity.GetGroupByID(ctx, id)
+}
+func (c *Core) IdentityGetGroupByName(ctx context.Context, name string) (*identity.Group, error) {
+	return c.identity.GetGroupByName(ctx, name)
+}
+func (c *Core) IdentityDeleteGroup(ctx context.Context, id string) error {
+	return c.identity.DeleteGroup(ctx, id)
+}
+func (c *Core) IdentityListGroupIDs(ctx context.Context) ([]string, error) {
+	return c.identity.ListGroupIDs(ctx)
 }
 
 // --- Cubbyhole (per-token private storage) ---

@@ -173,6 +173,8 @@ const S = {
   sealType:  '',
   pollTimer: null,
   msg:       null,   // {type:'success'|'error', text}
+  authTab:   'approle',
+  dynamicTab: 'db',
 };
 
 // ─────────── API ───────────
@@ -284,6 +286,8 @@ function renderApp() {
     ${navItem('secrets', '🗝', 'Secrets')}
     ${navItem('tokens', '🎟', 'Tokens')}
     ${navItem('policies', '📋', 'Policies')}
+    ${navItem('auth', '🔑', 'Auth Methods')}
+    ${navItem('dynamic', '⚡', 'Dynamic Secrets')}
   </nav>
   <div class="sidebar-footer">
     <button class="logout-btn" id="logout-btn">Sign out</button>
@@ -307,6 +311,8 @@ function renderPage() {
     case 'secrets':  return pageSecrets();
     case 'tokens':   return pageTokens();
     case 'policies': return pagePolicies();
+    case 'auth':     return pageAuth();
+    case 'dynamic':  return pageDynamic();
     default: return '';
   }
 }
@@ -470,6 +476,385 @@ function pagePolicies() {
 </div>`;
 }
 
+// ─────────── Auth Methods page ───────────
+function pageAuth() {
+  const tab = S.authTab;
+  const tabs = [['approle','AppRole'],['jwt','JWT/OIDC'],['ldap','LDAP'],['k8s','Kubernetes']];
+  return `
+<div class="page-header">
+  <h1>Auth Methods</h1>
+  <p>Configure authentication backends and roles</p>
+</div>
+<div class="page-body">
+  <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+    ${tabs.map(([id,label])=>`<button class="btn ${tab===id?'btn-primary':'btn-ghost'}" data-auth-tab="${id}">${label}</button>`).join('')}
+  </div>
+  ${tab==='approle' ? renderAppRoleTab() : ''}
+  ${tab==='jwt'     ? renderJWTTab()     : ''}
+  ${tab==='ldap'    ? renderLDAPTab()    : ''}
+  ${tab==='k8s'     ? renderK8sTab()     : ''}
+</div>`;
+}
+
+function renderAppRoleTab() {
+  return `
+<div class="card">
+  <div class="card-header">AppRole Roles <button class="btn btn-primary btn-sm" id="list-approles-btn">Refresh</button></div>
+  <div class="card-body"><div id="approle-list"><em style="color:var(--muted)">Click Refresh.</em></div></div>
+</div>
+<div class="card-grid">
+  <div class="card">
+    <div class="card-header">Create / Update Role</div>
+    <div class="card-body">
+      <form id="create-approle-form">
+        <div class="form-row"><label>Role Name</label><input name="name" placeholder="my-app" required></div>
+        <div class="form-row"><label>Policies (comma-separated)</label><input name="policies" placeholder="read-only,db-rw"></div>
+        <div class="form-row"><label>Token TTL (e.g. 1h)</label><input name="token_ttl" placeholder="1h"></div>
+        <div class="form-row"><label>Secret-ID TTL</label><input name="secret_id_ttl" placeholder="24h"></div>
+        <div class="form-row"><label>Secret-ID Max Uses (0 = unlimited)</label><input name="secret_id_num_uses" type="number" min="0" value="0"></div>
+        <div class="form-actions"><button class="btn btn-primary" type="submit">Save Role</button></div>
+      </form>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">Generate Secret ID</div>
+    <div class="card-body">
+      <form id="gen-secret-id-form">
+        <div class="form-row"><label>Role Name</label><input name="role" placeholder="my-app" required></div>
+        <div class="form-actions"><button class="btn btn-primary" type="submit">Generate</button></div>
+      </form>
+      <div id="secret-id-result" style="margin-top:12px"></div>
+    </div>
+  </div>
+</div>`;
+}
+
+function renderJWTTab() {
+  return `
+<div class="card">
+  <div class="card-header">JWT/OIDC Configuration <button class="btn btn-ghost btn-sm" id="load-jwt-config-btn">Load</button></div>
+  <div class="card-body">
+    <form id="jwt-config-form">
+      <div class="card-grid">
+        <div class="form-row"><label>JWKS URI</label><input name="jwks_uri" id="jwt-jwks-uri" placeholder="https://.../.well-known/jwks.json"></div>
+        <div class="form-row"><label>Issuer (iss claim)</label><input name="issuer" id="jwt-issuer" placeholder="https://accounts.google.com"></div>
+      </div>
+      <div class="card-grid">
+        <div class="form-row"><label>Audience (aud claim)</label><input name="audience" id="jwt-audience" placeholder="my-app"></div>
+        <div class="form-row"><label>Default Token TTL</label><input name="default_ttl" id="jwt-default-ttl" placeholder="1h"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Save Config</button></div>
+    </form>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header">JWT Roles <button class="btn btn-primary btn-sm" id="list-jwt-roles-btn">Refresh</button></div>
+  <div class="card-body"><div id="jwt-role-list"><em style="color:var(--muted)">Click Refresh.</em></div></div>
+</div>
+<div class="card">
+  <div class="card-header">Create / Update Role</div>
+  <div class="card-body">
+    <form id="create-jwt-role-form">
+      <div class="card-grid">
+        <div class="form-row"><label>Role Name</label><input name="name" placeholder="web-app" required></div>
+        <div class="form-row"><label>Bound Subject (sub claim)</label><input name="bound_subject" placeholder="user@domain.com"></div>
+      </div>
+      <div class="card-grid">
+        <div class="form-row"><label>Policies (comma-separated)</label><input name="policies" placeholder="read-only"></div>
+        <div class="form-row"><label>Token TTL</label><input name="ttl" placeholder="1h"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Save Role</button></div>
+    </form>
+  </div>
+</div>`;
+}
+
+function renderLDAPTab() {
+  return `
+<div class="card">
+  <div class="card-header">LDAP Configuration <button class="btn btn-ghost btn-sm" id="load-ldap-config-btn">Load</button></div>
+  <div class="card-body">
+    <form id="ldap-config-form">
+      <div class="card-grid">
+        <div class="form-row"><label>LDAP URL</label><input name="url" id="ldap-url" placeholder="ldap://ldap.corp.com:389"></div>
+        <div class="form-row"><label>Base DN</label><input name="base_dn" id="ldap-base-dn" placeholder="dc=corp,dc=com"></div>
+      </div>
+      <div class="card-grid">
+        <div class="form-row"><label>Bind DN</label><input name="bind_dn" id="ldap-bind-dn" placeholder="cn=admin,dc=corp,dc=com"></div>
+        <div class="form-row"><label>Bind Password</label><input name="bind_password" type="password" placeholder="(leave blank to keep current)"></div>
+      </div>
+      <div class="form-row"><label>Username Attribute</label><input name="user_attr" id="ldap-user-attr" placeholder="uid"></div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Save Config</button></div>
+    </form>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header">LDAP Roles <button class="btn btn-primary btn-sm" id="list-ldap-roles-btn">Refresh</button></div>
+  <div class="card-body"><div id="ldap-role-list"><em style="color:var(--muted)">Click Refresh.</em></div></div>
+</div>
+<div class="card">
+  <div class="card-header">Create / Update Role</div>
+  <div class="card-body">
+    <form id="create-ldap-role-form">
+      <div class="card-grid">
+        <div class="form-row"><label>Role Name</label><input name="name" placeholder="devs" required></div>
+        <div class="form-row"><label>LDAP Groups (comma-separated)</label><input name="groups" placeholder="devs,admins"></div>
+      </div>
+      <div class="card-grid">
+        <div class="form-row"><label>Policies (comma-separated)</label><input name="policies" placeholder="read-only"></div>
+        <div class="form-row"><label>Token TTL</label><input name="ttl" placeholder="8h"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Save Role</button></div>
+    </form>
+  </div>
+</div>`;
+}
+
+function renderK8sTab() {
+  return `
+<div class="card">
+  <div class="card-header">Kubernetes Auth Roles</div>
+  <div class="card-body">
+    <p style="color:var(--muted);font-size:12px;margin-bottom:14px">Roles are keyed by namespace + service account name.</p>
+    <form id="k8s-role-form">
+      <div class="card-grid">
+        <div class="form-row"><label>Namespace</label><input name="namespace" placeholder="default" required></div>
+        <div class="form-row"><label>Service Account</label><input name="sa" placeholder="my-app" required></div>
+      </div>
+      <div class="card-grid">
+        <div class="form-row"><label>Policies (comma-separated)</label><input name="policies" placeholder="read-only"></div>
+        <div class="form-row"><label>Token TTL</label><input name="ttl" placeholder="1h"></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">Save Role</button>
+        <button class="btn btn-ghost" type="button" id="get-k8s-role-btn">Lookup</button>
+        <button class="btn btn-danger" type="button" id="del-k8s-role-btn">Delete</button>
+      </div>
+    </form>
+    <div id="k8s-role-result" style="margin-top:12px"></div>
+  </div>
+</div>`;
+}
+
+// ─────────── Dynamic Secrets page ───────────
+function pageDynamic() {
+  const tab = S.dynamicTab;
+  const tabs = [['db','Database'],['aws','AWS'],['gcp','GCP'],['azure','Azure'],['leases','Leases']];
+  return `
+<div class="page-header">
+  <h1>Dynamic Secrets</h1>
+  <p>Configure credential engines and manage leases</p>
+</div>
+<div class="page-body">
+  <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+    ${tabs.map(([id,label])=>`<button class="btn ${tab===id?'btn-primary':'btn-ghost'}" data-dyn-tab="${id}">${label}</button>`).join('')}
+  </div>
+  ${tab==='db'     ? renderDBTab()     : ''}
+  ${tab==='aws'    ? renderAWSTab()    : ''}
+  ${tab==='gcp'    ? renderGCPTab()    : ''}
+  ${tab==='azure'  ? renderAzureTab()  : ''}
+  ${tab==='leases' ? renderLeasesTab() : ''}
+</div>`;
+}
+
+function renderDBTab() {
+  return `
+<div class="card">
+  <div class="card-header">Database Connections <button class="btn btn-primary btn-sm" id="list-db-configs-btn">Refresh</button></div>
+  <div class="card-body"><div id="db-config-list"><em style="color:var(--muted)">Click Refresh.</em></div></div>
+</div>
+<div class="card">
+  <div class="card-header">Create / Update Connection</div>
+  <div class="card-body">
+    <form id="create-db-config-form">
+      <div class="card-grid">
+        <div class="form-row"><label>Connection Name</label><input name="name" placeholder="postgres-prod" required></div>
+        <div class="form-row"><label>Plugin (postgresql / mysql)</label><input name="plugin_name" placeholder="postgresql"></div>
+      </div>
+      <div class="form-row"><label>Connection URL</label><input name="connection_url" placeholder="postgres://user:pass@host:5432/db?sslmode=disable"></div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Save Connection</button></div>
+    </form>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header">Roles <button class="btn btn-primary btn-sm" id="list-db-roles-btn">Refresh</button></div>
+  <div class="card-body"><div id="db-role-list"><em style="color:var(--muted)">Click Refresh.</em></div></div>
+</div>
+<div class="card">
+  <div class="card-header">Create / Update Role</div>
+  <div class="card-body">
+    <form id="create-db-role-form">
+      <div class="card-grid">
+        <div class="form-row"><label>Role Name</label><input name="name" placeholder="readonly" required></div>
+        <div class="form-row"><label>DB Connection Name</label><input name="db_name" placeholder="postgres-prod"></div>
+      </div>
+      <div class="form-row"><label>Creation SQL (use {{name}} and {{password}})</label><textarea name="creation_statements" placeholder="CREATE USER {{name}} WITH PASSWORD '{{password}}'; GRANT SELECT ON ALL TABLES IN SCHEMA public TO {{name}};"></textarea></div>
+      <div class="form-row"><label>Revocation SQL (optional)</label><textarea name="revocation_statements" placeholder="DROP USER IF EXISTS {{name}};"></textarea></div>
+      <div class="card-grid">
+        <div class="form-row"><label>Default TTL</label><input name="default_ttl" placeholder="1h"></div>
+        <div class="form-row"><label>Max TTL</label><input name="max_ttl" placeholder="24h"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Save Role</button></div>
+    </form>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header">Generate Credentials</div>
+  <div class="card-body">
+    <form id="gen-db-creds-form">
+      <div class="form-row"><label>Role Name</label><input name="role" placeholder="readonly" required></div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Generate</button></div>
+    </form>
+    <div id="db-creds-result" style="margin-top:12px"></div>
+  </div>
+</div>`;
+}
+
+function renderAWSTab() {
+  return `
+<div class="card">
+  <div class="card-header">AWS Configuration <button class="btn btn-ghost btn-sm" id="load-aws-config-btn">Load</button></div>
+  <div class="card-body">
+    <form id="aws-config-form">
+      <div class="card-grid">
+        <div class="form-row"><label>Access Key ID</label><input name="access_key_id" id="aws-access-key" placeholder="AKIA…"></div>
+        <div class="form-row"><label>Secret Access Key</label><input name="secret_access_key" type="password" placeholder="(leave blank to keep)"></div>
+      </div>
+      <div class="form-row"><label>Region</label><input name="region" id="aws-region" placeholder="us-east-1"></div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Save Config</button></div>
+    </form>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header">Roles <button class="btn btn-primary btn-sm" id="list-aws-roles-btn">Refresh</button></div>
+  <div class="card-body"><div id="aws-role-list"><em style="color:var(--muted)">Click Refresh.</em></div></div>
+</div>
+<div class="card">
+  <div class="card-header">Create / Update Role</div>
+  <div class="card-body">
+    <form id="create-aws-role-form">
+      <div class="card-grid">
+        <div class="form-row"><label>Role Name</label><input name="name" placeholder="s3-reader" required></div>
+        <div class="form-row"><label>Credential Type (iam_user / assumed_role)</label><input name="credential_type" placeholder="iam_user"></div>
+      </div>
+      <div class="form-row"><label>Policy ARNs (comma-separated, for iam_user)</label><input name="policy_arns" placeholder="arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"></div>
+      <div class="form-row"><label>Role ARNs (comma-separated, for assumed_role)</label><input name="role_arns" placeholder="arn:aws:iam::123456789012:role/MyRole"></div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Save Role</button></div>
+    </form>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header">Generate Credentials</div>
+  <div class="card-body">
+    <form id="gen-aws-creds-form">
+      <div class="form-row"><label>Role Name</label><input name="role" placeholder="s3-reader" required></div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Generate</button></div>
+    </form>
+    <div id="aws-creds-result" style="margin-top:12px"></div>
+  </div>
+</div>`;
+}
+
+function renderGCPTab() {
+  return `
+<div class="card">
+  <div class="card-header">GCP Configuration <button class="btn btn-ghost btn-sm" id="load-gcp-config-btn">Load</button></div>
+  <div class="card-body">
+    <form id="gcp-config-form">
+      <div class="form-row"><label>Service Account Credentials JSON</label><textarea name="credentials_json" placeholder='{"type":"service_account","project_id":"my-proj",...}' style="min-height:100px;font-size:11px"></textarea></div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Save Config</button></div>
+    </form>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header">Roles <button class="btn btn-primary btn-sm" id="list-gcp-roles-btn">Refresh</button></div>
+  <div class="card-body"><div id="gcp-role-list"><em style="color:var(--muted)">Click Refresh.</em></div></div>
+</div>
+<div class="card">
+  <div class="card-header">Create / Update Role</div>
+  <div class="card-body">
+    <form id="create-gcp-role-form">
+      <div class="card-grid">
+        <div class="form-row"><label>Role Name</label><input name="name" placeholder="gcs-reader" required></div>
+        <div class="form-row"><label>Credential Type (service_account_key / access_token)</label><input name="credential_type" placeholder="access_token"></div>
+      </div>
+      <div class="form-row"><label>Service Account Email</label><input name="service_account_email" placeholder="sa@project.iam.gserviceaccount.com"></div>
+      <div class="form-row"><label>OAuth2 Scopes (comma-separated, for access_token)</label><input name="scopes" placeholder="https://www.googleapis.com/auth/cloud-platform"></div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Save Role</button></div>
+    </form>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header">Generate Credentials</div>
+  <div class="card-body">
+    <form id="gen-gcp-creds-form">
+      <div class="form-row"><label>Role Name</label><input name="role" placeholder="gcs-reader" required></div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Generate</button></div>
+    </form>
+    <div id="gcp-creds-result" style="margin-top:12px"></div>
+  </div>
+</div>`;
+}
+
+function renderAzureTab() {
+  return `
+<div class="card">
+  <div class="card-header">Azure Configuration <button class="btn btn-ghost btn-sm" id="load-azure-config-btn">Load</button></div>
+  <div class="card-body">
+    <form id="azure-config-form">
+      <div class="card-grid">
+        <div class="form-row"><label>Tenant ID</label><input name="tenant_id" id="azure-tenant-id" placeholder="00000000-0000-0000-0000-000000000000"></div>
+        <div class="form-row"><label>Client ID (app reg. for Tuck itself)</label><input name="client_id" id="azure-client-id" placeholder="00000000-0000-0000-0000-000000000000"></div>
+      </div>
+      <div class="form-row"><label>Client Secret</label><input name="client_secret" type="password" placeholder="(leave blank to keep)"></div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Save Config</button></div>
+    </form>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header">Roles <button class="btn btn-primary btn-sm" id="list-azure-roles-btn">Refresh</button></div>
+  <div class="card-body"><div id="azure-role-list"><em style="color:var(--muted)">Click Refresh.</em></div></div>
+</div>
+<div class="card">
+  <div class="card-header">Create / Update Role</div>
+  <div class="card-body">
+    <p style="color:var(--muted);font-size:12px;margin-bottom:12px">Each role maps to an Azure AD application. Tuck generates a new client secret for it on every credentials request.</p>
+    <form id="create-azure-role-form">
+      <div class="card-grid">
+        <div class="form-row"><label>Role Name</label><input name="name" placeholder="my-app-creds" required></div>
+        <div class="form-row"><label>Application ID (client_id)</label><input name="application_id" placeholder="00000000-0000-0000-0000-000000000000"></div>
+      </div>
+      <div class="form-row"><label>Application Object ID</label><input name="application_object_id" placeholder="00000000-0000-0000-0000-000000000000"></div>
+      <div class="card-grid">
+        <div class="form-row"><label>Default TTL</label><input name="default_ttl" placeholder="1h"></div>
+        <div class="form-row"><label>Max TTL</label><input name="max_ttl" placeholder="24h"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Save Role</button></div>
+    </form>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header">Generate Credentials</div>
+  <div class="card-body">
+    <form id="gen-azure-creds-form">
+      <div class="form-row"><label>Role Name</label><input name="role" placeholder="my-app-creds" required></div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Generate</button></div>
+    </form>
+    <div id="azure-creds-result" style="margin-top:12px"></div>
+  </div>
+</div>`;
+}
+
+function renderLeasesTab() {
+  return `
+<div class="card">
+  <div class="card-header">Active Leases <button class="btn btn-primary btn-sm" id="refresh-leases-btn">Refresh All</button></div>
+  <div class="card-body">
+    <div id="leases-all"><em style="color:var(--muted)">Click Refresh All to load leases from all engines.</em></div>
+  </div>
+</div>`;
+}
+
 // ─────────── Bind events ───────────
 function bind() {
   on('click', '#logout-btn', logout);
@@ -597,6 +982,9 @@ function bind() {
 
   // Policies
   on('click', '#list-policies-btn', loadPolicies);
+  on('click', '[data-auth-tab]', e => { S.authTab = e.currentTarget.dataset.authTab; render(); });
+  on('click', '[data-dyn-tab]',  e => { S.dynamicTab = e.currentTarget.dataset.dynTab; render(); });
+  bindAuth();
 
   onSubmit('#create-policy-form', async fd => {
     const name = fd.get('name').trim();
@@ -699,6 +1087,458 @@ async function loadPolicies() {
       } catch (e) { flash('error', e.message); }
     });
   } catch (e) { flash('error', e.message); }
+}
+
+// ─────────── Auth bind (added in bind() via separate calls) ───────────
+function bindAuth() {
+  // AppRole
+  on('click', '#list-approles-btn', loadAppRoles);
+  onSubmit('#create-approle-form', async fd => {
+    const name = fd.get('name').trim();
+    if (!name) return;
+    const policies = (fd.get('policies')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    if (!policies.length) { flash('error', 'At least one policy required'); return; }
+    const body = { policies };
+    if (fd.get('token_ttl')) body.token_ttl = fd.get('token_ttl').trim();
+    if (fd.get('secret_id_ttl')) body.secret_id_ttl = fd.get('secret_id_ttl').trim();
+    const n = parseInt(fd.get('secret_id_num_uses')||'0');
+    if (n > 0) body.secret_id_num_uses = n;
+    try { await api('PUT', `/v1/auth/approle/role/${name}`, body); flash('success', `AppRole "${name}" saved.`); render(); }
+    catch (e) { flash('error', e.message); }
+  });
+  onSubmit('#gen-secret-id-form', async fd => {
+    const role = fd.get('role').trim();
+    if (!role) return;
+    try {
+      const d = await api('POST', `/v1/auth/approle/role/${role}/secret-id`, {});
+      document.getElementById('secret-id-result').innerHTML = `
+        <div class="alert alert-success">
+          <strong>Secret ID (shown once):</strong><br>
+          <span class="mono">${esc(d.secret_id)}</span><br>
+          <small style="color:var(--muted)">Role ID: ${esc(d.role_id||'')} &nbsp;|&nbsp; Accessor: ${esc(d.secret_id_accessor||'')}</small>
+        </div>`;
+    } catch (e) {
+      document.getElementById('secret-id-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
+    }
+  });
+
+  // JWT
+  on('click', '#load-jwt-config-btn', async () => {
+    try {
+      const d = await api('GET', '/v1/auth/jwt/config');
+      if (document.getElementById('jwt-jwks-uri')) {
+        document.getElementById('jwt-jwks-uri').value   = d.jwks_uri    || '';
+        document.getElementById('jwt-issuer').value     = d.issuer       || '';
+        document.getElementById('jwt-audience').value   = d.audience     || '';
+        document.getElementById('jwt-default-ttl').value = d.default_ttl || '';
+      }
+    } catch (e) { flash('error', e.message); }
+  });
+  onSubmit('#jwt-config-form', async fd => {
+    const body = { jwks_uri: fd.get('jwks_uri').trim(), issuer: fd.get('issuer').trim() };
+    if (fd.get('audience').trim())    body.audience    = fd.get('audience').trim();
+    if (fd.get('default_ttl').trim()) body.default_ttl = fd.get('default_ttl').trim();
+    try { await api('PUT', '/v1/auth/jwt/config', body); flash('success', 'JWT config saved.'); render(); }
+    catch (e) { flash('error', e.message); }
+  });
+  on('click', '#list-jwt-roles-btn', loadJWTRoles);
+  onSubmit('#create-jwt-role-form', async fd => {
+    const name = fd.get('name').trim();
+    if (!name) return;
+    const policies = (fd.get('policies')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const body = { policies };
+    if (fd.get('bound_subject').trim()) body.bound_subject = fd.get('bound_subject').trim();
+    if (fd.get('ttl').trim())           body.ttl           = fd.get('ttl').trim();
+    try { await api('PUT', `/v1/auth/jwt/role/${name}`, body); flash('success', `JWT role "${name}" saved.`); render(); }
+    catch (e) { flash('error', e.message); }
+  });
+
+  // LDAP
+  on('click', '#load-ldap-config-btn', async () => {
+    try {
+      const d = await api('GET', '/v1/auth/ldap/config');
+      if (document.getElementById('ldap-url')) {
+        document.getElementById('ldap-url').value       = d.url       || '';
+        document.getElementById('ldap-base-dn').value   = d.base_dn   || '';
+        document.getElementById('ldap-bind-dn').value   = d.bind_dn   || '';
+        document.getElementById('ldap-user-attr').value = d.user_attr || '';
+      }
+    } catch (e) { flash('error', e.message); }
+  });
+  onSubmit('#ldap-config-form', async fd => {
+    const body = {
+      url: fd.get('url').trim(), base_dn: fd.get('base_dn').trim(),
+      bind_dn: fd.get('bind_dn').trim(), user_attr: fd.get('user_attr').trim(),
+    };
+    if (fd.get('bind_password')) body.bind_password = fd.get('bind_password');
+    try { await api('PUT', '/v1/auth/ldap/config', body); flash('success', 'LDAP config saved.'); render(); }
+    catch (e) { flash('error', e.message); }
+  });
+  on('click', '#list-ldap-roles-btn', loadLDAPRoles);
+  onSubmit('#create-ldap-role-form', async fd => {
+    const name = fd.get('name').trim();
+    if (!name) return;
+    const policies = (fd.get('policies')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const groups   = (fd.get('groups')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const body = { policies };
+    if (groups.length) body.groups = groups;
+    if (fd.get('ttl').trim()) body.ttl = fd.get('ttl').trim();
+    try { await api('PUT', `/v1/auth/ldap/role/${name}`, body); flash('success', `LDAP role "${name}" saved.`); render(); }
+    catch (e) { flash('error', e.message); }
+  });
+
+  // K8s
+  onSubmit('#k8s-role-form', async fd => {
+    const ns = fd.get('namespace').trim(), sa = fd.get('sa').trim();
+    if (!ns || !sa) return;
+    const policies = (fd.get('policies')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const body = { policies };
+    if (fd.get('ttl').trim()) body.ttl = fd.get('ttl').trim();
+    try { await api('PUT', `/v1/auth/kubernetes/role/${ns}/${sa}`, body); flash('success', `K8s role ${ns}/${sa} saved.`); render(); }
+    catch (e) { flash('error', e.message); }
+  });
+  on('click', '#get-k8s-role-btn', async () => {
+    const f = document.getElementById('k8s-role-form');
+    const ns = f.querySelector('[name=namespace]').value.trim();
+    const sa = f.querySelector('[name=sa]').value.trim();
+    if (!ns || !sa) return;
+    try {
+      const d = await api('GET', `/v1/auth/kubernetes/role/${ns}/${sa}`);
+      document.getElementById('k8s-role-result').innerHTML =
+        `<div class="alert alert-info"><pre style="font-size:11px;white-space:pre-wrap">${esc(JSON.stringify(d,null,2))}</pre></div>`;
+    } catch (e) {
+      document.getElementById('k8s-role-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
+    }
+  });
+  on('click', '#del-k8s-role-btn', async () => {
+    const f = document.getElementById('k8s-role-form');
+    const ns = f.querySelector('[name=namespace]').value.trim();
+    const sa = f.querySelector('[name=sa]').value.trim();
+    if (!ns || !sa || !confirm(`Delete K8s role ${ns}/${sa}?`)) return;
+    try { await api('DELETE', `/v1/auth/kubernetes/role/${ns}/${sa}`); flash('success', 'K8s role deleted.'); render(); }
+    catch (e) { flash('error', e.message); }
+  });
+
+  // ─── Dynamic Secrets ───
+  // Database
+  on('click', '#list-db-configs-btn', loadDBConfigs);
+  on('click', '#list-db-roles-btn',   loadDBRoles);
+  onSubmit('#create-db-config-form', async fd => {
+    const name = fd.get('name').trim();
+    if (!name) return;
+    const body = { plugin_name: fd.get('plugin_name').trim(), connection_url: fd.get('connection_url').trim() };
+    try { await api('PUT', `/v1/database/config/${name}`, body); flash('success', `DB connection "${name}" saved.`); render(); }
+    catch (e) { flash('error', e.message); }
+  });
+  onSubmit('#create-db-role-form', async fd => {
+    const name = fd.get('name').trim();
+    if (!name) return;
+    const body = { db_name: fd.get('db_name').trim(), creation_statements: fd.get('creation_statements').trim() };
+    const rev = fd.get('revocation_statements').trim();
+    if (rev) body.revocation_statements = rev;
+    if (fd.get('default_ttl').trim()) body.default_ttl = fd.get('default_ttl').trim();
+    if (fd.get('max_ttl').trim())     body.max_ttl     = fd.get('max_ttl').trim();
+    try { await api('PUT', `/v1/database/role/${name}`, body); flash('success', `DB role "${name}" saved.`); render(); }
+    catch (e) { flash('error', e.message); }
+  });
+  onSubmit('#gen-db-creds-form', async fd => {
+    const role = fd.get('role').trim();
+    if (!role) return;
+    try {
+      const d = await api('POST', `/v1/database/creds/${role}`, {});
+      document.getElementById('db-creds-result').innerHTML = renderCredsResult(d);
+    } catch (e) { document.getElementById('db-creds-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+
+  // AWS
+  on('click', '#load-aws-config-btn', async () => {
+    try {
+      const d = await api('GET', '/v1/aws/config');
+      if (document.getElementById('aws-access-key')) {
+        document.getElementById('aws-access-key').value = d.access_key_id || '';
+        document.getElementById('aws-region').value     = d.region        || '';
+      }
+    } catch (e) { flash('error', e.message); }
+  });
+  onSubmit('#aws-config-form', async fd => {
+    const body = { access_key_id: fd.get('access_key_id').trim(), region: fd.get('region').trim() };
+    if (fd.get('secret_access_key')) body.secret_access_key = fd.get('secret_access_key');
+    try { await api('PUT', '/v1/aws/config', body); flash('success', 'AWS config saved.'); render(); }
+    catch (e) { flash('error', e.message); }
+  });
+  on('click', '#list-aws-roles-btn', loadAWSRoles);
+  onSubmit('#create-aws-role-form', async fd => {
+    const name = fd.get('name').trim();
+    if (!name) return;
+    const body = { credential_type: fd.get('credential_type').trim() };
+    const pArns = (fd.get('policy_arns')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const rArns = (fd.get('role_arns')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    if (pArns.length) body.policy_arns = pArns;
+    if (rArns.length) body.role_arns   = rArns;
+    try { await api('PUT', `/v1/aws/roles/${name}`, body); flash('success', `AWS role "${name}" saved.`); render(); }
+    catch (e) { flash('error', e.message); }
+  });
+  onSubmit('#gen-aws-creds-form', async fd => {
+    const role = fd.get('role').trim();
+    if (!role) return;
+    try {
+      const d = await api('POST', `/v1/aws/creds/${role}`, {});
+      document.getElementById('aws-creds-result').innerHTML = renderCredsResult(d);
+    } catch (e) { document.getElementById('aws-creds-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+
+  // GCP
+  on('click', '#load-gcp-config-btn', async () => {
+    try { await api('GET', '/v1/gcp/config'); flash('success', 'GCP config loaded (credentials not shown).'); }
+    catch (e) { flash('error', e.message); }
+  });
+  onSubmit('#gcp-config-form', async fd => {
+    const body = {};
+    const creds = fd.get('credentials_json').trim();
+    if (creds) body.credentials_json = creds;
+    try { await api('PUT', '/v1/gcp/config', body); flash('success', 'GCP config saved.'); render(); }
+    catch (e) { flash('error', e.message); }
+  });
+  on('click', '#list-gcp-roles-btn', loadGCPRoles);
+  onSubmit('#create-gcp-role-form', async fd => {
+    const name = fd.get('name').trim();
+    if (!name) return;
+    const body = { credential_type: fd.get('credential_type').trim() };
+    if (fd.get('service_account_email').trim()) body.service_account_email = fd.get('service_account_email').trim();
+    const scopes = (fd.get('scopes')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    if (scopes.length) body.scopes = scopes;
+    try { await api('PUT', `/v1/gcp/roles/${name}`, body); flash('success', `GCP role "${name}" saved.`); render(); }
+    catch (e) { flash('error', e.message); }
+  });
+  onSubmit('#gen-gcp-creds-form', async fd => {
+    const role = fd.get('role').trim();
+    if (!role) return;
+    try {
+      const d = await api('POST', `/v1/gcp/creds/${role}`, {});
+      document.getElementById('gcp-creds-result').innerHTML = renderCredsResult(d);
+    } catch (e) { document.getElementById('gcp-creds-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+
+  // Azure
+  on('click', '#load-azure-config-btn', async () => {
+    try {
+      const d = await api('GET', '/v1/azure/config');
+      if (document.getElementById('azure-tenant-id')) {
+        document.getElementById('azure-tenant-id').value = d.tenant_id || '';
+        document.getElementById('azure-client-id').value = d.client_id || '';
+      }
+    } catch (e) { flash('error', e.message); }
+  });
+  onSubmit('#azure-config-form', async fd => {
+    const body = { tenant_id: fd.get('tenant_id').trim(), client_id: fd.get('client_id').trim() };
+    if (fd.get('client_secret')) body.client_secret = fd.get('client_secret');
+    try { await api('PUT', '/v1/azure/config', body); flash('success', 'Azure config saved.'); render(); }
+    catch (e) { flash('error', e.message); }
+  });
+  on('click', '#list-azure-roles-btn', loadAzureRoles);
+  onSubmit('#create-azure-role-form', async fd => {
+    const name = fd.get('name').trim();
+    if (!name) return;
+    const body = { application_id: fd.get('application_id').trim(), application_object_id: fd.get('application_object_id').trim() };
+    if (fd.get('default_ttl').trim()) body.default_ttl = fd.get('default_ttl').trim();
+    if (fd.get('max_ttl').trim())     body.max_ttl     = fd.get('max_ttl').trim();
+    try { await api('PUT', `/v1/azure/roles/${name}`, body); flash('success', `Azure role "${name}" saved.`); render(); }
+    catch (e) { flash('error', e.message); }
+  });
+  onSubmit('#gen-azure-creds-form', async fd => {
+    const role = fd.get('role').trim();
+    if (!role) return;
+    try {
+      const d = await api('POST', `/v1/azure/creds/${role}`, {});
+      document.getElementById('azure-creds-result').innerHTML = renderCredsResult(d);
+    } catch (e) { document.getElementById('azure-creds-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+
+  // Leases
+  on('click', '#refresh-leases-btn', loadAllLeases);
+}
+
+// ─────────── Helpers: creds display ───────────
+function renderCredsResult(d) {
+  const rows = Object.entries(d)
+    .filter(([,v]) => v !== null && v !== undefined && v !== '')
+    .map(([k,v]) => `<dt>${esc(k)}</dt><dd class="mono">${esc(String(v))}</dd>`)
+    .join('');
+  return `<div class="alert alert-success"><strong>Credentials (shown once):</strong><dl class="kv-grid" style="margin-top:8px">${rows}</dl></div>`;
+}
+
+// ─────────── Helpers: load lists ───────────
+async function loadAppRoles() {
+  const el = document.getElementById('approle-list');
+  if (!el) return;
+  try {
+    const r = await fetch('/v1/auth/approle/role/', { method:'LIST', headers:{'X-Tuck-Token':S.token} });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error||r.status);
+    if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No roles.</em>'; return; }
+    el.innerHTML = renderKeyTable(d.keys, (name) => [
+      `<button class="btn btn-danger btn-sm" onclick="delAppRole('${esc(name)}')">Delete</button>`
+    ]);
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+async function loadJWTRoles() {
+  const el = document.getElementById('jwt-role-list');
+  if (!el) return;
+  try {
+    const r = await fetch('/v1/auth/jwt/role/', { method:'LIST', headers:{'X-Tuck-Token':S.token} });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error||r.status);
+    if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No roles.</em>'; return; }
+    el.innerHTML = renderKeyTable(d.keys, (name) => [
+      `<button class="btn btn-danger btn-sm" onclick="delPath('/v1/auth/jwt/role/${esc(name)}','JWT role')">Delete</button>`
+    ]);
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+async function loadLDAPRoles() {
+  const el = document.getElementById('ldap-role-list');
+  if (!el) return;
+  try {
+    const r = await fetch('/v1/auth/ldap/role/', { method:'LIST', headers:{'X-Tuck-Token':S.token} });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error||r.status);
+    if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No roles.</em>'; return; }
+    el.innerHTML = renderKeyTable(d.keys, (name) => [
+      `<button class="btn btn-danger btn-sm" onclick="delPath('/v1/auth/ldap/role/${esc(name)}','LDAP role')">Delete</button>`
+    ]);
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+async function loadDBConfigs() {
+  const el = document.getElementById('db-config-list');
+  if (!el) return;
+  try {
+    const r = await fetch('/v1/database/config/', { method:'LIST', headers:{'X-Tuck-Token':S.token} });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error||r.status);
+    if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No connections.</em>'; return; }
+    el.innerHTML = renderKeyTable(d.keys, (name) => [
+      `<button class="btn btn-danger btn-sm" onclick="delPath('/v1/database/config/${esc(name)}','DB connection')">Delete</button>`
+    ]);
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+async function loadDBRoles() {
+  const el = document.getElementById('db-role-list');
+  if (!el) return;
+  try {
+    const r = await fetch('/v1/database/role/', { method:'LIST', headers:{'X-Tuck-Token':S.token} });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error||r.status);
+    if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No roles.</em>'; return; }
+    el.innerHTML = renderKeyTable(d.keys, (name) => [
+      `<button class="btn btn-danger btn-sm" onclick="delPath('/v1/database/role/${esc(name)}','DB role')">Delete</button>`
+    ]);
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+async function loadAWSRoles() {
+  const el = document.getElementById('aws-role-list');
+  if (!el) return;
+  try {
+    const r = await fetch('/v1/aws/roles/', { method:'LIST', headers:{'X-Tuck-Token':S.token} });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error||r.status);
+    if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No roles.</em>'; return; }
+    el.innerHTML = renderKeyTable(d.keys, (name) => [
+      `<button class="btn btn-danger btn-sm" onclick="delPath('/v1/aws/roles/${esc(name)}','AWS role')">Delete</button>`
+    ]);
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+async function loadGCPRoles() {
+  const el = document.getElementById('gcp-role-list');
+  if (!el) return;
+  try {
+    const r = await fetch('/v1/gcp/roles/', { method:'LIST', headers:{'X-Tuck-Token':S.token} });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error||r.status);
+    if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No roles.</em>'; return; }
+    el.innerHTML = renderKeyTable(d.keys, (name) => [
+      `<button class="btn btn-danger btn-sm" onclick="delPath('/v1/gcp/roles/${esc(name)}','GCP role')">Delete</button>`
+    ]);
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+async function loadAzureRoles() {
+  const el = document.getElementById('azure-role-list');
+  if (!el) return;
+  try {
+    const r = await fetch('/v1/azure/roles/', { method:'LIST', headers:{'X-Tuck-Token':S.token} });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error||r.status);
+    if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No roles.</em>'; return; }
+    el.innerHTML = renderKeyTable(d.keys, (name) => [
+      `<button class="btn btn-danger btn-sm" onclick="delPath('/v1/azure/roles/${esc(name)}','Azure role')">Delete</button>`
+    ]);
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+async function loadAllLeases() {
+  const el = document.getElementById('leases-all');
+  if (!el) return;
+  const engines = [
+    ['Database', '/v1/database/lease/'],
+    ['AWS',      '/v1/aws/lease/'],
+    ['GCP',      '/v1/gcp/lease/'],
+    ['Azure',    '/v1/azure/lease/'],
+  ];
+  let html = '';
+  for (const [name, path] of engines) {
+    try {
+      const r = await fetch(path, { method:'LIST', headers:{'X-Tuck-Token':S.token} });
+      const d = await r.json();
+      if (!r.ok || !d.keys?.length) {
+        html += `<p style="font-size:12px;color:var(--muted);margin-bottom:8px"><strong>${esc(name)}:</strong> No active leases.</p>`;
+        continue;
+      }
+      html += `<p style="font-weight:600;font-size:12px;margin-bottom:6px">${esc(name)}</p>`;
+      html += `<table class="table" style="margin-bottom:14px">
+        <thead><tr><th>Lease ID</th><th></th></tr></thead>
+        <tbody>${d.keys.map(id=>`<tr>
+          <td class="mono">${esc(id)}</td>
+          <td style="width:80px"><button class="btn btn-danger btn-sm" onclick="revokeLease('${esc(path)}','${esc(id)}')">Revoke</button></td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+    } catch {
+      html += `<p style="font-size:12px;color:var(--muted);margin-bottom:8px"><strong>${esc(name)}:</strong> Error loading.</p>`;
+    }
+  }
+  el.innerHTML = html || '<em style="color:var(--muted)">No active leases across any engine.</em>';
+}
+
+async function revokeLease(path, id) {
+  if (!confirm('Revoke this lease?')) return;
+  try { await api('DELETE', `${path}${id}`); flash('success', 'Lease revoked.'); loadAllLeases(); }
+  catch (e) { flash('error', e.message); }
+}
+
+async function delAppRole(name) {
+  if (!confirm(`Delete AppRole "${name}"?`)) return;
+  try { await api('DELETE', `/v1/auth/approle/role/${name}`); flash('success', 'Role deleted.'); render(); }
+  catch (e) { flash('error', e.message); }
+}
+
+async function delPath(path, label) {
+  if (!confirm(`Delete ${label}?`)) return;
+  try { await api('DELETE', path); flash('success', `${label} deleted.`); render(); }
+  catch (e) { flash('error', e.message); }
+}
+
+function renderKeyTable(keys, actionsFn) {
+  return `<table class="table">
+    <thead><tr><th>Name</th><th style="width:100px"></th></tr></thead>
+    <tbody>${keys.map(name=>`<tr>
+      <td>${esc(name)}</td>
+      <td>${actionsFn(name).join('')}</td>
+    </tr>`).join('')}</tbody>
+  </table>`;
 }
 
 // ─────────── Event helpers ───────────

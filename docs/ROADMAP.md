@@ -1,6 +1,6 @@
 # Tuck — Production Roadmap
 
-> Состояние: M0–M29 завершены (v0.29.0). Следующий шаг: M30-M32 (UX completeness) → security audit → v1.0 GA.
+> Состояние: M0–M30 завершены (v0.30.0). Следующий шаг: M31 (UI Crypto Engines) → M32 (CLI completeness) → security audit → v1.0 GA.
 
 ---
 
@@ -74,7 +74,7 @@ v1.0 GA = функциональная полнота + операционная
 | **Operations** | Rate limiting (per-IP token bucket) | ✅ |
 | **Operations** | Backup/restore (bbolt snapshot) | ✅ |
 | **Operations** | Key rotation (POST /v1/sys/rotate) | ✅ |
-| **UX** | Embedded web dashboard (/ui/) — частично (~20%) | ⚠️ |
+| **UX** | Embedded web dashboard (/ui/) — частично (~50%) | ⚠️ |
 | **UX** | CLI client (tuckcli) — частично (kv/token/policy/sys) | ⚠️ |
 | **UX** | Go SDK (pkg/client) — полный (70+ методов) | ✅ |
 | **UX** | OpenAPI 3.0 spec (/openapi.json) | ✅ |
@@ -230,3 +230,5 @@ v1.0 GA = функциональная полнота + операционная
 | M26 | v0.26 | Token Accessor |
 | M27 | v0.27 | Policy Deny Rules |
 | M28 | v0.28 | Renewable Tokens with MaxTTL |
+| M29 | v0.29 | Token MaxUses (одноразовые и ограниченные токены) |
+| M30 | v0.30 | UI: Auth Methods (AppRole/JWT/LDAP/K8s) + Dynamic Secrets (DB/AWS/GCP/Azure) + Leases |

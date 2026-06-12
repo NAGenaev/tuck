@@ -48,7 +48,7 @@ func NewClientFromFiles(apiURL, tokenFile, caFile string) (*Client, error) {
 func newClient(apiURL, caFile string) (*Client, error) {
 	tlsCfg := &tls.Config{}
 	if caFile != "" {
-		pem, err := os.ReadFile(caFile)
+		pem, err := os.ReadFile(caFile) // #nosec G304 — operator-configured CA file path
 		if err != nil {
 			return nil, fmt.Errorf("read CA file: %w", err)
 		}

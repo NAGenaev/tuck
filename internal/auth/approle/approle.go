@@ -29,8 +29,8 @@ var (
 )
 
 const (
-	rolesPrefix     = "auth/approle/roles/"
-	secretIDsPrefix = "auth/approle/secret-ids/"
+	rolesPrefix     = "auth/approle/roles/"        // #nosec G101 — storage path prefix, not a credential
+	secretIDsPrefix = "auth/approle/secret-ids/"   // #nosec G101 — storage path prefix, not a credential
 )
 
 // Role defines an AppRole: its role-id (public identifier), policies,

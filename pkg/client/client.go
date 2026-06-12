@@ -38,7 +38,7 @@ func WithInsecure() Option {
 	return func(c *Client) {
 		c.http = &http.Client{
 			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 — caller opts in via WithInsecure()
 			},
 			Timeout: 30 * time.Second,
 		}

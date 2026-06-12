@@ -279,8 +279,8 @@ func (m *Manager) SignPublicKey(ctx context.Context, roleName, publicKeyStr stri
 		CertType:        certType,
 		KeyId:           fmt.Sprintf("tuck-%s-%d", roleName, serial),
 		ValidPrincipals: validPrincipals,
-		ValidAfter:      uint64(now.Unix()),
-		ValidBefore:     uint64(validBefore.Unix()),
+		ValidAfter:      uint64(now.Unix()),       // #nosec G115 — Unix() is positive for any post-epoch time
+		ValidBefore:     uint64(validBefore.Unix()), // #nosec G115 — Unix() is positive for any post-epoch time
 		Permissions: gossh.Permissions{
 			Extensions: extensions,
 		},

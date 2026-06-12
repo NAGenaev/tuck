@@ -17,7 +17,7 @@ const (
 	AnnotationSecrets = "tuck.io/secrets"
 	// AnnotationTokenSecret is the name of the K8s Secret whose "token" key holds
 	// the Tuck bearer token. Defaults to "tuck-token".
-	AnnotationTokenSecret = "tuck.io/token-secret"
+	AnnotationTokenSecret = "tuck.io/token-secret" // #nosec G101 — Kubernetes annotation name, not a credential value
 	// AnnotationImage overrides the tuck-agent container image.
 	AnnotationImage = "tuck.io/agent-image"
 	// AnnotationOutputDir overrides the secrets output directory inside the Pod.

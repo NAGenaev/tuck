@@ -16,15 +16,16 @@ const (
 // Token is a bearer credential that carries a set of policy names.
 type Token struct {
 	ID          string        `json:"id"`
-	Accessor    string        `json:"accessor"`    // HMAC-safe alias; returned on create/lookup
+	Accessor    string        `json:"accessor"`            // HMAC-safe alias; returned on create/lookup
 	DisplayName string        `json:"display_name"`
 	Policies    []string      `json:"policies"`
+	EntityID    string        `json:"entity_id,omitempty"` // set when issued via an auth method login
 	CreatedAt   time.Time     `json:"created_at"`
-	ExpiresAt   time.Time     `json:"expires_at"`  // zero means never
-	Renewable   bool          `json:"renewable"`   // false by default
-	MaxTTL      time.Duration `json:"max_ttl"`     // zero means no cap
-	MaxUses     int           `json:"max_uses"`    // 0 = unlimited; N = revoke after N authenticated API calls
-	UseCount    int           `json:"use_count"`   // incremented on each Authenticate call
+	ExpiresAt   time.Time     `json:"expires_at"` // zero means never
+	Renewable   bool          `json:"renewable"`  // false by default
+	MaxTTL      time.Duration `json:"max_ttl"`    // zero means no cap
+	MaxUses     int           `json:"max_uses"`   // 0 = unlimited; N = revoke after N authenticated API calls
+	UseCount    int           `json:"use_count"`  // incremented on each Authenticate call
 }
 
 // Generate creates a new token with a cryptographically random ID and accessor.

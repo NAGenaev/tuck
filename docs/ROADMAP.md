@@ -1,6 +1,6 @@
 # Tuck — Production Roadmap
 
-> Состояние: M0–M32 завершены (v0.32.0). Следующий шаг: external security audit (QA-3) → v1.0 GA.
+> **Состояние: v1.0.0 GA выпущен 2026-06-12.** M0–M32 + security audit завершены. Следующий цикл: v1.x.
 
 ---
 
@@ -14,19 +14,21 @@ Tuck — встроенный менеджер секретов для Kubernete
 
 ---
 
-## Граница v1.0 (чёткое определение)
+## v1.0.0 GA — выпущен 2026-06-12 ✅
 
-v1.0 GA = функциональная полнота + операционная зрелость + внешний security audit.
+**Релиз:** https://github.com/NAGenaev/tuck/releases/tag/v1.0.0
 
-**Включено в v1.0:**
-- M0–M28 (реализовано) — вся функциональность ядра
-- M29 — Token MaxUses (безопасность: одноразовые токены)
-- M30 — UI: Auth Methods + Dynamic Secrets (операторский UI)
-- M31 — UI: Crypto Engines (PKI, Transit, SSH, TOTP в браузере)
-- M32 — CLI: dynamic creds + crypto ops (полный CLI)
-- Внешний security audit (QA-3)
+**Вошло в v1.0:**
+- M0–M28 — вся функциональность ядра ✅
+- M29 — Token MaxUses (одноразовые токены) ✅
+- M30 — UI: Auth Methods + Dynamic Secrets ✅
+- M31 — UI: Crypto Engines (PKI, Transit, SSH, TOTP) ✅
+- M32 — CLI: полный охват API ✅
+- OPS-6 — YAML config file ✅
+- QA-2 — Load testing (Go benchmarks + k6) ✅
+- SEC — govulncheck 0 CVE, gosec 0 issues (Go 1.25.11) ✅
 
-**Не входит в v1.0 (v1.x):**
+**Не входит в v1.0 (перенесено в v1.x):**
 - GitHub Auth (JWT/OIDC его покрывает)
 - Entity & Identity system
 - Namespace isolation
@@ -35,7 +37,7 @@ v1.0 GA = функциональная полнота + операционная
 
 ---
 
-## Текущее состояние (v0.28.0) — 194 HTTP-эндпоинта
+## Состояние v1.0.0 — 194 HTTP-эндпоинта
 
 | Категория | Компонент | Статус |
 |---|---|---|
@@ -74,7 +76,7 @@ v1.0 GA = функциональная полнота + операционная
 | **Operations** | Rate limiting (per-IP token bucket) | ✅ |
 | **Operations** | Backup/restore (bbolt snapshot) | ✅ |
 | **Operations** | Key rotation (POST /v1/sys/rotate) | ✅ |
-| **UX** | Embedded web dashboard (/ui/) — ~80% API coverage | ⚠️ |
+| **UX** | Embedded web dashboard (/ui/) — PKI/Transit/SSH/TOTP/Auth/Dynamic | ✅ |
 | **UX** | CLI client (tuckcli) — полный (kv/token/policy/sys/pki/transit/ssh/totp/auth/dynamic) | ✅ |
 | **UX** | Go SDK (pkg/client) — полный (70+ методов) | ✅ |
 | **UX** | OpenAPI 3.0 spec (/openapi.json) | ✅ |
@@ -85,104 +87,55 @@ v1.0 GA = функциональная полнота + операционная
 
 ---
 
-## Реальные пробелы до v1.0
+## UI — покрытие в v1.0
 
-### UI — ~80% API доступно через браузер
-
-| Страница | Состояние |
+| Страница | Статус |
 |---|---|
 | Status (seal/unseal, rotate key) | ✅ |
 | KV v1 secrets | ✅ |
 | Tokens | ✅ |
 | Policies | ✅ |
-| AppRole / LDAP / JWT / K8s конфигурация | ✅ M30 |
-| Dynamic secrets (DB/AWS/GCP/Azure) + leases | ✅ M30 |
-| PKI (CA, issue cert, revoke) | ✅ M31 |
-| SSH CA + sign | ✅ M31 |
-| Transit (encrypt/decrypt/sign/verify) | ✅ M31 |
-| TOTP (create, code, validate) | ✅ M31 |
+| AppRole / LDAP / JWT / K8s конфигурация | ✅ |
+| Dynamic secrets (DB/AWS/GCP/Azure) + leases | ✅ |
+| PKI (CA, issue cert, revoke) | ✅ |
+| SSH CA + sign | ✅ |
+| Transit (encrypt/decrypt/sign/verify) | ✅ |
+| TOTP (create, code, validate) | ✅ |
 | KV v2 (версии, CAS, metadata) | ❌ v1.x |
 | Response Wrapping | ❌ v1.x |
 | Cluster management (Raft status, join/remove) | ❌ v1.x |
 
-### CLI — полный охват API
+## CLI — полный охват API в v1.0
 
-| Команды | Состояние |
+| Команды | Статус |
 |---|---|
 | `kv get/put/delete/list` | ✅ |
 | `token create/get/revoke/renew/list` | ✅ |
 | `policy get/put/delete/list` | ✅ |
 | `status/unseal/seal/rotate` | ✅ |
-| `token lookup-self`, `token renew-self` | ✅ M32 |
-| `db/aws/gcp/azure creds <role>` | ✅ M32 |
-| `pki issue <role>`, `pki revoke <serial>` | ✅ M32 |
-| `transit encrypt/decrypt <key>` | ✅ M32 |
-| `ssh sign <role> <pubkey>` | ✅ M32 |
-| `totp code <key>` | ✅ M32 |
-| `auth approle/ldap/jwt login` | ✅ M32 |
+| `token lookup-self`, `token renew-self` | ✅ |
+| `db/aws/gcp/azure creds <role>` | ✅ |
+| `pki issue <role>`, `pki revoke <serial>` | ✅ |
+| `transit encrypt/decrypt <key>` | ✅ |
+| `ssh sign <role> <pubkey>` | ✅ |
+| `totp code <key>` | ✅ |
+| `auth approle/ldap/jwt login` | ✅ |
 
 ---
 
-## Дорожная карта к v1.0
+## Планы v1.x
 
-### M29 — Token MaxUses (v0.29)
-
-Токены с ограничением числа использований. `max_uses: 1` = одноразовый токен,
-который умирает после первого аутентифицированного API-вызова.
-
-**Изменения:**
-- `Token.MaxUses int` (0 = без ограничений), `Token.UseCount int` (счётчик использований)
-- `Authenticate` инкрементирует UseCount; при UseCount > MaxUses — токен отзывается
-- `WithMaxUses(n) TokenOpt` для `CreateToken`
-- `POST /v1/auth/token` принимает `max_uses` в запросе
-- `tuckcli token create --max-uses=N`
-
-### M30 — UI: Auth Methods + Dynamic Secrets (v0.30)
-
-Добавить в embedded dashboard:
-- **Auth Methods:** AppRole (создание ролей, генерация secret-id), K8s (роли), LDAP/JWT (конфигурация)
-- **Dynamic Secrets:** DB/AWS/GCP/Azure (конфигурация движков, создание ролей, генерация credentials)
-- **Leases:** общий список активных leases с возможностью ревокации
-
-### M31 — UI: Crypto Engines (v0.31)
-
-Добавить в embedded dashboard:
-- **PKI:** статус CA, выпуск/отзыв сертификатов, просмотр CRL
-- **Transit:** encrypt/decrypt/sign через форму, ротация ключей
-- **SSH:** CA pubkey, подпись публичного ключа
-- **TOTP:** создание ключей, QR-код, валидация кода
-
-### M32 — CLI Completeness (v0.32)
-
-Расширить `tuckcli`:
-- `tuckcli db creds <role>` — получить credentials из Database engine
-- `tuckcli aws creds <role>`, `gcp creds <role>`, `azure creds <role>`
-- `tuckcli pki issue <role> --cn=...` — выпустить TLS-сертификат
-- `tuckcli transit encrypt <key> <plaintext>` / `decrypt <key> <ciphertext>`
-- `tuckcli ssh sign <role> <pubkey-file>` — подписать SSH-ключ
-- `tuckcli totp code <key>` — получить текущий TOTP-код
-- `tuckcli token lookup-self`, `tuckcli token renew-self`
-- `tuckcli auth approle login --role-id=... --secret-id=...`
-
-### v1.0-rc — Hardening + Audit
-
-- Обновить OpenAPI spec с новыми эндпоинтами (M29)
-- Написать Getting Started guide
-- Провести внешний security audit (QA-3)
-- **v1.0 GA** после прохождения аудита
-
----
-
-## Оценка времени
-
-| Milestone | Что | Оценка |
-|---|---|---|
-| **M29** | Token MaxUses | 2-3 часа |
-| **M30** | UI Auth + Dynamic Secrets | 1 день |
-| **M31** | UI Crypto Engines | 1 день |
-| **M32** | CLI completeness | 1 день |
-| **v1.0-rc** | Docs, hardening | 0.5 дня |
-| **v1.0 GA** | После security audit | — |
+| Что | Приоритет |
+|---|---|
+| KV v2 + Response Wrapping в UI | Средний |
+| Cluster management в UI | Средний |
+| GitHub Auth | Низкий |
+| Entity & Identity system | Высокий |
+| Namespace isolation / multi-tenancy | Высокий |
+| CSI Provider | Средний |
+| `mlockall` (защита root key от свопа) | Средний |
+| Audit log rotation | Низкий |
+| Rate limiting на KV/token endpoints | Низкий |
 
 ---
 
@@ -225,3 +178,9 @@ v1.0 GA = функциональная полнота + операционная
 | M28 | v0.28 | Renewable Tokens with MaxTTL |
 | M29 | v0.29 | Token MaxUses (одноразовые и ограниченные токены) |
 | M30 | v0.30 | UI: Auth Methods (AppRole/JWT/LDAP/K8s) + Dynamic Secrets (DB/AWS/GCP/Azure) + Leases |
+| M31 | v0.31 | UI: PKI, Transit, SSH, TOTP engines |
+| M32 | v0.32 | CLI: полный охват (db/aws/gcp/azure/pki/transit/ssh/totp/auth + lookup-self/renew-self) |
+| OPS-6 | v0.33 | YAML config file (tuck.yaml), Getting Started guide |
+| QA-2 | v0.34 | Load testing: Go benchmarks (in-process) + k6 script (smoke/load/stress/soak) |
+| SEC | v1.0-rc | Security audit: govulncheck 0 CVE (Go 1.25.11), gosec 0 issues, docs/AUDIT.md |
+| **GA** | **v1.0.0** | **General Availability — выпущен 2026-06-12** |

@@ -1,6 +1,6 @@
 # Tuck — Production Roadmap
 
-> Состояние: M0–M18 завершены (v0.18.0). Следующий шаг: внешний security audit (QA-3) → v1.0 GA.
+> Состояние: M0–M19 завершены (v0.19.0). Следующий шаг: внешний security audit (QA-3) → v1.0 GA.
 
 ---
 
@@ -24,6 +24,8 @@
 | Transit engine (AES-GCM, ECDSA, Ed25519, RSA-PSS, rewrap) | ✅ |
 | SSH engine (CA-режим, user/host certs, TrustedUserCAKeys) | ✅ |
 | TOTP engine (RFC 6238, SHA1/256/512, 6/8 цифр) | ✅ |
+| AWS KMS seal (CMK, IRSA, auto-unseal) | ✅ |
+| GCP Cloud KMS seal (Workload Identity, auto-unseal) | ✅ |
 | TLS (self-signed ECDSA P-256 или custom cert) | ✅ |
 | Graceful shutdown (30s drain + seal) | ✅ |
 | Audit log (SHA-256 hash chain, values never logged) | ✅ |

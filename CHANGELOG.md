@@ -11,6 +11,83 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.19.0] — 2026-06-12
+
+### Added
+
+#### AWS KMS Seal (`internal/seal/awskms.go`)
+
+Native auto-unseal via AWS Key Management Service. On first init, Tuck
+generates a 32-byte root key in memory, encrypts it with the specified
+Customer Managed Key (CMK), and stores the ciphertext locally. On every
+restart the ciphertext is decrypted by KMS — the plaintext never touches
+disk.
+
+Credentials are resolved from the standard AWS credential chain: IAM
+instance/pod role (EC2 / EKS IRSA / ECS TaskRole) → environment variables
+(`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`) → shared credentials file
+(`~/.aws/credentials`).
+
+**Flags**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--seal-awskms-key-id` | _(required)_ | CMK ARN or alias (`alias/tuck-seal`, `arn:aws:kms:...`) |
+| `--seal-awskms-region` | `""` | AWS region; empty = from `AWS_DEFAULT_REGION` or profile |
+| `--seal-awskms-key-file` | `tuck-awskms.enc` | File to store the encrypted root key ciphertext |
+
+**Example**
+
+```sh
+tuck \
+  --seal-type=awskms \
+  --seal-awskms-key-id=alias/tuck-seal \
+  --seal-awskms-region=us-east-1 \
+  --tls-auto
+```
+
+On EKS with IRSA, no credentials flags are needed — the pod's IAM role is
+picked up automatically from the EC2 instance metadata service.
+
+---
+
+#### GCP Cloud KMS Seal (`internal/seal/gcpkms.go`)
+
+Native auto-unseal via Google Cloud KMS. The flow mirrors the AWS KMS seal:
+generate root key in memory → encrypt with the Cloud KMS CryptoKey → store
+ciphertext locally → decrypt on every restart.
+
+Credentials are resolved from Application Default Credentials (ADC):
+`GOOGLE_APPLICATION_CREDENTIALS` env var pointing to a service account JSON
+file, or the GCE/GKE metadata server (Workload Identity — the recommended
+production configuration).
+
+**Flags**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--seal-gcpkms-key-name` | _(required)_ | Full CryptoKey resource name |
+| `--seal-gcpkms-key-file` | `tuck-gcpkms.enc` | File to store the encrypted root key ciphertext |
+
+The key name format:
+```
+projects/{project}/locations/{location}/keyRings/{ring}/cryptoKeys/{key}
+```
+
+**Example**
+
+```sh
+tuck \
+  --seal-type=gcpkms \
+  --seal-gcpkms-key-name=projects/my-project/locations/global/keyRings/tuck/cryptoKeys/seal \
+  --tls-auto
+```
+
+On GKE with Workload Identity, no credentials flags are needed — the pod's
+service account is picked up from the GKE metadata server automatically.
+
+---
+
 ## [0.18.0] — 2026-06-11
 
 ### Added

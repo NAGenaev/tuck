@@ -4,7 +4,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.18.0-green)](https://github.com/NAGenaev/tuck/releases)
+[![Release](https://img.shields.io/badge/release-v0.19.0-green)](https://github.com/NAGenaev/tuck/releases)
 
 Tuck is an open-source secrets manager built for Kubernetes. The pitch: **anti-Vault** — a single static binary, no external database, auto-unseal by default. `kubectl apply` and it runs.
 
@@ -22,7 +22,7 @@ Tuck's wedge is **operational simplicity**:
 |---|---|---|
 | Dependencies | Consul / Raft + DB | none — single binary |
 | Storage | External | Embedded bbolt or built-in Raft |
-| Unseal on restart | Manual (Shamir quorum) | Auto (dev / transit) |
+| Unseal on restart | Manual (Shamir quorum) | Auto (dev / transit / AWS KMS / GCP KMS) |
 | Kubernetes operator | External (ESO) | Built-in |
 | Secrets engines | PKI, Transit, SSH, Database, TOTP | Same |
 | Auth methods | Token, K8s, JWT, AppRole | Same |
@@ -36,7 +36,7 @@ Tuck's wedge is **operational simplicity**:
 ### Core
 
 - **AES-256-GCM envelope encryption** — root key → DEK → ciphertext; key rotation re-wraps only the DEK, no data re-encryption
-- **Three seal types:** dev (auto-unseal, local), Shamir (n-of-k quorum), Transit (KMS via Vault-compatible API)
+- **Five seal types:** dev (auto-unseal, local), Shamir (n-of-k quorum), Transit (Vault-compatible API), AWS KMS (IRSA / instance role), GCP Cloud KMS (Workload Identity / ADC)
 - **KV v1** — simple key-value secrets with ACL enforcement
 - **KV v2** — versioned secrets: CAS (check-and-set), soft-delete, undelete, destroy, configurable `max_versions`
 - **Tamper-evident audit log** — SHA-256 hash chain, secret values never logged
@@ -141,6 +141,47 @@ tuckcli unseal <share-1>
 tuckcli unseal <share-2>
 tuckcli unseal <share-3>   # "unsealed successfully"
 ```
+
+---
+
+## AWS KMS seal (EKS / EC2)
+
+Zero-ops auto-unseal using an AWS Customer Managed Key. Credentials come
+from the pod's IAM role via IRSA — no key material in environment variables
+or config files.
+
+```sh
+tuck \
+  --seal-type=awskms \
+  --seal-awskms-key-id=alias/tuck-seal \
+  --seal-awskms-region=us-east-1 \
+  --addr=0.0.0.0:8200 \
+  --tls-cert=/etc/tuck/tls.crt \
+  --tls-key=/etc/tuck/tls.key
+```
+
+The encrypted root key ciphertext is stored in `tuck-awskms.enc` (override
+with `--seal-awskms-key-file`). The file is safe to back up — it is
+meaningless without the KMS key.
+
+---
+
+## GCP Cloud KMS seal (GKE)
+
+Auto-unseal using a GCP CryptoKey. On GKE with Workload Identity the pod
+picks up credentials automatically from the metadata server.
+
+```sh
+tuck \
+  --seal-type=gcpkms \
+  --seal-gcpkms-key-name=projects/my-project/locations/global/keyRings/tuck/cryptoKeys/seal \
+  --addr=0.0.0.0:8200 \
+  --tls-cert=/etc/tuck/tls.crt \
+  --tls-key=/etc/tuck/tls.key
+```
+
+Outside GCP, set `GOOGLE_APPLICATION_CREDENTIALS` to a service account JSON
+file with `roles/cloudkms.cryptoKeyEncrypterDecrypter` on the key.
 
 ---
 
@@ -508,6 +549,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 | M16 — Transit secrets engine (encryption-as-a-service) | v0.16 | ✅ |
 | M17 — SSH secrets engine (CA-mode certificates) | v0.17 | ✅ |
 | M18 — TOTP secrets engine (2FA / OTP validation) | v0.18 | ✅ |
+| M19 — AWS KMS + GCP Cloud KMS seal backends | v0.19 | ✅ |
 | v1.0 GA — External security audit | — | 🔜 |
 
 ---

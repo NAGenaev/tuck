@@ -42,7 +42,7 @@ func main() {
 	tlsAuto := flag.Bool("tls-auto", false, "generate a self-signed certificate (dev/testing only)")
 
 	// Seal type
-	sealType := flag.String("seal-type", "dev", "seal type: dev, shamir, transit")
+	sealType := flag.String("seal-type", "dev", "seal type: dev, shamir, transit, awskms, gcpkms")
 
 	// Dev seal
 	devSealKey := flag.String("dev-seal-key", "tuck-dev-rootkey", "dev seal: root key file path (INSECURE)")
@@ -57,6 +57,15 @@ func main() {
 	transitKey := flag.String("seal-transit-key", "tuck-seal", "Transit seal: Transit encryption key name")
 	transitToken := flag.String("seal-transit-token", "", "Transit seal: bearer token (use env TUCK_TRANSIT_TOKEN to avoid ps exposure)")
 	transitKeyFile := flag.String("seal-transit-key-file", "tuck-transit.enc", "Transit seal: file to store wrapped root key ciphertext")
+
+	// AWS KMS seal
+	awsKMSKeyID      := flag.String("seal-awskms-key-id", "", "AWS KMS seal: CMK ARN or alias (e.g. alias/tuck-seal)")
+	awsKMSRegion     := flag.String("seal-awskms-region", "", "AWS KMS seal: region (e.g. us-east-1); empty = from AWS_DEFAULT_REGION")
+	awsKMSKeyFile    := flag.String("seal-awskms-key-file", "tuck-awskms.enc", "AWS KMS seal: file to store wrapped root key ciphertext")
+
+	// GCP Cloud KMS seal
+	gcpKMSKeyName := flag.String("seal-gcpkms-key-name", "", "GCP KMS seal: full CryptoKey resource name (projects/.../cryptoKeys/...)")
+	gcpKMSKeyFile := flag.String("seal-gcpkms-key-file", "tuck-gcpkms.enc", "GCP KMS seal: file to store wrapped root key ciphertext")
 
 	// Cluster (Raft HA)
 	clusterMode      := flag.Bool("cluster", false, "enable Raft HA backend (replaces bbolt with a replicated Raft log)")
@@ -175,8 +184,22 @@ func main() {
 		s = seal.NewTransit(*transitAddr, *transitKey, tok, *transitKeyFile)
 		log.Printf("tuck: Transit seal (addr=%s key=%s)", *transitAddr, *transitKey)
 
+	case "awskms":
+		if *awsKMSKeyID == "" {
+			log.Fatalf("awskms seal requires --seal-awskms-key-id")
+		}
+		s = seal.NewAWSKMS(*awsKMSKeyID, *awsKMSRegion, *awsKMSKeyFile)
+		log.Printf("tuck: AWS KMS seal (key-id=%s region=%s)", *awsKMSKeyID, *awsKMSRegion)
+
+	case "gcpkms":
+		if *gcpKMSKeyName == "" {
+			log.Fatalf("gcpkms seal requires --seal-gcpkms-key-name")
+		}
+		s = seal.NewGCPKMS(*gcpKMSKeyName, *gcpKMSKeyFile)
+		log.Printf("tuck: GCP Cloud KMS seal (key-name=%s)", *gcpKMSKeyName)
+
 	default:
-		log.Fatalf("unknown seal type %q; valid: dev, shamir, transit", *sealType)
+		log.Fatalf("unknown seal type %q; valid: dev, shamir, transit, awskms, gcpkms", *sealType)
 	}
 
 	// --- Kubernetes auth ---

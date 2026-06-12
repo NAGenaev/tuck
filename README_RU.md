@@ -4,7 +4,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.18.0-green)](https://github.com/NAGenaev/tuck/releases)
+[![Release](https://img.shields.io/badge/release-v0.19.0-green)](https://github.com/NAGenaev/tuck/releases)
 
 Tuck — open-source менеджер секретов для Kubernetes. Главная идея: **анти-Vault** — один статический бинарь, никакой внешней базы данных, автоматическое распечатывание по умолчанию. `kubectl apply` — и работает.
 
@@ -22,7 +22,7 @@ Tuck — open-source менеджер секретов для Kubernetes. Гла
 |---|---|---|
 | Зависимости | Consul / Raft + DB | нет — один бинарь |
 | Хранилище | Внешнее | Встроенный bbolt или встроенный Raft |
-| Распечатывание после рестарта | Ручное (кворум Shamir) | Автоматическое (dev / transit) |
+| Распечатывание после рестарта | Ручное (кворум Shamir) | Автоматическое (dev / transit / AWS KMS / GCP KMS) |
 | Kubernetes-оператор | Внешний (ESO) | Встроенный |
 | Движки секретов | PKI, Transit, SSH, Database, TOTP | Те же |
 | Методы аутентификации | Token, K8s, JWT, AppRole | Те же |
@@ -36,7 +36,7 @@ Tuck — open-source менеджер секретов для Kubernetes. Гла
 ### Ядро
 
 - **Envelope-шифрование AES-256-GCM** — root key → DEK → шифртекст; ротация ключа перезаворачивает только DEK, данные не перешифровываются
-- **Три типа seal:** dev (автораспечатывание, локально), Shamir (кворум n-of-k), Transit (KMS через Vault-совместимый API)
+- **Пять типов seal:** dev (автораспечатывание, локально), Shamir (кворум n-of-k), Transit (Vault-совместимый API), AWS KMS (IRSA / instance role), GCP Cloud KMS (Workload Identity / ADC)
 - **KV v1** — простые пары ключ-значение с ACL
 - **KV v2** — версионированные секреты: CAS (check-and-set), мягкое удаление, восстановление, уничтожение, настраиваемый `max_versions`
 - **Tamper-evident аудит-лог** — SHA-256 hash chain, значения секретов никогда не логируются

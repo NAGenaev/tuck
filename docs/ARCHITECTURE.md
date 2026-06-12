@@ -32,7 +32,7 @@ internal/
   physical/         — physical layer: bbolt backend, in-memory (tests)
   physical/raft/    — Raft-replicated backend (3–5 node HA cluster)
   barrier/          — cryptographic barrier: AES-256-GCM, sealed/unsealed state
-  seal/             — root-key lifecycle: dev / shamir / transit
+  seal/             — root-key lifecycle: dev / shamir / transit / awskms / gcpkms
   shamir/           — Shamir's Secret Sharing in GF(256): Split/Combine
   core/             — orchestration: all engine managers, KV, identity
   token/            — token model: generation, TTL, storage in barrier

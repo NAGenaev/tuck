@@ -67,6 +67,12 @@ func main() {
 	gcpKMSKeyName := flag.String("seal-gcpkms-key-name", "", "GCP KMS seal: full CryptoKey resource name (projects/.../cryptoKeys/...)")
 	gcpKMSKeyFile := flag.String("seal-gcpkms-key-file", "tuck-gcpkms.enc", "GCP KMS seal: file to store wrapped root key ciphertext")
 
+	// Azure Key Vault seal
+	azureKVVaultURL   := flag.String("seal-azurekv-vault-url", "", "Azure Key Vault seal: vault URL (e.g. https://my-vault.vault.azure.net)")
+	azureKVKeyName    := flag.String("seal-azurekv-key-name", "", "Azure Key Vault seal: RSA key name in the vault")
+	azureKVAlgorithm  := flag.String("seal-azurekv-algorithm", "", "Azure Key Vault seal: encryption algorithm (default RSA-OAEP-256)")
+	azureKVKeyFile    := flag.String("seal-azurekv-key-file", "tuck-azurekv.enc", "Azure Key Vault seal: file to store wrapped root key ciphertext")
+
 	// Cluster (Raft HA)
 	clusterMode      := flag.Bool("cluster", false, "enable Raft HA backend (replaces bbolt with a replicated Raft log)")
 	clusterNodeID    := flag.String("cluster-node-id", "", "unique node ID for this instance (defaults to hostname)")
@@ -198,8 +204,18 @@ func main() {
 		s = seal.NewGCPKMS(*gcpKMSKeyName, *gcpKMSKeyFile)
 		log.Printf("tuck: GCP Cloud KMS seal (key-name=%s)", *gcpKMSKeyName)
 
+	case "azurekv":
+		if *azureKVVaultURL == "" {
+			log.Fatalf("azurekv seal requires --seal-azurekv-vault-url")
+		}
+		if *azureKVKeyName == "" {
+			log.Fatalf("azurekv seal requires --seal-azurekv-key-name")
+		}
+		s = seal.NewAzureKV(*azureKVVaultURL, *azureKVKeyName, *azureKVAlgorithm, *azureKVKeyFile)
+		log.Printf("tuck: Azure Key Vault seal (vault=%s key=%s)", *azureKVVaultURL, *azureKVKeyName)
+
 	default:
-		log.Fatalf("unknown seal type %q; valid: dev, shamir, transit, awskms, gcpkms", *sealType)
+		log.Fatalf("unknown seal type %q; valid: dev, shamir, transit, awskms, gcpkms, azurekv", *sealType)
 	}
 
 	// --- Kubernetes auth ---

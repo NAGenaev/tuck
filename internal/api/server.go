@@ -117,6 +117,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/transit/verify/{name}", s.requireToken(s.transitVerify))
 	mux.HandleFunc("POST /v1/transit/hmac/{name}", s.requireToken(s.transitHMAC))
 
+	// LDAP / Active Directory auth — login is unauthenticated; config and role management require a token
+	mux.HandleFunc("POST /v1/auth/ldap/login", s.loginLDAP)
+	mux.HandleFunc("GET /v1/auth/ldap/config", s.requireToken(s.getLDAPConfig))
+	mux.HandleFunc("PUT /v1/auth/ldap/config", s.requireToken(s.putLDAPConfig))
+	mux.HandleFunc("PUT /v1/auth/ldap/role/{name}", s.requireToken(s.putLDAPRole))
+	mux.HandleFunc("GET /v1/auth/ldap/role/{name}", s.requireToken(s.getLDAPRole))
+	mux.HandleFunc("DELETE /v1/auth/ldap/role/{name}", s.requireToken(s.deleteLDAPRole))
+	mux.HandleFunc("LIST /v1/auth/ldap/role/", s.requireToken(s.listLDAPRoles))
+
 	// AppRole auth — login is unauthenticated; role/secret-id management requires a token
 	mux.HandleFunc("POST /v1/auth/approle/login", s.loginAppRole)
 	mux.HandleFunc("PUT /v1/auth/approle/role/{name}", s.requireToken(s.putAppRole))

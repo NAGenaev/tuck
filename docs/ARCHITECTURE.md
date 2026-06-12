@@ -51,6 +51,7 @@ internal/
   auth/
     jwt/            — JWT / OIDC auth (JWKS fetcher, role matching)
     approle/        — AppRole auth (role_id + secret_id)
+    ldap/           — LDAP / Active Directory auth (bind-search-bind, group→policy roles)
   dynamic/
     database/       — Database engine: PostgreSQL / MySQL dynamic creds
     pki/            — PKI engine: X.509 CA, role-based cert issuance, CRL
@@ -85,7 +86,7 @@ Client (curl / tuckcli / SDK / operator)
     Authenticate → EnforceAccess (policy glob match)
     Routes to the correct engine or store:
       ┌── KV v1/v2 (barrier.Get/Put/Delete/List)
-      ├── Auth (token / k8s / jwt / approle)
+      ├── Auth (token / k8s / jwt / approle / ldap)
       ├── Database engine
       ├── PKI engine
       ├── Transit engine
@@ -142,6 +143,22 @@ On restart: `seal.Unseal()` → root key → `barrier.Unseal()` → DEK decrypte
 - Wrapped blob stored locally.
 - On startup: read blob → POST to unwrap endpoint → root key → auto-unseal.
 
+### awskms (EKS / EC2, auto-unseal)
+- Generates 32-byte root key → encrypts via AWS KMS `Encrypt` API → stores base64 ciphertext on disk.
+- On startup: reads ciphertext → `Decrypt` → root key.
+- Credentials via IRSA (EKS), EC2 instance role, or `AWS_*` env vars.
+- Key identified by key ID, ARN, or alias (e.g. `alias/tuck-seal`).
+
+### gcpkms (GKE, auto-unseal)
+- Same envelope pattern with GCP Cloud KMS `Encrypt` / `Decrypt` (gRPC).
+- On GKE with Workload Identity: credentials from pod metadata server.
+- Outside GCP: set `GOOGLE_APPLICATION_CREDENTIALS` to a service account JSON.
+
+### azurekv (AKS / Azure, auto-unseal)
+- Encrypts root key with an RSA key stored in Azure Key Vault (`RSA-OAEP-256` by default).
+- Credentials via `DefaultAzureCredential`: AZURE_* env vars, Managed Identity, or Azure CLI.
+- Requires `Key Vault Crypto User` role on the vault key.
+
 ---
 
 ## Physical storage layout (barrier keys)
@@ -156,6 +173,8 @@ On restart: `seal.Unseal()` → root key → `barrier.Unseal()` → DEK decrypte
 | `auth/jwt/roles/<name>` | JWT role |
 | `auth/approle/roles/<name>` | AppRole role |
 | `auth/approle/secrets/<id>` | AppRole secret-id |
+| `auth/ldap/config` | LDAP connection config (bind_password encrypted in barrier) |
+| `auth/ldap/roles/<name>` | LDAP role (groups, users, policies, TTL) |
 | `secret/<path>` | KV v1 value (raw bytes) |
 | `kvv2/<path>/meta` | KV v2 version metadata |
 | `kvv2/<path>/v/<n>` | KV v2 version data |

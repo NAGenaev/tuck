@@ -4,7 +4,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.19.0-green)](https://github.com/NAGenaev/tuck/releases)
+[![Release](https://img.shields.io/badge/release-v0.20.0-green)](https://github.com/NAGenaev/tuck/releases)
 
 Tuck is an open-source secrets manager built for Kubernetes. The pitch: **anti-Vault** — a single static binary, no external database, auto-unseal by default. `kubectl apply` and it runs.
 
@@ -22,7 +22,7 @@ Tuck's wedge is **operational simplicity**:
 |---|---|---|
 | Dependencies | Consul / Raft + DB | none — single binary |
 | Storage | External | Embedded bbolt or built-in Raft |
-| Unseal on restart | Manual (Shamir quorum) | Auto (dev / transit / AWS KMS / GCP KMS) |
+| Unseal on restart | Manual (Shamir quorum) | Auto (dev / transit / AWS KMS / GCP KMS / Azure KV) |
 | Kubernetes operator | External (ESO) | Built-in |
 | Secrets engines | PKI, Transit, SSH, Database, TOTP | Same |
 | Auth methods | Token, K8s, JWT, AppRole | Same |
@@ -36,7 +36,7 @@ Tuck's wedge is **operational simplicity**:
 ### Core
 
 - **AES-256-GCM envelope encryption** — root key → DEK → ciphertext; key rotation re-wraps only the DEK, no data re-encryption
-- **Five seal types:** dev (auto-unseal, local), Shamir (n-of-k quorum), Transit (Vault-compatible API), AWS KMS (IRSA / instance role), GCP Cloud KMS (Workload Identity / ADC)
+- **Six seal types:** dev (auto-unseal, local), Shamir (n-of-k quorum), Transit (Vault-compatible API), AWS KMS (IRSA / instance role), GCP Cloud KMS (Workload Identity / ADC), Azure Key Vault (Workload Identity / Managed Identity / DefaultAzureCredential)
 - **KV v1** — simple key-value secrets with ACL enforcement
 - **KV v2** — versioned secrets: CAS (check-and-set), soft-delete, undelete, destroy, configurable `max_versions`
 - **Tamper-evident audit log** — SHA-256 hash chain, secret values never logged
@@ -54,6 +54,7 @@ Tuck's wedge is **operational simplicity**:
 | **Kubernetes SA** | Workloads exchange ServiceAccount JWT via `TokenReview` API |
 | **JWT / OIDC** | Any OIDC provider — Keycloak, Auth0, GitHub Actions, Google |
 | **AppRole** | Machine-to-machine auth via `role_id` + `secret_id` pairs |
+| **LDAP / AD** | Authenticate users from OpenLDAP, Active Directory, FreeIPA; group membership mapped to policies via Roles |
 
 ### Dynamic secrets engines
 
@@ -185,6 +186,27 @@ file with `roles/cloudkms.cryptoKeyEncrypterDecrypter` on the key.
 
 ---
 
+## Azure Key Vault seal (AKS / Azure)
+
+Auto-unseal using an RSA key stored in Azure Key Vault. Credentials are
+resolved automatically via `DefaultAzureCredential` — Managed Identity on
+AKS/VMs, `AZURE_*` env vars in CI, or Azure CLI for local development.
+
+```sh
+tuck \
+  --seal-type=azurekv \
+  --seal-azurekv-vault-url=https://my-vault.vault.azure.net \
+  --seal-azurekv-key-name=tuck-seal \
+  --addr=0.0.0.0:8200 \
+  --tls-cert=/etc/tuck/tls.crt \
+  --tls-key=/etc/tuck/tls.key
+```
+
+The pod's Managed Identity needs the `Key Vault Crypto User` role (or
+`Keys Encrypt` + `Keys Decrypt` permissions) on the key.
+
+---
+
 ## Kubernetes
 
 ### Helm install
@@ -278,6 +300,31 @@ curl -XPOST https://tuck:8200/v1/transit/rewrap/payments \
   -H "X-Tuck-Token: $TOKEN" -d "{\"ciphertext\":\"$CIPHER\"}"
 ```
 
+### LDAP / Active Directory — authenticate directory users
+
+```sh
+# Configure (example: Active Directory)
+curl -XPUT https://tuck:8200/v1/auth/ldap/config \
+  -H "X-Tuck-Token: $TOKEN" \
+  -d '{
+    "urls": ["ldaps://ad.corp.example.com:636"],
+    "bind_dn": "CN=tuck-svc,OU=ServiceAccounts,DC=corp,DC=example,DC=com",
+    "bind_password": "svc-password",
+    "user_dn": "OU=Users,DC=corp,DC=example,DC=com",
+    "user_attr": "sAMAccountName"
+  }'
+
+# Create a role (maps AD group to Tuck policy)
+curl -XPUT https://tuck:8200/v1/auth/ldap/role/ops \
+  -H "X-Tuck-Token: $TOKEN" \
+  -d '{"groups":["Ops-Team"],"policies":["ops-policy"],"ttl":"8h"}'
+
+# Login — returns a scoped Tuck token
+curl -XPOST https://tuck:8200/v1/auth/ldap/login \
+  -d '{"username":"alice","password":"alicepass"}'
+# → {"token":"tuck_...","policies":["ops-policy"],"expires_at":"..."}
+```
+
 ### TOTP — 2FA validation
 
 ```sh
@@ -349,6 +396,10 @@ All endpoints require `X-Tuck-Token` header unless marked **public**.
 | LIST | `/v1/auth/approle/role/` | List roles |
 | POST | `/v1/auth/approle/role/{name}/secret-id` | Generate secret-id |
 | GET/DELETE | `/v1/auth/approle/role/{name}/secret-id/{id}` | Inspect / destroy |
+| POST | `/v1/auth/ldap/login` | LDAP / AD login (public) |
+| GET/PUT | `/v1/auth/ldap/config` | LDAP config (bind_password redacted on GET) |
+| PUT/GET/DELETE | `/v1/auth/ldap/role/{name}` | LDAP role |
+| LIST | `/v1/auth/ldap/role/` | List LDAP roles |
 
 ### Policies
 
@@ -475,7 +526,7 @@ Environment variables: `TUCK_ADDR` (default `https://127.0.0.1:8200`), `TUCK_TOK
 │  · K8s SA      │  · Database (PostgreSQL / MySQL)       │
 │  · JWT / OIDC  │  · PKI (X.509 CA)                      │
 │  · AppRole     │  · Transit (encryption-as-a-service)   │
-│                │  · SSH (CA-mode certificates)           │
+│  · LDAP / AD   │  · SSH (CA-mode certificates)           │
 │                │  · TOTP (time-based OTP)               │
 ├────────────────┴────────────────────────────────────────┤
 │  Barrier  (AES-256-GCM envelope encryption)             │
@@ -485,7 +536,7 @@ Environment variables: `TUCK_ADDR` (default `https://127.0.0.1:8200`), `TUCK_TOK
 │  bbolt (single file) | Raft HA (3–5 nodes, embedded)    │
 └─────────────────────────────────────────────────────────┘
                ▲
-         Seal (dev | shamir | transit)
+         Seal (dev | shamir | transit | awskms | gcpkms | azurekv)
 ```
 
 ---

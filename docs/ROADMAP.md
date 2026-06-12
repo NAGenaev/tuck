@@ -1,10 +1,10 @@
 # Tuck — Production Roadmap
 
-> Состояние: M0–M19 завершены (v0.19.0). Следующий шаг: внешний security audit (QA-3) → v1.0 GA.
+> Состояние: M0–M20 завершены (v0.20.0). Следующий шаг: внешний security audit (QA-3) → v1.0 GA.
 
 ---
 
-## Текущее состояние (v0.18.0)
+## Текущее состояние (v0.20.0)
 
 | Компонент | Статус |
 |---|---|
@@ -26,6 +26,8 @@
 | TOTP engine (RFC 6238, SHA1/256/512, 6/8 цифр) | ✅ |
 | AWS KMS seal (CMK, IRSA, auto-unseal) | ✅ |
 | GCP Cloud KMS seal (Workload Identity, auto-unseal) | ✅ |
+| Azure Key Vault seal (Managed Identity / DefaultAzureCredential, auto-unseal) | ✅ |
+| LDAP / Active Directory auth (bind-search-bind, group→policy roles) | ✅ |
 | TLS (self-signed ECDSA P-256 или custom cert) | ✅ |
 | Graceful shutdown (30s drain + seal) | ✅ |
 | Audit log (SHA-256 hash chain, values never logged) | ✅ |

@@ -11,6 +11,122 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.20.0] — 2026-06-12
+
+### Added
+
+#### LDAP / Active Directory Auth (`internal/auth/ldap`)
+
+Authenticate users from any LDAP-compatible directory service — OpenLDAP,
+Active Directory, FreeIPA, 389 Directory Server. Group membership is mapped
+to Tuck policies via configurable Roles.
+
+**Login flow**
+
+1. Connect to LDAP server (`ldap://` or `ldaps://`, optional STARTTLS).
+2. Bind with the service account to search for the user entry.
+3. Bind as the authenticated user to verify the password.
+4. Collect group membership from `memberOf` attribute or via a dedicated
+   group subtree search (`group_dn` + `group_filter`).
+5. Match groups/usernames against configured Roles → union of policies.
+6. Return a scoped Tuck token.
+
+**Config fields** (PUT /v1/auth/ldap/config)
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `urls` | _(required)_ | LDAP server URLs (ldap:// or ldaps://) |
+| `bind_dn` | _(required)_ | Service account DN |
+| `bind_password` | _(required)_ | Service account password (stored encrypted; never returned) |
+| `user_dn` | _(required)_ | Base DN for user searches |
+| `user_attr` | `uid` | Username attribute (use `sAMAccountName` for AD) |
+| `group_dn` | `""` | Base DN for group searches; empty = read `memberOf` from user |
+| `group_attr` | `memberOf` | User attribute holding group DNs (when `group_dn` is empty) |
+| `group_filter` | `(member={{.UserDN}})` | LDAP filter for group searches |
+| `tls_insecure` | `false` | Skip TLS verification (dev only) |
+| `starttls` | `false` | Upgrade ldap:// to TLS via STARTTLS |
+
+**Role fields** (PUT /v1/auth/ldap/role/{name})
+
+| Field | Description |
+|-------|-------------|
+| `groups` | Group CNs or full DNs that grant this role (case-insensitive CN matching) |
+| `users` | Specific usernames or user DNs (optional, bypasses group check) |
+| `policies` | Tuck policies granted on login |
+| `ttl` | Token lifetime (e.g. `"8h"`); empty = server default |
+
+**API endpoints** (7 total)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/v1/auth/ldap/login` | public | Login with username + password |
+| `GET` | `/v1/auth/ldap/config` | token | Read config (bind_password redacted) |
+| `PUT` | `/v1/auth/ldap/config` | token | Write config |
+| `PUT` | `/v1/auth/ldap/role/{name}` | token | Create / update role |
+| `GET` | `/v1/auth/ldap/role/{name}` | token | Read role |
+| `DELETE` | `/v1/auth/ldap/role/{name}` | token | Delete role |
+| `LIST` | `/v1/auth/ldap/role/` | token | List role names |
+
+**Example — Active Directory**
+
+```sh
+# Configure
+curl -XPUT https://tuck:8200/v1/auth/ldap/config \
+  -H "X-Tuck-Token: $TOKEN" \
+  -d '{
+    "urls": ["ldaps://ad.corp.example.com:636"],
+    "bind_dn": "CN=tuck-svc,OU=ServiceAccounts,DC=corp,DC=example,DC=com",
+    "bind_password": "svc-password",
+    "user_dn": "OU=Users,DC=corp,DC=example,DC=com",
+    "user_attr": "sAMAccountName"
+  }'
+
+# Create a role
+curl -XPUT https://tuck:8200/v1/auth/ldap/role/ops \
+  -H "X-Tuck-Token: $TOKEN" \
+  -d '{"groups":["Ops-Team"],"policies":["ops-policy"],"ttl":"8h"}'
+
+# Login
+curl -XPOST https://tuck:8200/v1/auth/ldap/login \
+  -d '{"username":"alice","password":"alicepass"}'
+```
+
+---
+
+#### Azure Key Vault Seal (`internal/seal/azurekv.go`)
+
+Completes the cloud KMS trilogy: AWS KMS (M19), GCP Cloud KMS (M19), and
+now Azure Key Vault. Auto-unseal using an RSA key stored in Azure Key Vault.
+
+Credentials are resolved from DefaultAzureCredential:
+- `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` / `AZURE_TENANT_ID` env vars
+- Managed Identity (AKS Workload Identity, VM Managed Identity)
+- Azure CLI credentials (local development)
+
+**Flags**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--seal-azurekv-vault-url` | _(required)_ | Vault URL (e.g. `https://my-vault.vault.azure.net`) |
+| `--seal-azurekv-key-name` | _(required)_ | RSA key name in the vault |
+| `--seal-azurekv-algorithm` | `RSA-OAEP-256` | Encryption algorithm |
+| `--seal-azurekv-key-file` | `tuck-azurekv.enc` | File to store the ciphertext |
+
+**Example — AKS with Workload Identity**
+
+```sh
+tuck \
+  --seal-type=azurekv \
+  --seal-azurekv-vault-url=https://my-vault.vault.azure.net \
+  --seal-azurekv-key-name=tuck-seal \
+  --tls-auto
+```
+
+The pod must have the `Keys Encrypt` and `Keys Decrypt` permissions on the
+key, typically assigned via an Azure RBAC role (`Key Vault Crypto User`).
+
+---
+
 ## [0.19.0] — 2026-06-12
 
 ### Added

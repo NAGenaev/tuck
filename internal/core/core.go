@@ -14,6 +14,7 @@ import (
 
 	"github.com/NAGenaev/tuck/internal/auth/approle"
 	"github.com/NAGenaev/tuck/internal/auth/jwt"
+	authlda "github.com/NAGenaev/tuck/internal/auth/ldap"
 	"github.com/NAGenaev/tuck/internal/barrier"
 	"github.com/NAGenaev/tuck/internal/dynamic/database"
 	"github.com/NAGenaev/tuck/internal/dynamic/pki"
@@ -74,6 +75,7 @@ type Core struct {
 	kv2      *kvv2.Store
 	jwtStore     *jwt.Store
 	approleStore *approle.Store
+	ldapStore    *authlda.Store
 	dbManager    *database.Manager
 	pkiManager     *pki.Manager
 	transitManager *transit.Manager
@@ -110,6 +112,7 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		kv2:         kvv2.New(b),
 		jwtStore:     jwt.NewStore(b),
 		approleStore: approle.NewStore(b),
+		ldapStore:    authlda.NewStore(b),
 		dbManager:    database.NewManager(b),
 		pkiManager:     pki.NewManager(b),
 		transitManager: transit.NewManager(b),
@@ -772,5 +775,62 @@ func (c *Core) runGC(ctx context.Context) {
 		_ = c.tokens.Delete(ctx, id)
 	}
 	_ = c.dbManager.RevokeExpired(ctx)
+}
+
+// --- LDAP auth ---
+
+// GetLDAPConfig returns the current LDAP auth configuration (BindPassword redacted).
+func (c *Core) GetLDAPConfig(ctx context.Context) (*authlda.Config, error) {
+	cfg, err := c.ldapStore.GetConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Never expose the bind password through the API.
+	cfg.BindPassword = ""
+	return cfg, nil
+}
+
+// PutLDAPConfig stores the LDAP auth configuration.
+func (c *Core) PutLDAPConfig(ctx context.Context, cfg *authlda.Config) error {
+	return c.ldapStore.PutConfig(ctx, cfg)
+}
+
+// PutLDAPRole creates or replaces an LDAP role.
+func (c *Core) PutLDAPRole(ctx context.Context, r *authlda.Role) error {
+	return c.ldapStore.PutRole(ctx, r)
+}
+
+// GetLDAPRole returns a role by name.
+func (c *Core) GetLDAPRole(ctx context.Context, name string) (*authlda.Role, error) {
+	return c.ldapStore.GetRole(ctx, name)
+}
+
+// DeleteLDAPRole removes a role.
+func (c *Core) DeleteLDAPRole(ctx context.Context, name string) error {
+	return c.ldapStore.DeleteRole(ctx, name)
+}
+
+// ListLDAPRoles returns all role names.
+func (c *Core) ListLDAPRoles(ctx context.Context) ([]string, error) {
+	return c.ldapStore.ListRoles(ctx)
+}
+
+// LoginLDAP validates LDAP credentials and returns a Tuck token.
+func (c *Core) LoginLDAP(ctx context.Context, username, password string) (*token.Token, error) {
+	cfg, err := c.ldapStore.GetConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	roles, err := c.ldapStore.AllRoles(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load ldap roles: %w", err)
+	}
+	auth := authlda.NewAuthenticator(*cfg)
+	result, err := auth.Login(ctx, roles, username, password)
+	if err != nil {
+		return nil, err
+	}
+	displayName := "ldap:" + result.Username
+	return c.CreateToken(ctx, displayName, result.Policies, result.TTL)
 }
 

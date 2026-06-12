@@ -53,6 +53,7 @@ internal/
     approle/        — AppRole auth (role_id + secret_id)
     ldap/           — LDAP / Active Directory auth (bind-search-bind, group→policy roles)
   dynamic/
+    aws/            — AWS engine: IAM user creds + STS AssumeRole sessions
     database/       — Database engine: PostgreSQL / MySQL dynamic creds
     pki/            — PKI engine: X.509 CA, role-based cert issuance, CRL
     transit/        — Transit engine: versioned keys, encrypt/decrypt/sign/HMAC
@@ -87,6 +88,7 @@ Client (curl / tuckcli / SDK / operator)
     Routes to the correct engine or store:
       ┌── KV v1/v2 (barrier.Get/Put/Delete/List)
       ├── Auth (token / k8s / jwt / approle / ldap)
+      ├── AWS engine
       ├── Database engine
       ├── PKI engine
       ├── Transit engine
@@ -178,6 +180,9 @@ On restart: `seal.Unseal()` → root key → `barrier.Unseal()` → DEK decrypte
 | `secret/<path>` | KV v1 value (raw bytes) |
 | `kvv2/<path>/meta` | KV v2 version metadata |
 | `kvv2/<path>/v/<n>` | KV v2 version data |
+| `dynamic/aws/config` | AWS engine config (secret_access_key encrypted in barrier) |
+| `dynamic/aws/roles/<name>` | AWS role (credential_type, policy_arns, role_arns, TTL) |
+| `dynamic/aws/leases/<id>` | AWS credential lease (revoked flag, username for iam_user) |
 | `dynamic/database/config/<name>` | DB connection config |
 | `dynamic/database/roles/<name>` | DB role (SQL templates) |
 | `dynamic/database/leases/<id>` | DB credential lease |

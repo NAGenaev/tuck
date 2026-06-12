@@ -117,6 +117,19 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/transit/verify/{name}", s.requireToken(s.transitVerify))
 	mux.HandleFunc("POST /v1/transit/hmac/{name}", s.requireToken(s.transitHMAC))
 
+	// AWS dynamic secrets engine — generate IAM user credentials or STS assumed-role sessions
+	mux.HandleFunc("PUT /v1/aws/config", s.requireToken(s.putAWSConfig))
+	mux.HandleFunc("GET /v1/aws/config", s.requireToken(s.getAWSConfig))
+	mux.HandleFunc("DELETE /v1/aws/config", s.requireToken(s.deleteAWSConfig))
+	mux.HandleFunc("PUT /v1/aws/roles/{name}", s.requireToken(s.putAWSRole))
+	mux.HandleFunc("GET /v1/aws/roles/{name}", s.requireToken(s.getAWSRole))
+	mux.HandleFunc("DELETE /v1/aws/roles/{name}", s.requireToken(s.deleteAWSRole))
+	mux.HandleFunc("LIST /v1/aws/roles/", s.requireToken(s.listAWSRoles))
+	mux.HandleFunc("POST /v1/aws/creds/{role}", s.requireToken(s.generateAWSCreds))
+	mux.HandleFunc("GET /v1/aws/lease/{id}", s.requireToken(s.getAWSLease))
+	mux.HandleFunc("DELETE /v1/aws/lease/{id}", s.requireToken(s.revokeAWSLease))
+	mux.HandleFunc("LIST /v1/aws/lease/", s.requireToken(s.listAWSLeases))
+
 	// LDAP / Active Directory auth — login is unauthenticated; config and role management require a token
 	mux.HandleFunc("POST /v1/auth/ldap/login", s.loginLDAP)
 	mux.HandleFunc("GET /v1/auth/ldap/config", s.requireToken(s.getLDAPConfig))

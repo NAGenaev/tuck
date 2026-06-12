@@ -16,6 +16,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/auth/jwt"
 	authlda "github.com/NAGenaev/tuck/internal/auth/ldap"
 	"github.com/NAGenaev/tuck/internal/barrier"
+	dynaws "github.com/NAGenaev/tuck/internal/dynamic/aws"
 	"github.com/NAGenaev/tuck/internal/dynamic/database"
 	"github.com/NAGenaev/tuck/internal/dynamic/pki"
 	dynSSH "github.com/NAGenaev/tuck/internal/dynamic/ssh"
@@ -77,6 +78,7 @@ type Core struct {
 	approleStore *approle.Store
 	ldapStore    *authlda.Store
 	dbManager    *database.Manager
+	awsEngine    *dynaws.Engine
 	pkiManager     *pki.Manager
 	transitManager *transit.Manager
 	sshManager     *dynSSH.Manager
@@ -114,6 +116,7 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		approleStore: approle.NewStore(b),
 		ldapStore:    authlda.NewStore(b),
 		dbManager:    database.NewManager(b),
+		awsEngine:    dynaws.New(b),
 		pkiManager:     pki.NewManager(b),
 		transitManager: transit.NewManager(b),
 		sshManager:     dynSSH.NewManager(b),
@@ -775,6 +778,58 @@ func (c *Core) runGC(ctx context.Context) {
 		_ = c.tokens.Delete(ctx, id)
 	}
 	_ = c.dbManager.RevokeExpired(ctx)
+	_ = c.awsEngine.RevokeExpired(ctx)
+}
+
+// --- AWS dynamic secrets engine ---
+
+func (c *Core) PutAWSConfig(ctx context.Context, cfg *dynaws.Config) error {
+	return c.awsEngine.PutConfig(ctx, cfg)
+}
+
+func (c *Core) GetAWSConfig(ctx context.Context) (*dynaws.Config, error) {
+	cfg, err := c.awsEngine.GetConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cfg.SecretAccessKey = "" // never expose credentials through the API
+	return cfg, nil
+}
+
+func (c *Core) DeleteAWSConfig(ctx context.Context) error {
+	return c.awsEngine.DeleteConfig(ctx)
+}
+
+func (c *Core) PutAWSRole(ctx context.Context, role *dynaws.Role) error {
+	return c.awsEngine.PutRole(ctx, role)
+}
+
+func (c *Core) GetAWSRole(ctx context.Context, name string) (*dynaws.Role, error) {
+	return c.awsEngine.GetRole(ctx, name)
+}
+
+func (c *Core) DeleteAWSRole(ctx context.Context, name string) error {
+	return c.awsEngine.DeleteRole(ctx, name)
+}
+
+func (c *Core) ListAWSRoles(ctx context.Context) ([]string, error) {
+	return c.awsEngine.ListRoles(ctx)
+}
+
+func (c *Core) GenerateAWSCreds(ctx context.Context, roleName string) (*dynaws.GenerateResult, error) {
+	return c.awsEngine.GenerateCreds(ctx, roleName)
+}
+
+func (c *Core) GetAWSLease(ctx context.Context, id string) (*dynaws.Lease, error) {
+	return c.awsEngine.GetLease(ctx, id)
+}
+
+func (c *Core) RevokeAWSLease(ctx context.Context, id string) error {
+	return c.awsEngine.RevokeLease(ctx, id)
+}
+
+func (c *Core) ListAWSLeases(ctx context.Context) ([]string, error) {
+	return c.awsEngine.ListLeases(ctx)
 }
 
 // --- LDAP auth ---

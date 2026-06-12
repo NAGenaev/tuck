@@ -1,10 +1,10 @@
 # Tuck — Production Roadmap
 
-> Состояние: M0–M20 завершены (v0.20.0). Следующий шаг: внешний security audit (QA-3) → v1.0 GA.
+> Состояние: M0–M21 завершены (v0.21.0). Следующий шаг: внешний security audit (QA-3) → v1.0 GA.
 
 ---
 
-## Текущее состояние (v0.20.0)
+## Текущее состояние (v0.21.0)
 
 | Компонент | Статус |
 |---|---|
@@ -28,6 +28,7 @@
 | GCP Cloud KMS seal (Workload Identity, auto-unseal) | ✅ |
 | Azure Key Vault seal (Managed Identity / DefaultAzureCredential, auto-unseal) | ✅ |
 | LDAP / Active Directory auth (bind-search-bind, group→policy roles) | ✅ |
+| AWS dynamic secrets (iam_user + assumed_role, auto-revoke, lease GC) | ✅ |
 | TLS (self-signed ECDSA P-256 или custom cert) | ✅ |
 | Graceful shutdown (30s drain + seal) | ✅ |
 | Audit log (SHA-256 hash chain, values never logged) | ✅ |

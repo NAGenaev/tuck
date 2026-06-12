@@ -11,6 +11,87 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.21.0] — 2026-06-12
+
+### Added
+
+#### AWS Dynamic Secrets Engine (`internal/dynamic/aws`)
+
+Generate short-lived AWS credentials on demand. Tuck creates them, tracks
+them as leases, and revokes them automatically when the lease expires.
+
+Two credential types:
+
+**`assumed_role`** — calls STS `AssumeRole`, returns temporary credentials
+(access key + secret key + session token). Expire naturally; no cleanup.
+
+**`iam_user`** — creates an IAM user, attaches policies, creates an access key.
+On expiry / revocation: access key deleted, user and policies removed from AWS.
+
+**Config** (`PUT /v1/aws/config`)
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `region` | _(required)_ | AWS region (e.g. `us-east-1`) |
+| `access_key_id` | _(empty)_ | Empty = use default credential chain (IRSA / instance role / env) |
+| `secret_access_key` | _(empty)_ | Stored encrypted; never returned on GET |
+| `iam_endpoint` | _(empty)_ | Custom IAM endpoint (Localstack, VPC endpoint) |
+| `sts_endpoint` | _(empty)_ | Custom STS endpoint |
+
+**Role** (`PUT /v1/aws/roles/{name}`)
+
+| Field | Description |
+|-------|-------------|
+| `credential_type` | `assumed_role` or `iam_user` |
+| `role_arns` | IAM role ARNs to assume (`assumed_role`; first ARN used) |
+| `policy_arns` | Managed policy ARNs to attach (`iam_user`) |
+| `policy_document` | Inline JSON policy |
+| `default_ttl` | Credential lifetime; default 1 h |
+| `max_ttl` | Maximum TTL; default 12 h |
+
+**API endpoints** (11 total, all authenticated)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `PUT` | `/v1/aws/config` | Write config |
+| `GET` | `/v1/aws/config` | Read config (`secret_access_key` redacted) |
+| `DELETE` | `/v1/aws/config` | Delete config |
+| `PUT` | `/v1/aws/roles/{name}` | Create / update role |
+| `GET` | `/v1/aws/roles/{name}` | Read role |
+| `DELETE` | `/v1/aws/roles/{name}` | Delete role |
+| `LIST` | `/v1/aws/roles/` | List role names |
+| `POST` | `/v1/aws/creds/{role}` | Generate credentials |
+| `GET` | `/v1/aws/lease/{id}` | Inspect lease |
+| `DELETE` | `/v1/aws/lease/{id}` | Revoke lease early |
+| `LIST` | `/v1/aws/lease/` | List lease IDs |
+
+Background GC revokes expired leases every 15 minutes and deletes the IAM
+users from AWS.
+
+**Example — EKS with IRSA (assumed_role)**
+
+```sh
+curl -XPUT https://tuck:8200/v1/aws/config \
+  -H "X-Tuck-Token: $TOKEN" -d '{"region":"us-east-1"}'
+
+curl -XPUT https://tuck:8200/v1/aws/roles/deploy \
+  -H "X-Tuck-Token: $TOKEN" \
+  -d '{"credential_type":"assumed_role","role_arns":["arn:aws:iam::123:role/deploy"],"default_ttl":"1h"}'
+
+curl -XPOST https://tuck:8200/v1/aws/creds/deploy \
+  -H "X-Tuck-Token: $TOKEN"
+# → {"lease_id":"...","access_key_id":"ASIA...","secret_access_key":"...","session_token":"...","expires_at":"..."}
+```
+
+**Required IAM permissions for the Tuck server**
+
+- `assumed_role`: `sts:AssumeRole` on the target role ARN
+- `iam_user`: `iam:CreateUser`, `iam:AttachUserPolicy`, `iam:PutUserPolicy`,
+  `iam:CreateAccessKey`, `iam:DeleteAccessKey`, `iam:DetachUserPolicy`,
+  `iam:DeleteUserPolicy`, `iam:DeleteUser`
+
+---
+
 ## [0.20.0] — 2026-06-12
 
 ### Added

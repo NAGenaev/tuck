@@ -18,6 +18,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/barrier"
 	dynaws "github.com/NAGenaev/tuck/internal/dynamic/aws"
 	"github.com/NAGenaev/tuck/internal/dynamic/database"
+	"github.com/NAGenaev/tuck/internal/dynamic/gcp"
 	"github.com/NAGenaev/tuck/internal/dynamic/pki"
 	dynSSH "github.com/NAGenaev/tuck/internal/dynamic/ssh"
 	dynTOTP "github.com/NAGenaev/tuck/internal/dynamic/totp"
@@ -79,6 +80,7 @@ type Core struct {
 	ldapStore    *authlda.Store
 	dbManager    *database.Manager
 	awsEngine    *dynaws.Engine
+	gcpEngine    *gcp.Engine
 	pkiManager     *pki.Manager
 	transitManager *transit.Manager
 	sshManager     *dynSSH.Manager
@@ -117,6 +119,7 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		ldapStore:    authlda.NewStore(b),
 		dbManager:    database.NewManager(b),
 		awsEngine:    dynaws.New(b),
+		gcpEngine:    gcp.New(b),
 		pkiManager:     pki.NewManager(b),
 		transitManager: transit.NewManager(b),
 		sshManager:     dynSSH.NewManager(b),
@@ -779,6 +782,58 @@ func (c *Core) runGC(ctx context.Context) {
 	}
 	_ = c.dbManager.RevokeExpired(ctx)
 	_ = c.awsEngine.RevokeExpired(ctx)
+	_ = c.gcpEngine.RevokeExpired(ctx)
+}
+
+// --- GCP dynamic secrets engine ---
+
+func (c *Core) PutGCPConfig(ctx context.Context, cfg *gcp.Config) error {
+	return c.gcpEngine.PutConfig(ctx, cfg)
+}
+
+func (c *Core) GetGCPConfig(ctx context.Context) (*gcp.Config, error) {
+	cfg, err := c.gcpEngine.GetConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cfg.CredentialsJSON = "" // never expose credentials through the API
+	return cfg, nil
+}
+
+func (c *Core) DeleteGCPConfig(ctx context.Context) error {
+	return c.gcpEngine.DeleteConfig(ctx)
+}
+
+func (c *Core) PutGCPRole(ctx context.Context, role *gcp.Role) error {
+	return c.gcpEngine.PutRole(ctx, role)
+}
+
+func (c *Core) GetGCPRole(ctx context.Context, name string) (*gcp.Role, error) {
+	return c.gcpEngine.GetRole(ctx, name)
+}
+
+func (c *Core) DeleteGCPRole(ctx context.Context, name string) error {
+	return c.gcpEngine.DeleteRole(ctx, name)
+}
+
+func (c *Core) ListGCPRoles(ctx context.Context) ([]string, error) {
+	return c.gcpEngine.ListRoles(ctx)
+}
+
+func (c *Core) GenerateGCPCreds(ctx context.Context, roleName string) (*gcp.GenerateResult, error) {
+	return c.gcpEngine.GenerateCreds(ctx, roleName)
+}
+
+func (c *Core) GetGCPLease(ctx context.Context, id string) (*gcp.Lease, error) {
+	return c.gcpEngine.GetLease(ctx, id)
+}
+
+func (c *Core) RevokeGCPLease(ctx context.Context, id string) error {
+	return c.gcpEngine.RevokeLease(ctx, id)
+}
+
+func (c *Core) ListGCPLeases(ctx context.Context) ([]string, error) {
+	return c.gcpEngine.ListLeases(ctx)
 }
 
 // --- AWS dynamic secrets engine ---

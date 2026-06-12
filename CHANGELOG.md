@@ -11,6 +11,106 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.22.0] — 2026-06-12
+
+### Added
+
+#### GCP Dynamic Secrets Engine (`internal/dynamic/gcp`)
+
+Generate short-lived GCP credentials on demand. Completes the cloud-trio
+alongside the AWS engine (M21) and GCP KMS seal (M19).
+
+Two credential types:
+
+**`service_account_key`** — calls the GCP IAM Admin API to create a new JSON
+key for an existing service account. Returns the key file once. On lease expiry
+/ explicit revocation, the key is deleted from GCP IAM.
+
+**`access_token`** — calls the IAM Credentials API (`generateAccessToken`) to
+produce a short-lived OAuth2 Bearer token for a service account via
+impersonation. The token expires naturally; no cleanup is needed.
+
+Credentials are resolved in order: inline `credentials_json` in the config →
+Application Default Credentials (Workload Identity on GKE, env var
+`GOOGLE_APPLICATION_CREDENTIALS`, `gcloud auth application-default login`).
+
+**Config** (`PUT /v1/gcp/config`)
+
+| Field | Description |
+|-------|-------------|
+| `credentials_json` | Inline service account JSON (stored encrypted; never returned on GET). Empty = ADC. |
+
+**Role** (`PUT /v1/gcp/roles/{name}`)
+
+| Field | Description |
+|-------|-------------|
+| `credential_type` | `service_account_key` or `access_token` |
+| `service_account_email` | SA to use (e.g. `deploy@project.iam.gserviceaccount.com`) |
+| `key_algorithm` | `KEY_ALG_RSA_2048` (default) or `KEY_ALG_RSA_4096` |
+| `scopes` | OAuth2 scopes for `access_token` (default: `cloud-platform`) |
+| `default_ttl` | Credential lifetime; default 1 h |
+| `max_ttl` | Maximum TTL; default 12 h |
+
+**API endpoints** (11 total, all authenticated)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `PUT` | `/v1/gcp/config` | Write config |
+| `GET` | `/v1/gcp/config` | Read config (`credentials_json` redacted) |
+| `DELETE` | `/v1/gcp/config` | Delete config |
+| `PUT` | `/v1/gcp/roles/{name}` | Create / update role |
+| `GET` | `/v1/gcp/roles/{name}` | Read role |
+| `DELETE` | `/v1/gcp/roles/{name}` | Delete role |
+| `LIST` | `/v1/gcp/roles/` | List role names |
+| `POST` | `/v1/gcp/creds/{role}` | Generate credentials |
+| `GET` | `/v1/gcp/lease/{id}` | Inspect lease |
+| `DELETE` | `/v1/gcp/lease/{id}` | Revoke lease early |
+| `LIST` | `/v1/gcp/lease/` | List lease IDs |
+
+Background GC revokes expired leases every 15 minutes and deletes SA keys.
+
+**Example — GKE with Workload Identity (access_token)**
+
+```sh
+# Configure (empty = use Workload Identity automatically)
+curl -XPUT https://tuck:8200/v1/gcp/config \
+  -H "X-Tuck-Token: $TOKEN" -d '{}'
+
+# Create a role
+curl -XPUT https://tuck:8200/v1/gcp/roles/bigquery-reader \
+  -H "X-Tuck-Token: $TOKEN" \
+  -d '{
+    "credential_type": "access_token",
+    "service_account_email": "bq-reader@my-project.iam.gserviceaccount.com",
+    "scopes": ["https://www.googleapis.com/auth/bigquery.readonly"],
+    "default_ttl": "1h"
+  }'
+
+# Generate token
+curl -XPOST https://tuck:8200/v1/gcp/creds/bigquery-reader \
+  -H "X-Tuck-Token: $TOKEN"
+# → {"lease_id":"...","access_token":"ya29...","token_type":"Bearer","expires_at":"..."}
+```
+
+**Example — service account JSON key**
+
+```sh
+curl -XPUT https://tuck:8200/v1/gcp/roles/ci-deploy \
+  -H "X-Tuck-Token: $TOKEN" \
+  -d '{"credential_type":"service_account_key","service_account_email":"ci@project.iam.gserviceaccount.com"}'
+
+curl -XPOST https://tuck:8200/v1/gcp/creds/ci-deploy \
+  -H "X-Tuck-Token: $TOKEN"
+# → {"lease_id":"...","private_key":"{\"type\":\"service_account\",...}","expires_at":"..."}
+```
+
+**Required GCP permissions for the Tuck service account**
+
+- `service_account_key`: `roles/iam.serviceAccountKeyAdmin` on the target SA
+- `access_token`: `roles/iam.serviceAccountTokenCreator` on the target SA
+
+---
+
 ## [0.21.0] — 2026-06-12
 
 ### Added

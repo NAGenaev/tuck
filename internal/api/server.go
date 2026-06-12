@@ -117,6 +117,19 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/transit/verify/{name}", s.requireToken(s.transitVerify))
 	mux.HandleFunc("POST /v1/transit/hmac/{name}", s.requireToken(s.transitHMAC))
 
+	// GCP dynamic secrets engine — generate service account keys or OAuth2 access tokens
+	mux.HandleFunc("PUT /v1/gcp/config", s.requireToken(s.putGCPConfig))
+	mux.HandleFunc("GET /v1/gcp/config", s.requireToken(s.getGCPConfig))
+	mux.HandleFunc("DELETE /v1/gcp/config", s.requireToken(s.deleteGCPConfig))
+	mux.HandleFunc("PUT /v1/gcp/roles/{name}", s.requireToken(s.putGCPRole))
+	mux.HandleFunc("GET /v1/gcp/roles/{name}", s.requireToken(s.getGCPRole))
+	mux.HandleFunc("DELETE /v1/gcp/roles/{name}", s.requireToken(s.deleteGCPRole))
+	mux.HandleFunc("LIST /v1/gcp/roles/", s.requireToken(s.listGCPRoles))
+	mux.HandleFunc("POST /v1/gcp/creds/{role}", s.requireToken(s.generateGCPCreds))
+	mux.HandleFunc("GET /v1/gcp/lease/{id}", s.requireToken(s.getGCPLease))
+	mux.HandleFunc("DELETE /v1/gcp/lease/{id}", s.requireToken(s.revokeGCPLease))
+	mux.HandleFunc("LIST /v1/gcp/lease/", s.requireToken(s.listGCPLeases))
+
 	// AWS dynamic secrets engine — generate IAM user credentials or STS assumed-role sessions
 	mux.HandleFunc("PUT /v1/aws/config", s.requireToken(s.putAWSConfig))
 	mux.HandleFunc("GET /v1/aws/config", s.requireToken(s.getAWSConfig))

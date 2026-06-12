@@ -4,7 +4,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.21.0-green)](https://github.com/NAGenaev/tuck/releases)
+[![Release](https://img.shields.io/badge/release-v0.22.0-green)](https://github.com/NAGenaev/tuck/releases)
 
 Tuck is an open-source secrets manager built for Kubernetes. The pitch: **anti-Vault** — a single static binary, no external database, auto-unseal by default. `kubectl apply` and it runs.
 
@@ -61,6 +61,7 @@ Tuck's wedge is **operational simplicity**:
 | Engine | Description |
 |--------|-------------|
 | **AWS** | On-demand IAM user credentials or STS AssumeRole sessions; auto-revoked at lease expiry |
+| **GCP** | On-demand service account JSON keys or OAuth2 access tokens; auto-revoked at lease expiry |
 | **Database** | On-demand PostgreSQL / MySQL credentials; auto-revoked at lease expiry |
 | **PKI** | Internal X.509 CA; issue short-lived TLS certificates per role |
 | **Transit** | Encryption-as-a-service; versioned keys (AES-256-GCM, ECDSA, Ed25519, RSA-PSS); sign/verify/HMAC; rewrap after rotation |

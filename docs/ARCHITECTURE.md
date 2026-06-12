@@ -54,6 +54,7 @@ internal/
     ldap/           — LDAP / Active Directory auth (bind-search-bind, group→policy roles)
   dynamic/
     aws/            — AWS engine: IAM user creds + STS AssumeRole sessions
+    gcp/            — GCP engine: service account keys + OAuth2 access tokens
     database/       — Database engine: PostgreSQL / MySQL dynamic creds
     pki/            — PKI engine: X.509 CA, role-based cert issuance, CRL
     transit/        — Transit engine: versioned keys, encrypt/decrypt/sign/HMAC
@@ -181,6 +182,9 @@ On restart: `seal.Unseal()` → root key → `barrier.Unseal()` → DEK decrypte
 | `kvv2/<path>/meta` | KV v2 version metadata |
 | `kvv2/<path>/v/<n>` | KV v2 version data |
 | `dynamic/aws/config` | AWS engine config (secret_access_key encrypted in barrier) |
+| `dynamic/gcp/config` | GCP engine config (credentials_json encrypted in barrier) |
+| `dynamic/gcp/roles/<name>` | GCP role (credential_type, service_account_email, scopes, TTL) |
+| `dynamic/gcp/leases/<id>` | GCP credential lease (gcp_key_name for SA key deletion) |
 | `dynamic/aws/roles/<name>` | AWS role (credential_type, policy_arns, role_arns, TTL) |
 | `dynamic/aws/leases/<id>` | AWS credential lease (revoked flag, username for iam_user) |
 | `dynamic/database/config/<name>` | DB connection config |

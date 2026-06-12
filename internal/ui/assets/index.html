@@ -175,6 +175,7 @@ const S = {
   msg:       null,   // {type:'success'|'error', text}
   authTab:   'approle',
   dynamicTab: 'db',
+  cryptoTab:  'pki',
 };
 
 // ─────────── API ───────────
@@ -288,6 +289,7 @@ function renderApp() {
     ${navItem('policies', '📋', 'Policies')}
     ${navItem('auth', '🔑', 'Auth Methods')}
     ${navItem('dynamic', '⚡', 'Dynamic Secrets')}
+    ${navItem('crypto', '🔐', 'Crypto Engines')}
   </nav>
   <div class="sidebar-footer">
     <button class="logout-btn" id="logout-btn">Sign out</button>
@@ -313,6 +315,7 @@ function renderPage() {
     case 'policies': return pagePolicies();
     case 'auth':     return pageAuth();
     case 'dynamic':  return pageDynamic();
+    case 'crypto':   return pageCrypto();
     default: return '';
   }
 }
@@ -855,6 +858,303 @@ function renderLeasesTab() {
 </div>`;
 }
 
+// ─────────── Crypto Engines page ───────────
+function pageCrypto() {
+  const tab = S.cryptoTab;
+  const tabs = [['pki','PKI'],['transit','Transit'],['ssh','SSH'],['totp','TOTP']];
+  return `
+<div class="page-header">
+  <h1>Crypto Engines</h1>
+  <p>PKI certificates, Transit encryption, SSH signing, and TOTP keys</p>
+</div>
+<div class="page-body">
+  <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+    ${tabs.map(([id,label])=>`<button class="btn ${tab===id?'btn-primary':'btn-ghost'}" data-crypto-tab="${id}">${label}</button>`).join('')}
+  </div>
+  ${tab==='pki'     ? renderPKITab()     : ''}
+  ${tab==='transit' ? renderTransitTab() : ''}
+  ${tab==='ssh'     ? renderSSHTab()     : ''}
+  ${tab==='totp'    ? renderTOTPTab()    : ''}
+</div>`;
+}
+
+function renderPKITab() {
+  return `
+<div class="card">
+  <div class="card-header">Certificate Authority</div>
+  <div class="card-body">
+    <p style="color:var(--muted);font-size:12px;margin-bottom:14px">Generate a self-signed root CA or import an existing PEM bundle.</p>
+    <div class="card-grid">
+      <div class="card" style="margin-bottom:0">
+        <div class="card-header" style="font-size:12px">Generate Root CA</div>
+        <div class="card-body">
+          <form id="pki-gen-root-form">
+            <div class="form-row"><label>Common Name</label><input name="common_name" placeholder="My Root CA" required></div>
+            <div class="card-grid">
+              <div class="form-row"><label>TTL</label><input name="ttl" placeholder="87600h"></div>
+              <div class="form-row"><label>Key Type (rsa / ec)</label><input name="key_type" placeholder="rsa"></div>
+            </div>
+            <div class="form-actions"><button class="btn btn-primary" type="submit">Generate</button></div>
+          </form>
+          <div id="pki-gen-root-result" style="margin-top:10px"></div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:0">
+        <div class="card-header" style="font-size:12px">Import CA Bundle</div>
+        <div class="card-body">
+          <form id="pki-import-ca-form">
+            <div class="form-row"><label>PEM Bundle (cert + key)</label><textarea name="pem_bundle" placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----&#10;-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----" style="min-height:120px"></textarea></div>
+            <div class="form-actions"><button class="btn btn-primary" type="submit">Import</button></div>
+          </form>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:12px">
+      <button class="btn btn-ghost btn-sm" id="pki-view-ca-btn">View CA Certificate (PEM)</button>
+      <div id="pki-ca-result" style="margin-top:8px"></div>
+    </div>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header">PKI Roles <button class="btn btn-primary btn-sm" id="list-pki-roles-btn">Refresh</button></div>
+  <div class="card-body"><div id="pki-role-list"><em style="color:var(--muted)">Click Refresh.</em></div></div>
+</div>
+<div class="card">
+  <div class="card-header">Create / Update Role</div>
+  <div class="card-body">
+    <form id="create-pki-role-form">
+      <div class="card-grid">
+        <div class="form-row"><label>Role Name</label><input name="name" placeholder="web-server" required></div>
+        <div class="form-row"><label>Key Type (rsa / ec)</label><input name="key_type" placeholder="rsa"></div>
+      </div>
+      <div class="card-grid">
+        <div class="form-row"><label>Key Bits</label><input name="key_bits" type="number" placeholder="2048"></div>
+        <div class="form-row"><label>Default TTL</label><input name="ttl" placeholder="720h"></div>
+      </div>
+      <div class="form-row">
+        <label><input type="checkbox" name="allow_any_name" style="width:auto;margin-right:6px">Allow Any Name</label>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Save Role</button></div>
+    </form>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header">Issue Certificate</div>
+  <div class="card-body">
+    <form id="pki-issue-form">
+      <div class="card-grid">
+        <div class="form-row"><label>Role Name</label><input name="role" placeholder="web-server" required></div>
+        <div class="form-row"><label>Common Name</label><input name="common_name" placeholder="example.com" required></div>
+      </div>
+      <div class="card-grid">
+        <div class="form-row"><label>Alt Names (comma-separated)</label><input name="alt_names" placeholder="www.example.com,api.example.com"></div>
+        <div class="form-row"><label>TTL</label><input name="ttl" placeholder="720h"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Issue</button></div>
+    </form>
+    <div id="pki-issue-result" style="margin-top:12px"></div>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header">Issued Certificates <button class="btn btn-primary btn-sm" id="list-pki-certs-btn">Refresh</button></div>
+  <div class="card-body">
+    <div id="pki-cert-list"><em style="color:var(--muted)">Click Refresh.</em></div>
+    <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
+      <form id="pki-revoke-form" style="display:flex;gap:8px">
+        <input name="serial" placeholder="Serial number to revoke" style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius)">
+        <button class="btn btn-danger" type="submit">Revoke</button>
+      </form>
+    </div>
+  </div>
+</div>`;
+}
+
+function renderTransitTab() {
+  return `
+<div class="card">
+  <div class="card-header">Encryption Keys <button class="btn btn-primary btn-sm" id="list-transit-keys-btn">Refresh</button></div>
+  <div class="card-body"><div id="transit-key-list"><em style="color:var(--muted)">Click Refresh.</em></div></div>
+</div>
+<div class="card">
+  <div class="card-header">Create Key</div>
+  <div class="card-body">
+    <form id="create-transit-key-form">
+      <div class="card-grid">
+        <div class="form-row"><label>Key Name</label><input name="name" placeholder="my-key" required></div>
+        <div class="form-row"><label>Type (aes256-gcm96 / rsa-2048 / ecdsa-p256 / ed25519)</label><input name="type" placeholder="aes256-gcm96"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Create Key</button></div>
+    </form>
+  </div>
+</div>
+<div class="card-grid">
+  <div class="card">
+    <div class="card-header">Encrypt</div>
+    <div class="card-body">
+      <form id="transit-encrypt-form">
+        <div class="form-row"><label>Key Name</label><input name="key" placeholder="my-key" required></div>
+        <div class="form-row"><label>Plaintext</label><textarea name="plaintext" placeholder="my secret data" style="min-height:60px"></textarea></div>
+        <div class="form-actions"><button class="btn btn-primary" type="submit">Encrypt</button></div>
+      </form>
+      <div id="transit-encrypt-result" style="margin-top:10px"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">Decrypt</div>
+    <div class="card-body">
+      <form id="transit-decrypt-form">
+        <div class="form-row"><label>Key Name</label><input name="key" placeholder="my-key" required></div>
+        <div class="form-row"><label>Ciphertext</label><textarea name="ciphertext" placeholder="vault:v1:..." style="min-height:60px"></textarea></div>
+        <div class="form-actions"><button class="btn btn-primary" type="submit">Decrypt</button></div>
+      </form>
+      <div id="transit-decrypt-result" style="margin-top:10px"></div>
+    </div>
+  </div>
+</div>
+<div class="card-grid">
+  <div class="card">
+    <div class="card-header">Sign</div>
+    <div class="card-body">
+      <form id="transit-sign-form">
+        <div class="form-row"><label>Key Name (asymmetric)</label><input name="key" placeholder="my-ecdsa-key" required></div>
+        <div class="form-row"><label>Input (raw text — will be base64-encoded)</label><textarea name="input" placeholder="data to sign" style="min-height:60px"></textarea></div>
+        <div class="form-actions"><button class="btn btn-primary" type="submit">Sign</button></div>
+      </form>
+      <div id="transit-sign-result" style="margin-top:10px"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">Verify</div>
+    <div class="card-body">
+      <form id="transit-verify-form">
+        <div class="form-row"><label>Key Name</label><input name="key" placeholder="my-ecdsa-key" required></div>
+        <div class="form-row"><label>Input (raw text — will be base64-encoded)</label><textarea name="input" placeholder="data that was signed" style="min-height:40px"></textarea></div>
+        <div class="form-row"><label>Signature</label><textarea name="signature" placeholder="vault:v1:sig..." style="min-height:40px"></textarea></div>
+        <div class="form-actions"><button class="btn btn-primary" type="submit">Verify</button></div>
+      </form>
+      <div id="transit-verify-result" style="margin-top:10px"></div>
+    </div>
+  </div>
+</div>`;
+}
+
+function renderSSHTab() {
+  return `
+<div class="card">
+  <div class="card-header">SSH Certificate Authority</div>
+  <div class="card-body">
+    <div class="card-grid">
+      <div class="card" style="margin-bottom:0">
+        <div class="card-header" style="font-size:12px">Generate SSH CA</div>
+        <div class="card-body">
+          <form id="ssh-gen-ca-form">
+            <div class="form-row"><label>Key Type (rsa / ecdsa / ed25519)</label><input name="key_type" placeholder="ed25519"></div>
+            <div class="form-actions"><button class="btn btn-primary" type="submit">Generate</button></div>
+          </form>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:0">
+        <div class="card-header" style="font-size:12px">CA Public Key</div>
+        <div class="card-body">
+          <button class="btn btn-ghost btn-sm" id="ssh-view-ca-btn">Load CA Public Key</button>
+          <div id="ssh-ca-result" style="margin-top:8px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header">SSH Roles <button class="btn btn-primary btn-sm" id="list-ssh-roles-btn">Refresh</button></div>
+  <div class="card-body"><div id="ssh-role-list"><em style="color:var(--muted)">Click Refresh.</em></div></div>
+</div>
+<div class="card">
+  <div class="card-header">Create / Update Role</div>
+  <div class="card-body">
+    <form id="create-ssh-role-form">
+      <div class="card-grid">
+        <div class="form-row"><label>Role Name</label><input name="name" placeholder="dev-access" required></div>
+        <div class="form-row"><label>Default User</label><input name="default_user" placeholder="ubuntu"></div>
+      </div>
+      <div class="card-grid">
+        <div class="form-row"><label>Cert Type (user / host)</label><input name="cert_type" placeholder="user"></div>
+        <div class="form-row"><label>Default TTL</label><input name="default_ttl" placeholder="1h"></div>
+      </div>
+      <div class="form-row"><label>Allowed Users (comma-separated, * for any)</label><input name="allowed_users" placeholder="ubuntu,ec2-user,*"></div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Save Role</button></div>
+    </form>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header">Sign SSH Public Key</div>
+  <div class="card-body">
+    <form id="ssh-sign-form">
+      <div class="form-row"><label>Role Name</label><input name="role" placeholder="dev-access" required></div>
+      <div class="form-row"><label>SSH Public Key</label><textarea name="public_key" placeholder="ssh-ed25519 AAAA... user@host" style="min-height:60px"></textarea></div>
+      <div class="card-grid">
+        <div class="form-row"><label>Valid Principals (comma-separated)</label><input name="valid_principals" placeholder="ubuntu,ec2-user"></div>
+        <div class="form-row"><label>TTL</label><input name="ttl" placeholder="1h"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Sign</button></div>
+    </form>
+    <div id="ssh-sign-result" style="margin-top:12px"></div>
+  </div>
+</div>`;
+}
+
+function renderTOTPTab() {
+  return `
+<div class="card">
+  <div class="card-header">TOTP Keys <button class="btn btn-primary btn-sm" id="list-totp-keys-btn">Refresh</button></div>
+  <div class="card-body"><div id="totp-key-list"><em style="color:var(--muted)">Click Refresh.</em></div></div>
+</div>
+<div class="card">
+  <div class="card-header">Create Key</div>
+  <div class="card-body">
+    <form id="create-totp-key-form">
+      <div class="card-grid">
+        <div class="form-row"><label>Key Name</label><input name="name" placeholder="myapp" required></div>
+        <div class="form-row"><label>Issuer</label><input name="issuer" placeholder="ACME Corp"></div>
+      </div>
+      <div class="card-grid">
+        <div class="form-row"><label>Account Name</label><input name="account_name" placeholder="user@example.com"></div>
+        <div class="form-row"><label>Algorithm (sha1 / sha256 / sha512)</label><input name="algorithm" placeholder="sha1"></div>
+      </div>
+      <div class="card-grid">
+        <div class="form-row"><label>Digits (6 or 8)</label><input name="digits" type="number" placeholder="6"></div>
+        <div class="form-row"><label>Period (seconds)</label><input name="period" type="number" placeholder="30"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Create Key</button></div>
+    </form>
+    <div id="totp-create-result" style="margin-top:12px"></div>
+  </div>
+</div>
+<div class="card-grid">
+  <div class="card">
+    <div class="card-header">Generate Code</div>
+    <div class="card-body">
+      <div class="form-row"><label>Key Name</label><input id="totp-gen-name" placeholder="myapp"></div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-primary" id="totp-gen-btn">Get Code</button>
+        <button class="btn btn-ghost" id="totp-gen-auto-btn">Auto-refresh (5s)</button>
+        <button class="btn btn-ghost btn-sm" id="totp-gen-stop-btn" style="display:none">Stop</button>
+      </div>
+      <div id="totp-gen-result" style="margin-top:12px"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">Validate Code</div>
+    <div class="card-body">
+      <form id="totp-validate-form">
+        <div class="form-row"><label>Key Name</label><input name="key" placeholder="myapp" required></div>
+        <div class="form-row"><label>Code</label><input name="code" placeholder="123456" maxlength="8" style="font-size:20px;letter-spacing:4px;font-family:monospace" required></div>
+        <div class="form-actions"><button class="btn btn-primary" type="submit">Validate</button></div>
+      </form>
+      <div id="totp-validate-result" style="margin-top:12px"></div>
+    </div>
+  </div>
+</div>`;
+}
+
 // ─────────── Bind events ───────────
 function bind() {
   on('click', '#logout-btn', logout);
@@ -982,9 +1282,11 @@ function bind() {
 
   // Policies
   on('click', '#list-policies-btn', loadPolicies);
-  on('click', '[data-auth-tab]', e => { S.authTab = e.currentTarget.dataset.authTab; render(); });
-  on('click', '[data-dyn-tab]',  e => { S.dynamicTab = e.currentTarget.dataset.dynTab; render(); });
+  on('click', '[data-auth-tab]',    e => { S.authTab   = e.currentTarget.dataset.authTab;   render(); });
+  on('click', '[data-dyn-tab]',     e => { S.dynamicTab = e.currentTarget.dataset.dynTab;   render(); });
+  on('click', '[data-crypto-tab]',  e => { S.cryptoTab  = e.currentTarget.dataset.cryptoTab; render(); });
   bindAuth();
+  bindCrypto();
 
   onSubmit('#create-policy-form', async fd => {
     const name = fd.get('name').trim();
@@ -1358,6 +1660,247 @@ function bindAuth() {
   on('click', '#refresh-leases-btn', loadAllLeases);
 }
 
+// ─────────── Crypto bind ───────────
+function bindCrypto() {
+  // PKI
+  on('click', '#list-pki-roles-btn', loadPKIRoles);
+  on('click', '#list-pki-certs-btn', loadPKICerts);
+  on('click', '#pki-view-ca-btn', async () => {
+    try {
+      const r = await apiRaw('GET', '/v1/pki/ca/pem');
+      if (!r) return;
+      const text = await r.text();
+      document.getElementById('pki-ca-result').innerHTML =
+        `<textarea class="form-row" style="width:100%;min-height:120px;font-size:11px;font-family:monospace" readonly>${esc(text)}</textarea>`;
+    } catch (e) { document.getElementById('pki-ca-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+  onSubmit('#pki-gen-root-form', async fd => {
+    const body = { common_name: fd.get('common_name').trim() };
+    if (fd.get('ttl').trim())      body.ttl      = fd.get('ttl').trim();
+    if (fd.get('key_type').trim()) body.key_type = fd.get('key_type').trim();
+    try {
+      const d = await api('POST', '/v1/pki/generate/root', body);
+      document.getElementById('pki-gen-root-result').innerHTML =
+        `<div class="alert alert-success"><strong>Root CA generated.</strong><br><small style="color:var(--muted)">Serial: ${esc(d.serial_number||'')}</small></div>`;
+    } catch (e) { document.getElementById('pki-gen-root-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+  onSubmit('#pki-import-ca-form', async fd => {
+    const body = { pem_bundle: fd.get('pem_bundle').trim() };
+    try {
+      await api('POST', '/v1/pki/import/ca', body);
+      flash('success', 'CA bundle imported.');
+    } catch (e) { flash('error', e.message); }
+  });
+  onSubmit('#create-pki-role-form', async fd => {
+    const name = fd.get('name').trim();
+    if (!name) return;
+    const body = {};
+    if (fd.get('key_type').trim())  body.key_type  = fd.get('key_type').trim();
+    const bits = parseInt(fd.get('key_bits')||'0');
+    if (bits > 0) body.key_bits = bits;
+    if (fd.get('ttl').trim()) body.ttl = fd.get('ttl').trim();
+    body.allow_any_name = !!fd.get('allow_any_name');
+    try { await api('PUT', `/v1/pki/roles/${name}`, body); flash('success', `PKI role "${name}" saved.`); render(); }
+    catch (e) { flash('error', e.message); }
+  });
+  onSubmit('#pki-issue-form', async fd => {
+    const role = fd.get('role').trim();
+    const cn   = fd.get('common_name').trim();
+    if (!role || !cn) return;
+    const body = { common_name: cn };
+    if (fd.get('ttl').trim())      body.ttl       = fd.get('ttl').trim();
+    if (fd.get('alt_names').trim()) body.alt_names = fd.get('alt_names').trim();
+    try {
+      const d = await api('POST', `/v1/pki/issue/${role}`, body);
+      const cert = d.certificate || d.cert || '';
+      document.getElementById('pki-issue-result').innerHTML = `
+        <div class="alert alert-success" style="margin-bottom:8px"><strong>Certificate issued.</strong> Serial: ${esc(d.serial_number||'')}</div>
+        <div class="form-row"><label>Certificate PEM</label><textarea style="min-height:100px;font-size:11px" readonly>${esc(cert)}</textarea></div>`;
+    } catch (e) { document.getElementById('pki-issue-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+  onSubmit('#pki-revoke-form', async fd => {
+    const serial = fd.get('serial').trim();
+    if (!serial) return;
+    try { await api('POST', `/v1/pki/revoke/${serial}`); flash('success', `Certificate ${serial} revoked.`); loadPKICerts(); }
+    catch (e) { flash('error', e.message); }
+  });
+
+  // Transit
+  on('click', '#list-transit-keys-btn', loadTransitKeys);
+  onSubmit('#create-transit-key-form', async fd => {
+    const name = fd.get('name').trim();
+    if (!name) return;
+    const body = {};
+    if (fd.get('type').trim()) body.type = fd.get('type').trim();
+    try { await api('POST', `/v1/transit/keys/${name}`, body); flash('success', `Transit key "${name}" created.`); render(); }
+    catch (e) { flash('error', e.message); }
+  });
+  onSubmit('#transit-encrypt-form', async fd => {
+    const key = fd.get('key').trim();
+    const pt  = fd.get('plaintext');
+    if (!key || !pt) return;
+    try {
+      const d = await api('POST', `/v1/transit/encrypt/${key}`, { plaintext: btoa(unescape(encodeURIComponent(pt))) });
+      document.getElementById('transit-encrypt-result').innerHTML =
+        `<div class="alert alert-success"><strong>Ciphertext:</strong><br><span class="mono">${esc(d.ciphertext)}</span></div>`;
+    } catch (e) { document.getElementById('transit-encrypt-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+  onSubmit('#transit-decrypt-form', async fd => {
+    const key  = fd.get('key').trim();
+    const ct   = fd.get('ciphertext').trim();
+    if (!key || !ct) return;
+    try {
+      const d = await api('POST', `/v1/transit/decrypt/${key}`, { ciphertext: ct });
+      const plain = decodeURIComponent(escape(atob(d.plaintext)));
+      document.getElementById('transit-decrypt-result').innerHTML =
+        `<div class="alert alert-success"><strong>Plaintext:</strong><br><span class="mono">${esc(plain)}</span></div>`;
+    } catch (e) { document.getElementById('transit-decrypt-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+  onSubmit('#transit-sign-form', async fd => {
+    const key   = fd.get('key').trim();
+    const input = fd.get('input');
+    if (!key || !input) return;
+    try {
+      const d = await api('POST', `/v1/transit/sign/${key}`, { input: btoa(unescape(encodeURIComponent(input))) });
+      document.getElementById('transit-sign-result').innerHTML =
+        `<div class="alert alert-success"><strong>Signature:</strong><br><span class="mono">${esc(d.signature)}</span></div>`;
+    } catch (e) { document.getElementById('transit-sign-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+  onSubmit('#transit-verify-form', async fd => {
+    const key  = fd.get('key').trim();
+    const input = fd.get('input');
+    const sig  = fd.get('signature').trim();
+    if (!key || !input || !sig) return;
+    try {
+      const d = await api('POST', `/v1/transit/verify/${key}`, {
+        input: btoa(unescape(encodeURIComponent(input))),
+        signature: sig,
+      });
+      const ok = d.valid === true;
+      document.getElementById('transit-verify-result').innerHTML =
+        `<div class="alert ${ok?'alert-success':'alert-error'}">${ok ? 'Signature valid.' : 'Signature INVALID.'}</div>`;
+    } catch (e) { document.getElementById('transit-verify-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+
+  // SSH
+  on('click', '#list-ssh-roles-btn', loadSSHRoles);
+  on('click', '#ssh-view-ca-btn', async () => {
+    try {
+      const r = await apiRaw('GET', '/v1/ssh/ca/public-key');
+      if (!r) return;
+      const text = await r.text();
+      document.getElementById('ssh-ca-result').innerHTML =
+        `<textarea style="width:100%;min-height:80px;font-size:11px;font-family:monospace" readonly>${esc(text)}</textarea>`;
+    } catch (e) { document.getElementById('ssh-ca-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+  onSubmit('#ssh-gen-ca-form', async fd => {
+    const body = {};
+    if (fd.get('key_type').trim()) body.key_type = fd.get('key_type').trim();
+    try { await api('POST', '/v1/ssh/generate/ca', body); flash('success', 'SSH CA generated.'); }
+    catch (e) { flash('error', e.message); }
+  });
+  onSubmit('#create-ssh-role-form', async fd => {
+    const name = fd.get('name').trim();
+    if (!name) return;
+    const body = {};
+    if (fd.get('default_user').trim())    body.default_user    = fd.get('default_user').trim();
+    if (fd.get('cert_type').trim())       body.cert_type       = fd.get('cert_type').trim();
+    if (fd.get('default_ttl').trim())     body.default_ttl     = fd.get('default_ttl').trim();
+    if (fd.get('allowed_users').trim())   body.allowed_users   = fd.get('allowed_users').trim();
+    try { await api('PUT', `/v1/ssh/roles/${name}`, body); flash('success', `SSH role "${name}" saved.`); render(); }
+    catch (e) { flash('error', e.message); }
+  });
+  onSubmit('#ssh-sign-form', async fd => {
+    const role = fd.get('role').trim();
+    const pub  = fd.get('public_key').trim();
+    if (!role || !pub) return;
+    const body = { public_key: pub };
+    if (fd.get('valid_principals').trim()) body.valid_principals = fd.get('valid_principals').trim();
+    if (fd.get('ttl').trim()) body.ttl = fd.get('ttl').trim();
+    try {
+      const d = await api('POST', `/v1/ssh/sign/${role}`, body);
+      const signed = d.signed_key || d.certificate || '';
+      document.getElementById('ssh-sign-result').innerHTML = `
+        <div class="alert alert-success" style="margin-bottom:8px"><strong>Certificate signed.</strong></div>
+        <div class="form-row"><label>Signed Certificate</label><textarea style="min-height:80px;font-size:11px" readonly>${esc(signed)}</textarea></div>`;
+    } catch (e) { document.getElementById('ssh-sign-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+
+  // TOTP
+  on('click', '#list-totp-keys-btn', loadTOTPKeys);
+  onSubmit('#create-totp-key-form', async fd => {
+    const name = fd.get('name').trim();
+    if (!name) return;
+    const body = {};
+    if (fd.get('issuer').trim())       body.issuer      = fd.get('issuer').trim();
+    if (fd.get('account_name').trim()) body.account     = fd.get('account_name').trim();
+    if (fd.get('algorithm').trim())    body.algorithm   = fd.get('algorithm').trim();
+    const digits = parseInt(fd.get('digits')||'0');
+    if (digits > 0) body.digits = digits;
+    const period = parseInt(fd.get('period')||'0');
+    if (period > 0) body.period = period;
+    try {
+      const d = await api('POST', `/v1/totp/keys/${name}`, body);
+      const urlText = d.url || '';
+      document.getElementById('totp-create-result').innerHTML = `
+        <div class="alert alert-success">
+          <strong>TOTP key "${esc(name)}" created.</strong><br>
+          <small style="color:var(--muted)">Secret (shown once):</small><br>
+          <span class="mono">${esc(d.secret||'')}</span><br>
+          <small style="color:var(--muted);margin-top:6px;display:block">OTP Auth URL (import into authenticator):</small>
+          <textarea style="width:100%;min-height:50px;font-size:11px;margin-top:4px" readonly>${esc(urlText)}</textarea>
+        </div>`;
+    } catch (e) { document.getElementById('totp-create-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+  on('click', '#totp-gen-btn', async () => {
+    const name = document.getElementById('totp-gen-name')?.value?.trim();
+    if (!name) return;
+    await fetchTOTPCode(name);
+  });
+  let totpAutoTimer = null;
+  on('click', '#totp-gen-auto-btn', () => {
+    const name = document.getElementById('totp-gen-name')?.value?.trim();
+    if (!name) { flash('error', 'Enter a key name first'); return; }
+    if (totpAutoTimer) return;
+    const stopBtn = document.getElementById('totp-gen-stop-btn');
+    if (stopBtn) stopBtn.style.display = '';
+    fetchTOTPCode(name);
+    totpAutoTimer = setInterval(() => fetchTOTPCode(name), 5000);
+  });
+  on('click', '#totp-gen-stop-btn', () => {
+    if (totpAutoTimer) { clearInterval(totpAutoTimer); totpAutoTimer = null; }
+    const stopBtn = document.getElementById('totp-gen-stop-btn');
+    if (stopBtn) stopBtn.style.display = 'none';
+  });
+  onSubmit('#totp-validate-form', async fd => {
+    const key  = fd.get('key').trim();
+    const code = fd.get('code').trim();
+    if (!key || !code) return;
+    try {
+      const d = await api('POST', `/v1/totp/code/${key}`, { code });
+      const ok = d.valid === true;
+      document.getElementById('totp-validate-result').innerHTML =
+        `<div class="alert ${ok?'alert-success':'alert-error'}" style="font-size:18px;text-align:center;padding:16px">
+          ${ok ? '✓ Code is VALID' : '✗ Code is INVALID'}
+        </div>`;
+    } catch (e) { document.getElementById('totp-validate-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+}
+
+async function fetchTOTPCode(name) {
+  try {
+    const d = await api('GET', `/v1/totp/code/${name}`);
+    const until = d.valid_until ? new Date(d.valid_until).toLocaleTimeString() : '';
+    document.getElementById('totp-gen-result').innerHTML =
+      `<div class="alert alert-info" style="text-align:center">
+        <div style="font-size:36px;font-family:monospace;letter-spacing:8px;font-weight:700">${esc(d.code)}</div>
+        ${until ? `<small style="color:var(--muted)">Valid until ${esc(until)}</small>` : ''}
+      </div>`;
+  } catch (e) {
+    document.getElementById('totp-gen-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
+  }
+}
+
 // ─────────── Helpers: creds display ───────────
 function renderCredsResult(d) {
   const rows = Object.entries(d)
@@ -1523,6 +2066,101 @@ async function delAppRole(name) {
   if (!confirm(`Delete AppRole "${name}"?`)) return;
   try { await api('DELETE', `/v1/auth/approle/role/${name}`); flash('success', 'Role deleted.'); render(); }
   catch (e) { flash('error', e.message); }
+}
+
+async function loadPKIRoles() {
+  const el = document.getElementById('pki-role-list');
+  if (!el) return;
+  try {
+    const r = await fetch('/v1/pki/roles/', { method:'LIST', headers:{'X-Tuck-Token':S.token} });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error||r.status);
+    if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No roles.</em>'; return; }
+    el.innerHTML = renderKeyTable(d.keys, (name) => [
+      `<button class="btn btn-danger btn-sm" onclick="delPath('/v1/pki/roles/${esc(name)}','PKI role')">Delete</button>`
+    ]);
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+async function loadPKICerts() {
+  const el = document.getElementById('pki-cert-list');
+  if (!el) return;
+  try {
+    const r = await fetch('/v1/pki/certs/', { method:'LIST', headers:{'X-Tuck-Token':S.token} });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error||r.status);
+    if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No certificates.</em>'; return; }
+    el.innerHTML = `<table class="table">
+      <thead><tr><th>Serial Number</th><th style="width:80px"></th></tr></thead>
+      <tbody>${d.keys.map(serial=>`<tr>
+        <td class="mono">${esc(serial)}</td>
+        <td><button class="btn btn-danger btn-sm" onclick="revokePKICert('${esc(serial)}')">Revoke</button></td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+async function revokePKICert(serial) {
+  if (!confirm(`Revoke certificate ${serial}?`)) return;
+  try { await api('POST', `/v1/pki/revoke/${serial}`); flash('success', `Certificate ${serial} revoked.`); loadPKICerts(); }
+  catch (e) { flash('error', e.message); }
+}
+
+async function loadTransitKeys() {
+  const el = document.getElementById('transit-key-list');
+  if (!el) return;
+  try {
+    const r = await fetch('/v1/transit/keys/', { method:'LIST', headers:{'X-Tuck-Token':S.token} });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error||r.status);
+    if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No keys.</em>'; return; }
+    el.innerHTML = renderKeyTable(d.keys, (name) => [
+      `<button class="btn btn-ghost btn-sm" onclick="rotateTransitKey('${esc(name)}')">Rotate</button>`,
+      `<button class="btn btn-danger btn-sm" onclick="delPath('/v1/transit/keys/${esc(name)}','Transit key')" style="margin-left:4px">Delete</button>`,
+    ]);
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+async function rotateTransitKey(name) {
+  if (!confirm(`Rotate transit key "${name}"?`)) return;
+  try { await api('POST', `/v1/transit/keys/${name}/rotate`); flash('success', `Key "${name}" rotated.`); loadTransitKeys(); }
+  catch (e) { flash('error', e.message); }
+}
+
+async function loadSSHRoles() {
+  const el = document.getElementById('ssh-role-list');
+  if (!el) return;
+  try {
+    const r = await fetch('/v1/ssh/roles/', { method:'LIST', headers:{'X-Tuck-Token':S.token} });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error||r.status);
+    if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No roles.</em>'; return; }
+    el.innerHTML = renderKeyTable(d.keys, (name) => [
+      `<button class="btn btn-danger btn-sm" onclick="delPath('/v1/ssh/roles/${esc(name)}','SSH role')">Delete</button>`
+    ]);
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+async function loadTOTPKeys() {
+  const el = document.getElementById('totp-key-list');
+  if (!el) return;
+  try {
+    const r = await fetch('/v1/totp/keys/', { method:'LIST', headers:{'X-Tuck-Token':S.token} });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error||r.status);
+    if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No TOTP keys.</em>'; return; }
+    el.innerHTML = renderKeyTable(d.keys, (name) => [
+      `<button class="btn btn-ghost btn-sm" onclick="viewTOTPKey('${esc(name)}')">View URL</button>`,
+      `<button class="btn btn-danger btn-sm" onclick="delPath('/v1/totp/keys/${esc(name)}','TOTP key')" style="margin-left:4px">Delete</button>`,
+    ]);
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+async function viewTOTPKey(name) {
+  try {
+    const d = await api('GET', `/v1/totp/keys/${name}`);
+    alert(`Key: ${name}\nIssuer: ${d.issuer||''}\nAccount: ${d.account||''}\nAlgorithm: ${d.algorithm||''}\nDigits: ${d.digits||6}\nPeriod: ${d.period||30}s\n\nOTP URL:\n${d.url||''}`);
+  } catch (e) { flash('error', e.message); }
 }
 
 async function delPath(path, label) {

@@ -4,7 +4,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.30.0-green)](https://github.com/NAGenaev/tuck/releases)
+[![Release](https://img.shields.io/badge/release-v0.32.0-green)](https://github.com/NAGenaev/tuck/releases)
 
 Tuck is an open-source secrets manager built for Kubernetes. The pitch: **anti-Vault** — a single static binary, no external database, auto-unseal by default. `kubectl apply` and it runs.
 
@@ -80,8 +80,8 @@ Tuck's wedge is **operational simplicity**:
 - **Raft HA** — built-in 3–5 node cluster; embedded consensus; no external coordination service
 - **Prometheus metrics** at `/metrics`
 - **OpenTelemetry tracing** (OTLP exporter)
-- **Embedded web dashboard** at `/ui/`
-- **CLI client** (`tuckcli`) — full KV, token, policy management
+- **Embedded web dashboard** at `/ui/` — ~80% API surface (KV, tokens, policies, auth, dynamic secrets, PKI, Transit, SSH, TOTP)
+- **CLI client** (`tuckcli`) — full coverage: KV, token, policy, dynamic creds, PKI, Transit, SSH, TOTP, auth logins
 - **Go SDK** (`pkg/client`) — typed Go client for the full API
 - **OpenAPI 3.0 spec** at `/openapi.json`
 

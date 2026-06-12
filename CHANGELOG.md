@@ -11,6 +11,39 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.32.0] — 2026-06-12
+
+### Added
+
+#### CLI: Complete Command Coverage (`cmd/tuckcli`)
+
+`tuckcli` now covers all major Tuck API surfaces:
+
+- **Token self-ops** — `token lookup-self`, `token renew-self [ttl]`
+- **Dynamic credentials** — `db creds <role>`, `aws creds <role>`, `gcp creds <role>`, `azure creds <role>`
+- **PKI** — `pki issue <role> --cn=<name> [--ttl=…] [--alt-name=…]`, `pki revoke <serial>`
+- **Transit** — `transit encrypt <key> <plaintext|->`, `transit decrypt <key> <ciphertext|->` (stdin-piping supported; base64 handled transparently)
+- **SSH** — `ssh sign <role> <pubkey-file|->` (reads from file or stdin, outputs signed cert PEM)
+- **TOTP** — `totp code <key>` (prints bare OTP code)
+- **Auth logins** — `auth approle login --role-id=… --secret-id=…`, `auth ldap login --username=… --password=…`, `auth jwt login --jwt=… [--role=…]`
+
+---
+
+## [0.31.0] — 2026-06-12
+
+### Added
+
+#### UI: Crypto Engines (`internal/ui`)
+
+New **Crypto Engines** page (🔐) in the embedded dashboard with four tabs:
+
+- **PKI** — generate root CA, import CA PEM, view CA cert, manage roles (key type, TTL, allow_any_name), issue certificates with SAN support (cert PEM shown in copyable textarea), list issued certs with per-row revoke, revoke by serial
+- **Transit** — list keys with rotate/delete actions, create key (type selector), encrypt/decrypt (raw text in, raw text out — base64 handled by UI), sign/verify with VALID/INVALID display
+- **SSH** — generate SSH CA, load CA public key, manage roles (cert_type, default_user, allowed_users, TTL), sign SSH public key (output in copyable textarea)
+- **TOTP** — create key (issuer, account name, algorithm, digits, period — returns otpauth:// URL for authenticator import), generate OTP code with 5-second auto-refresh, validate code with green/red VALID/INVALID display
+
+---
+
 ## [0.30.0] — 2026-06-12
 
 ### Added

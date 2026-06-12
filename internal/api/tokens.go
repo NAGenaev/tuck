@@ -111,6 +111,59 @@ func (s *Server) renewToken(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, tok)
 }
 
+// lookupByAccessor handles POST /v1/auth/token/lookup-accessor.
+// Body: {"accessor": "tuck_acc_..."}
+func (s *Server) lookupByAccessor(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/token", policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
+	body, _ := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
+	var req struct {
+		Accessor string `json:"accessor"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil || req.Accessor == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "accessor is required"})
+		return
+	}
+	tok, err := s.core.LookupTokenByAccessor(r.Context(), req.Accessor)
+	if err != nil {
+		if errors.Is(err, token.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "token not found"})
+			return
+		}
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, tok)
+}
+
+// revokeByAccessor handles DELETE /v1/auth/token/revoke-accessor.
+// Body: {"accessor": "tuck_acc_..."}
+func (s *Server) revokeByAccessor(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/token", policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
+	body, _ := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
+	var req struct {
+		Accessor string `json:"accessor"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil || req.Accessor == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "accessor is required"})
+		return
+	}
+	if err := s.core.RevokeTokenByAccessor(r.Context(), req.Accessor); err != nil {
+		if errors.Is(err, token.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "token not found"})
+			return
+		}
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // listTokens handles LIST /v1/auth/token/.
 // Returns {"keys": [...]} with all token IDs.
 func (s *Server) listTokens(w http.ResponseWriter, r *http.Request) {

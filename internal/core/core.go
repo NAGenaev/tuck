@@ -334,6 +334,21 @@ func (c *Core) LookupToken(ctx context.Context, tokenID string) (*token.Token, e
 	return c.tokens.Get(ctx, tokenID)
 }
 
+// LookupTokenByAccessor returns token metadata for the given accessor.
+func (c *Core) LookupTokenByAccessor(ctx context.Context, accessor string) (*token.Token, error) {
+	return c.tokens.GetByAccessor(ctx, accessor)
+}
+
+// RevokeTokenByAccessor revokes the token identified by accessor.
+func (c *Core) RevokeTokenByAccessor(ctx context.Context, accessor string) error {
+	// First find the token so we can purge its cubbyhole.
+	tok, err := c.tokens.GetByAccessor(ctx, accessor)
+	if err == nil && tok != nil {
+		_ = c.cubbyhole.PurgeToken(ctx, tok.ID)
+	}
+	return c.tokens.DeleteByAccessor(ctx, accessor)
+}
+
 // ListTokens returns all token IDs in the store.
 func (c *Core) ListTokens(ctx context.Context) ([]string, error) {
 	return c.tokens.List(ctx)

@@ -174,7 +174,8 @@ On restart: `seal.Unseal()` → root key → `barrier.Unseal()` → DEK decrypte
 | Logical key | Contents |
 |---|---|
 | `barrier/keyring` | DEK encrypted with root key |
-| `auth/token/<id>` | JSON token record |
+| `auth/token/<id>` | JSON token record (includes accessor field) |
+| `auth/accessor/<accessor>` | Accessor index → token ID mapping |
 | `auth/policy/<name>` | JSON policy |
 | `auth/k8s/role/<ns>/<sa>` | K8s role binding |
 | `auth/jwt/config` | JWKS config |

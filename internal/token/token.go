@@ -16,21 +16,27 @@ const (
 // Token is a bearer credential that carries a set of policy names.
 type Token struct {
 	ID          string    `json:"id"`
+	Accessor    string    `json:"accessor"`    // HMAC-safe alias; returned on create/lookup
 	DisplayName string    `json:"display_name"`
 	Policies    []string  `json:"policies"`
 	CreatedAt   time.Time `json:"created_at"`
 	ExpiresAt   time.Time `json:"expires_at"` // zero means never
 }
 
-// Generate creates a new token with a cryptographically random ID.
+// Generate creates a new token with a cryptographically random ID and accessor.
 func Generate(displayName string, policies []string, ttl time.Duration) (*Token, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
 		return nil, err
 	}
+	acc := make([]byte, 16)
+	if _, err := rand.Read(acc); err != nil {
+		return nil, err
+	}
 	now := time.Now().UTC()
 	t := &Token{
 		ID:          "tuck_" + base64.RawURLEncoding.EncodeToString(raw),
+		Accessor:    "tuck_acc_" + base64.RawURLEncoding.EncodeToString(acc),
 		DisplayName: displayName,
 		Policies:    policies,
 		CreatedAt:   now,

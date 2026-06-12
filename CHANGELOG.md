@@ -11,6 +11,59 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.26.0] — 2026-06-12
+
+### Added
+
+#### Token Accessor (`internal/token`)
+
+Every token now carries an **accessor** — a separate, cryptographically random
+identifier (`tuck_acc_` + base64url(16 bytes)) stored as an index in the barrier
+(`auth/accessor/<accessor>` → token ID).
+
+The accessor lets operators look up or revoke tokens by a value that is safe
+to log, pass between services, or store in external systems — without ever
+exposing the raw bearer token.
+
+**Changes:**
+- `Token.Accessor` field added; populated by `Generate` on every new token
+- `Store.Put` writes an accessor index entry alongside the token record
+- `Store.Delete` cleans up the accessor index atomically
+- `Store.GetByAccessor` / `Store.DeleteByAccessor` for accessor-based operations
+
+**New API endpoints**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/auth/token/lookup-accessor` | Fetch token metadata by accessor |
+| `DELETE` | `/v1/auth/token/revoke-accessor` | Revoke a token by accessor |
+
+Both require a token with `write` / `delete` capability on `auth/token`.
+
+**Example**
+
+```sh
+# Create a token — response now includes "accessor"
+TOKEN_DATA=$(curl -s -XPOST https://tuck:8200/v1/auth/token \
+  -H "X-Tuck-Token: $ROOT" \
+  -d '{"display_name":"ci","policies":["ci-policy"],"ttl":"1h"}')
+ACCESSOR=$(echo $TOKEN_DATA | jq -r .accessor)
+# → "tuck_acc_xxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# Look up token metadata by accessor (safe to store in a log)
+curl -s -XPOST https://tuck:8200/v1/auth/token/lookup-accessor \
+  -H "X-Tuck-Token: $ROOT" \
+  -d "{\"accessor\":\"$ACCESSOR\"}"
+# → {"id":"tuck_...","accessor":"tuck_acc_...","display_name":"ci","policies":["ci-policy"],...}
+
+# Revoke by accessor — no need to know the raw token value
+curl -XDELETE https://tuck:8200/v1/auth/token/revoke-accessor \
+  -H "X-Tuck-Token: $ROOT" \
+  -d "{\"accessor\":\"$ACCESSOR\"}"
+```
+
+---
+
 ## [0.25.0] — 2026-06-12
 
 ### Added

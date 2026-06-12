@@ -76,6 +76,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/auth/token/{id}", s.requireToken(s.revokeToken))
 	mux.HandleFunc("POST /v1/auth/token/{id}/renew", s.requireToken(s.renewToken))
 	mux.HandleFunc("LIST /v1/auth/token/", s.requireToken(s.listTokens))
+	mux.HandleFunc("POST /v1/auth/token/lookup-accessor", s.requireToken(s.lookupByAccessor))
+	mux.HandleFunc("DELETE /v1/auth/token/revoke-accessor", s.requireToken(s.revokeByAccessor))
 
 	mux.HandleFunc("PUT /v1/policy/{name}", s.requireToken(s.putPolicy))
 	mux.HandleFunc("GET /v1/policy/{name}", s.requireToken(s.getPolicy))

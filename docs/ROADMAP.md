@@ -1,10 +1,10 @@
 # Tuck — Production Roadmap
 
-> Состояние: M0–M24 завершены (v0.24.0). Следующий шаг: внешний security audit (QA-3) → v1.0 GA.
+> Состояние: M0–M25 завершены (v0.25.0). Следующий шаг: внешний security audit (QA-3) → v1.0 GA.
 
 ---
 
-## Текущее состояние (v0.24.0)
+## Текущее состояние (v0.25.0)
 
 | Компонент | Статус |
 |---|---|
@@ -32,6 +32,7 @@
 | GCP dynamic secrets (service_account_key + access_token, auto-revoke, lease GC) | ✅ |
 | Azure dynamic secrets (client_secret, Graph API addPassword/removePassword, auto-revoke) | ✅ |
 | Response wrapping (single-use tokens, tuck_wrap_ prefix, 4 endpoints, background GC) | ✅ |
+| Cubbyhole engine (per-token private storage, auto-purge on token revocation) | ✅ |
 | TLS (self-signed ECDSA P-256 или custom cert) | ✅ |
 | Graceful shutdown (30s drain + seal) | ✅ |
 | Audit log (SHA-256 hash chain, values never logged) | ✅ |

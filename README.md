@@ -4,7 +4,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.24.0-green)](https://github.com/NAGenaev/tuck/releases)
+[![Release](https://img.shields.io/badge/release-v0.25.0-green)](https://github.com/NAGenaev/tuck/releases)
 
 Tuck is an open-source secrets manager built for Kubernetes. The pitch: **anti-Vault** — a single static binary, no external database, auto-unseal by default. `kubectl apply` and it runs.
 
@@ -609,6 +609,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 | M22 — GCP dynamic secrets (SA key + access token) | v0.22 | ✅ |
 | M23 — Azure dynamic secrets (AD client secrets, Graph API) | v0.23 | ✅ |
 | M24 — Response wrapping (single-use tokens, secure secret hand-off) | v0.24 | ✅ |
+| M25 — Cubbyhole engine (per-token private storage, auto-purge) | v0.25 | ✅ |
 | v1.0 GA — External security audit | — | 🔜 |
 
 ---

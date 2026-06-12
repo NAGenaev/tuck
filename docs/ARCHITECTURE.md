@@ -37,6 +37,7 @@ internal/
   core/             — orchestration: all engine managers, KV, identity
   token/            — token model: generation, TTL, storage in barrier
   wrapping/         — response wrapping: single-use tuck_wrap_ tokens; wrap/unwrap/lookup/revoke
+  cubbyhole/        — per-token private storage; auto-purged on token revoke/expiry
   policy/           — ACL: policies, glob path matching, capability check
   kvv2/             — KV v2: versioned secrets, CAS, soft-delete, destroy
   api/              — HTTP layer: routing, middleware, serialization
@@ -193,6 +194,7 @@ On restart: `seal.Unseal()` → root key → `barrier.Unseal()` → DEK decrypte
 | `dynamic/azure/roles/<name>` | Azure role (application_object_id, application_id, TTL) |
 | `dynamic/azure/leases/<id>` | Azure credential lease (key_id for Graph API removePassword) |
 | `sys/wrapping/<id>` | Wrapping token record (payload, created_at, expires_at) |
+| `cubbyhole/<token_id>/<path>` | Per-token private storage entry |
 | `dynamic/aws/roles/<name>` | AWS role (credential_type, policy_arns, role_arns, TTL) |
 | `dynamic/aws/leases/<id>` | AWS credential lease (revoked flag, username for iam_user) |
 | `dynamic/database/config/<name>` | DB connection config |

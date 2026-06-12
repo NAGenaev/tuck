@@ -17,6 +17,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/auth/jwt"
 	authlda "github.com/NAGenaev/tuck/internal/auth/ldap"
 	"github.com/NAGenaev/tuck/internal/barrier"
+	"github.com/NAGenaev/tuck/internal/cubbyhole"
 	dynaws "github.com/NAGenaev/tuck/internal/dynamic/aws"
 	dynazure "github.com/NAGenaev/tuck/internal/dynamic/azure"
 	"github.com/NAGenaev/tuck/internal/dynamic/database"
@@ -81,6 +82,7 @@ type Core struct {
 	jwtStore     *jwt.Store
 	approleStore *approle.Store
 	ldapStore    *authlda.Store
+	cubbyhole    *cubbyhole.Store
 	wrapping     *wrapping.Store
 	dbManager    *database.Manager
 	awsEngine    *dynaws.Engine
@@ -122,6 +124,7 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		jwtStore:     jwt.NewStore(b),
 		approleStore: approle.NewStore(b),
 		ldapStore:    authlda.NewStore(b),
+		cubbyhole:    cubbyhole.NewStore(b),
 		wrapping:     wrapping.NewStore(b),
 		dbManager:    database.NewManager(b),
 		awsEngine:    dynaws.New(b),
@@ -323,6 +326,7 @@ func (c *Core) CreateToken(ctx context.Context, displayName string, policies []s
 }
 
 func (c *Core) RevokeToken(ctx context.Context, tokenID string) error {
+	_ = c.cubbyhole.PurgeToken(ctx, tokenID)
 	return c.tokens.Delete(ctx, tokenID)
 }
 
@@ -786,6 +790,7 @@ func (c *Core) runGC(ctx context.Context) {
 	}
 	for _, id := range expired {
 		_ = c.tokens.Delete(ctx, id)
+		_ = c.cubbyhole.PurgeToken(ctx, id)
 	}
 	_ = c.dbManager.RevokeExpired(ctx)
 	_ = c.awsEngine.RevokeExpired(ctx)
@@ -1021,4 +1026,22 @@ func (c *Core) LookupWrappingToken(ctx context.Context, token string) (*wrapping
 
 func (c *Core) RevokeWrappingToken(ctx context.Context, token string) error {
 	return c.wrapping.Revoke(ctx, token)
+}
+
+// --- Cubbyhole (per-token private storage) ---
+
+func (c *Core) CubbyholeGet(ctx context.Context, tokenID, path string) (map[string]interface{}, error) {
+	return c.cubbyhole.Get(ctx, tokenID, path)
+}
+
+func (c *Core) CubbyholePut(ctx context.Context, tokenID, path string, data map[string]interface{}) error {
+	return c.cubbyhole.Put(ctx, tokenID, path, data)
+}
+
+func (c *Core) CubbyholeDelete(ctx context.Context, tokenID, path string) error {
+	return c.cubbyhole.Delete(ctx, tokenID, path)
+}
+
+func (c *Core) CubbyholeList(ctx context.Context, tokenID, pathPrefix string) ([]string, error) {
+	return c.cubbyhole.List(ctx, tokenID, pathPrefix)
 }

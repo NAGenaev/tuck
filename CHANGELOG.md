@@ -11,6 +11,59 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.25.0] — 2026-06-12
+
+### Added
+
+#### Cubbyhole Engine (`internal/cubbyhole`)
+
+Per-token private storage. Every Tuck token has its own isolated cubbyhole
+namespace — no other token can read or write another token's data. All entries
+are automatically purged when the owner token is revoked (explicit or TTL expiry).
+
+Common use cases:
+- Store bootstrap credentials visible only to the process that received them
+- Pair with response wrapping: unwrap a secret into the cubbyhole, read it from there
+- Temporary scratch space tied to a session token lifetime
+
+**Storage:** `cubbyhole/<token_id>/<path>` (AES-256-GCM in barrier)
+
+**API endpoints** (all authenticated; data scoped to the caller's own token)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/v1/cubbyhole/{path}` | Read a JSON object |
+| `PUT` | `/v1/cubbyhole/{path}` | Write a JSON object |
+| `DELETE` | `/v1/cubbyhole/{path}` | Delete an entry |
+| `LIST` | `/v1/cubbyhole/{path}` | List keys under a prefix |
+
+Cubbyhole data is purged:
+- Automatically when the token expires (GC runs every 15 minutes)
+- Immediately when `DELETE /v1/auth/token/{id}` is called
+
+**Example**
+
+```sh
+# Write into your own cubbyhole
+curl -XPUT https://tuck:8200/v1/cubbyhole/bootstrap \
+  -H "X-Tuck-Token: $TOKEN" \
+  -d '{"db_url":"postgres://...", "api_key":"sk-..."}'
+
+# Read back
+curl https://tuck:8200/v1/cubbyhole/bootstrap \
+  -H "X-Tuck-Token: $TOKEN"
+# → {"data": {"db_url": "postgres://...", "api_key": "sk-..."}}
+
+# List keys
+curl -XLIST https://tuck:8200/v1/cubbyhole/ \
+  -H "X-Tuck-Token: $TOKEN"
+# → {"keys": ["bootstrap"]}
+
+# Another token cannot access this data — it has its own empty cubbyhole
+```
+
+---
+
 ## [0.24.0] — 2026-06-12
 
 ### Added

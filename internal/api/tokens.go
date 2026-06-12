@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/NAGenaev/tuck/internal/core"
 	"github.com/NAGenaev/tuck/internal/policy"
 	"github.com/NAGenaev/tuck/internal/token"
 )
@@ -14,7 +15,9 @@ import (
 type createTokenReq struct {
 	DisplayName string   `json:"display_name"`
 	Policies    []string `json:"policies"`
-	TTL         string   `json:"ttl"` // e.g. "24h", "" = never expires
+	TTL         string   `json:"ttl"`     // e.g. "24h", "" = never expires
+	Renewable   bool     `json:"renewable"`
+	MaxTTL      string   `json:"max_ttl"` // cap on total lifetime; only meaningful when renewable=true
 }
 
 func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
@@ -39,10 +42,21 @@ func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var maxTTL time.Duration
+	if req.MaxTTL != "" {
+		if maxTTL, err = time.ParseDuration(req.MaxTTL); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid max_ttl: " + err.Error()})
+			return
+		}
+	}
 	if req.Policies == nil {
 		req.Policies = []string{}
 	}
-	tok, err := s.core.CreateToken(r.Context(), req.DisplayName, req.Policies, ttl)
+	var opts []core.TokenOpt
+	if req.Renewable {
+		opts = append(opts, core.WithRenewable(maxTTL))
+	}
+	tok, err := s.core.CreateToken(r.Context(), req.DisplayName, req.Policies, ttl, opts...)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -180,4 +194,43 @@ func (s *Server) listTokens(w http.ResponseWriter, r *http.Request) {
 		ids = []string{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"keys": ids})
+}
+
+// lookupSelf handles GET /v1/auth/token/lookup-self.
+// Returns metadata of the token used to authenticate the request.
+func (s *Server) lookupSelf(w http.ResponseWriter, r *http.Request) {
+	id := tokenFromCtx(r.Context())
+	tok, err := s.core.LookupSelf(r.Context(), id)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, tok)
+}
+
+// renewSelf handles POST /v1/auth/token/renew-self.
+// Renews the token used to authenticate the request.
+// Optional body: {"ttl": "24h"}. Default renewal increment is 1h.
+func (s *Server) renewSelf(w http.ResponseWriter, r *http.Request) {
+	id := tokenFromCtx(r.Context())
+	var req struct {
+		TTL string `json:"ttl"`
+	}
+	body, _ := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodyBytes))
+	_ = json.Unmarshal(body, &req)
+
+	var ttl time.Duration
+	if req.TTL != "" {
+		var err error
+		if ttl, err = time.ParseDuration(req.TTL); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid ttl: " + err.Error()})
+			return
+		}
+	}
+	tok, err := s.core.RenewSelf(r.Context(), id, ttl)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, tok)
 }

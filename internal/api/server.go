@@ -78,6 +78,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("LIST /v1/auth/token/", s.requireToken(s.listTokens))
 	mux.HandleFunc("POST /v1/auth/token/lookup-accessor", s.requireToken(s.lookupByAccessor))
 	mux.HandleFunc("DELETE /v1/auth/token/revoke-accessor", s.requireToken(s.revokeByAccessor))
+	mux.HandleFunc("GET /v1/auth/token/lookup-self", s.requireToken(s.lookupSelf))
+	mux.HandleFunc("POST /v1/auth/token/renew-self", s.requireToken(s.renewSelf))
 
 	mux.HandleFunc("PUT /v1/policy/{name}", s.requireToken(s.putPolicy))
 	mux.HandleFunc("GET /v1/policy/{name}", s.requireToken(s.getPolicy))
@@ -279,6 +281,8 @@ func writeErr(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid token"})
 	case errors.Is(err, core.ErrUnauthorized):
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
+	case errors.Is(err, core.ErrNotRenewable):
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "token is not renewable"})
 	case errors.Is(err, physraft.ErrNotLeader):
 		// Return 503 so callers know to retry against the leader.
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "not leader — write to the cluster leader"})

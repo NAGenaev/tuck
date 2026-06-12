@@ -15,12 +15,14 @@ const (
 
 // Token is a bearer credential that carries a set of policy names.
 type Token struct {
-	ID          string    `json:"id"`
-	Accessor    string    `json:"accessor"`    // HMAC-safe alias; returned on create/lookup
-	DisplayName string    `json:"display_name"`
-	Policies    []string  `json:"policies"`
-	CreatedAt   time.Time `json:"created_at"`
-	ExpiresAt   time.Time `json:"expires_at"` // zero means never
+	ID          string        `json:"id"`
+	Accessor    string        `json:"accessor"`    // HMAC-safe alias; returned on create/lookup
+	DisplayName string        `json:"display_name"`
+	Policies    []string      `json:"policies"`
+	CreatedAt   time.Time     `json:"created_at"`
+	ExpiresAt   time.Time     `json:"expires_at"`  // zero means never
+	Renewable   bool          `json:"renewable"`   // false by default
+	MaxTTL      time.Duration `json:"max_ttl"`     // zero means no cap
 }
 
 // Generate creates a new token with a cryptographically random ID and accessor.

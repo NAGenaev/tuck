@@ -11,6 +11,43 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.28.0] — 2026-06-12
+
+### Added
+
+#### Renewable Tokens with MaxTTL (`internal/token`, `internal/core`)
+
+Tokens can now be created as **renewable** with an optional **max TTL** cap that
+bounds the total lifetime regardless of how many times the token is renewed.
+
+**Token struct changes:**
+- `Renewable bool` — false by default; set to true via `renewable: true` in create request
+- `MaxTTL time.Duration` — zero means no cap; otherwise caps renewal at `created_at + max_ttl`
+
+**Enforcement in `RenewToken`:**
+1. Returns `ErrNotRenewable` (HTTP 400) if `Renewable == false`
+2. Caps `ExpiresAt` to `CreatedAt + MaxTTL` when MaxTTL is set
+
+**New API endpoints:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/v1/auth/token/lookup-self` | Return metadata of the authenticated caller's token |
+| `POST` | `/v1/auth/token/renew-self` | Renew the authenticated caller's own token |
+
+**`POST /v1/auth/token` request additions:**
+```json
+{
+  "display_name": "ci-runner",
+  "policies": ["ci"],
+  "ttl": "1h",
+  "renewable": true,
+  "max_ttl": "24h"
+}
+```
+
+---
+
 ## [0.27.0] — 2026-06-12
 
 ### Added

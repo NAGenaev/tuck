@@ -40,6 +40,7 @@ const secretPrefix = "secret/"
 var (
 	ErrUnauthorized    = errors.New("permission denied")
 	ErrTokenInvalid    = errors.New("invalid or expired token")
+	ErrNotRenewable    = errors.New("token is not renewable")
 	ErrK8sAuthDisabled = errors.New("kubernetes auth is not configured")
 
 	// ErrNeedsUnseal is returned by Start when the seal requires interactive
@@ -317,10 +318,25 @@ func (c *Core) resolvePolicies(ctx context.Context, names []string) ([]policy.Po
 
 // --- Token management ---
 
-func (c *Core) CreateToken(ctx context.Context, displayName string, policies []string, ttl time.Duration) (*token.Token, error) {
+// TokenOpt is a functional option applied to a token at creation time.
+type TokenOpt func(*token.Token)
+
+// WithRenewable marks the token as renewable. maxTTL, if > 0, caps the
+// maximum lifetime: the token cannot be renewed past CreatedAt + maxTTL.
+func WithRenewable(maxTTL time.Duration) TokenOpt {
+	return func(t *token.Token) {
+		t.Renewable = true
+		t.MaxTTL = maxTTL
+	}
+}
+
+func (c *Core) CreateToken(ctx context.Context, displayName string, policies []string, ttl time.Duration, opts ...TokenOpt) (*token.Token, error) {
 	tok, err := token.Generate(displayName, policies, ttl)
 	if err != nil {
 		return nil, err
+	}
+	for _, o := range opts {
+		o(tok)
 	}
 	return tok, c.tokens.Put(ctx, tok)
 }
@@ -332,6 +348,23 @@ func (c *Core) RevokeToken(ctx context.Context, tokenID string) error {
 
 func (c *Core) LookupToken(ctx context.Context, tokenID string) (*token.Token, error) {
 	return c.tokens.Get(ctx, tokenID)
+}
+
+// LookupSelf returns the token record for the authenticated caller.
+func (c *Core) LookupSelf(ctx context.Context, tokenID string) (*token.Token, error) {
+	tok, err := c.tokens.Get(ctx, tokenID)
+	if err != nil {
+		return nil, ErrTokenInvalid
+	}
+	if tok.IsExpired() {
+		return nil, ErrTokenInvalid
+	}
+	return tok, nil
+}
+
+// RenewSelf renews the authenticated caller's own token.
+func (c *Core) RenewSelf(ctx context.Context, tokenID string, ttl time.Duration) (*token.Token, error) {
+	return c.RenewToken(ctx, tokenID, ttl)
 }
 
 // LookupTokenByAccessor returns token metadata for the given accessor.
@@ -355,7 +388,9 @@ func (c *Core) ListTokens(ctx context.Context) ([]string, error) {
 }
 
 // RenewToken extends tokenID's expiry by ttl (default 1h when ttl≤0).
-// Returns ErrTokenInvalid if the token doesn't exist or is already expired.
+// Returns ErrTokenInvalid if the token is expired, ErrNotRenewable if the
+// token was not created with WithRenewable. MaxTTL, when set, caps the new
+// ExpiresAt to CreatedAt + MaxTTL.
 func (c *Core) RenewToken(ctx context.Context, tokenID string, ttl time.Duration) (*token.Token, error) {
 	tok, err := c.tokens.Get(ctx, tokenID)
 	if err != nil {
@@ -364,10 +399,20 @@ func (c *Core) RenewToken(ctx context.Context, tokenID string, ttl time.Duration
 	if tok.IsExpired() {
 		return nil, ErrTokenInvalid
 	}
+	if !tok.Renewable {
+		return nil, ErrNotRenewable
+	}
 	if ttl <= 0 {
 		ttl = time.Hour
 	}
-	tok.ExpiresAt = time.Now().UTC().Add(ttl)
+	newExpiry := time.Now().UTC().Add(ttl)
+	if tok.MaxTTL > 0 {
+		cap := tok.CreatedAt.Add(tok.MaxTTL)
+		if newExpiry.After(cap) {
+			newExpiry = cap
+		}
+	}
+	tok.ExpiresAt = newExpiry
 	if err := c.tokens.Put(ctx, tok); err != nil {
 		return nil, err
 	}

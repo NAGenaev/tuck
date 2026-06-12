@@ -4,7 +4,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.22.0-green)](https://github.com/NAGenaev/tuck/releases)
+[![Release](https://img.shields.io/badge/release-v0.23.0-green)](https://github.com/NAGenaev/tuck/releases)
 
 Tuck — open-source менеджер секретов для Kubernetes. Главная идея: **анти-Vault** — один статический бинарь, никакой внешней базы данных, автоматическое распечатывание по умолчанию. `kubectl apply` — и работает.
 
@@ -60,6 +60,9 @@ Tuck — open-source менеджер секретов для Kubernetes. Гла
 
 | Движок | Описание |
 |--------|----------|
+| **AWS** | On-demand учётные данные IAM или STS AssumeRole-сессии; автоотзыв по истечении lease |
+| **GCP** | On-demand JSON-ключи сервисного аккаунта или OAuth2 access-токены; автоотзыв по истечении lease |
+| **Azure** | On-demand клиентские секреты Azure AD (Graph API); автоотзыв по истечении lease |
 | **Database** | On-demand учётные данные PostgreSQL / MySQL; автоотзыв по истечении lease |
 | **PKI** | Внутренний X.509 CA; выпуск короткоживущих TLS-сертификатов по роли |
 | **Transit** | Шифрование как сервис; версионированные ключи (AES-256-GCM, ECDSA, Ed25519, RSA-PSS); sign/verify/HMAC; rewrap после ротации |
@@ -323,6 +326,11 @@ go build ./cmd/tuck-agent
 | M16 — Transit-движок (шифрование как сервис) | v0.16 | ✅ |
 | M17 — SSH-движок (CA-режим, сертификаты) | v0.17 | ✅ |
 | M18 — TOTP-движок (2FA / OTP-валидация) | v0.18 | ✅ |
+| M19 — AWS KMS + GCP Cloud KMS seal backends | v0.19 | ✅ |
+| M20 — LDAP/AD auth, Azure Key Vault seal | v0.20 | ✅ |
+| M21 — AWS динамические секреты (IAM user + STS AssumeRole) | v0.21 | ✅ |
+| M22 — GCP динамические секреты (SA key + access token) | v0.22 | ✅ |
+| M23 — Azure динамические секреты (клиентские секреты AD, Graph API) | v0.23 | ✅ |
 | v1.0 GA — Внешний security audit | — | 🔜 |
 
 ---

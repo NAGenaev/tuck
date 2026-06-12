@@ -17,6 +17,7 @@ import (
 	authlda "github.com/NAGenaev/tuck/internal/auth/ldap"
 	"github.com/NAGenaev/tuck/internal/barrier"
 	dynaws "github.com/NAGenaev/tuck/internal/dynamic/aws"
+	dynazure "github.com/NAGenaev/tuck/internal/dynamic/azure"
 	"github.com/NAGenaev/tuck/internal/dynamic/database"
 	"github.com/NAGenaev/tuck/internal/dynamic/gcp"
 	"github.com/NAGenaev/tuck/internal/dynamic/pki"
@@ -81,6 +82,7 @@ type Core struct {
 	dbManager    *database.Manager
 	awsEngine    *dynaws.Engine
 	gcpEngine    *gcp.Engine
+	azureEngine  *dynazure.Engine
 	pkiManager     *pki.Manager
 	transitManager *transit.Manager
 	sshManager     *dynSSH.Manager
@@ -120,6 +122,7 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		dbManager:    database.NewManager(b),
 		awsEngine:    dynaws.New(b),
 		gcpEngine:    gcp.New(b),
+		azureEngine:  dynazure.New(b),
 		pkiManager:     pki.NewManager(b),
 		transitManager: transit.NewManager(b),
 		sshManager:     dynSSH.NewManager(b),
@@ -783,6 +786,7 @@ func (c *Core) runGC(ctx context.Context) {
 	_ = c.dbManager.RevokeExpired(ctx)
 	_ = c.awsEngine.RevokeExpired(ctx)
 	_ = c.gcpEngine.RevokeExpired(ctx)
+	_ = c.azureEngine.RevokeExpired(ctx)
 }
 
 // --- GCP dynamic secrets engine ---
@@ -834,6 +838,57 @@ func (c *Core) RevokeGCPLease(ctx context.Context, id string) error {
 
 func (c *Core) ListGCPLeases(ctx context.Context) ([]string, error) {
 	return c.gcpEngine.ListLeases(ctx)
+}
+
+// --- Azure dynamic secrets engine ---
+
+func (c *Core) PutAzureConfig(ctx context.Context, cfg *dynazure.Config) error {
+	return c.azureEngine.PutConfig(ctx, cfg)
+}
+
+func (c *Core) GetAzureConfig(ctx context.Context) (*dynazure.Config, error) {
+	cfg, err := c.azureEngine.GetConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cfg.ClientSecret = "" // never expose credentials through the API
+	return cfg, nil
+}
+
+func (c *Core) DeleteAzureConfig(ctx context.Context) error {
+	return c.azureEngine.DeleteConfig(ctx)
+}
+
+func (c *Core) PutAzureRole(ctx context.Context, role *dynazure.Role) error {
+	return c.azureEngine.PutRole(ctx, role)
+}
+
+func (c *Core) GetAzureRole(ctx context.Context, name string) (*dynazure.Role, error) {
+	return c.azureEngine.GetRole(ctx, name)
+}
+
+func (c *Core) DeleteAzureRole(ctx context.Context, name string) error {
+	return c.azureEngine.DeleteRole(ctx, name)
+}
+
+func (c *Core) ListAzureRoles(ctx context.Context) ([]string, error) {
+	return c.azureEngine.ListRoles(ctx)
+}
+
+func (c *Core) GenerateAzureCreds(ctx context.Context, roleName string) (*dynazure.GenerateResult, error) {
+	return c.azureEngine.GenerateCreds(ctx, roleName)
+}
+
+func (c *Core) GetAzureLease(ctx context.Context, id string) (*dynazure.Lease, error) {
+	return c.azureEngine.GetLease(ctx, id)
+}
+
+func (c *Core) RevokeAzureLease(ctx context.Context, id string) error {
+	return c.azureEngine.RevokeLease(ctx, id)
+}
+
+func (c *Core) ListAzureLeases(ctx context.Context) ([]string, error) {
+	return c.azureEngine.ListLeases(ctx)
 }
 
 // --- AWS dynamic secrets engine ---

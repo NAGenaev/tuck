@@ -117,6 +117,19 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/transit/verify/{name}", s.requireToken(s.transitVerify))
 	mux.HandleFunc("POST /v1/transit/hmac/{name}", s.requireToken(s.transitHMAC))
 
+	// Azure dynamic secrets engine — generate Azure AD client secrets for app registrations
+	mux.HandleFunc("PUT /v1/azure/config", s.requireToken(s.putAzureConfig))
+	mux.HandleFunc("GET /v1/azure/config", s.requireToken(s.getAzureConfig))
+	mux.HandleFunc("DELETE /v1/azure/config", s.requireToken(s.deleteAzureConfig))
+	mux.HandleFunc("PUT /v1/azure/roles/{name}", s.requireToken(s.putAzureRole))
+	mux.HandleFunc("GET /v1/azure/roles/{name}", s.requireToken(s.getAzureRole))
+	mux.HandleFunc("DELETE /v1/azure/roles/{name}", s.requireToken(s.deleteAzureRole))
+	mux.HandleFunc("LIST /v1/azure/roles/", s.requireToken(s.listAzureRoles))
+	mux.HandleFunc("POST /v1/azure/creds/{role}", s.requireToken(s.generateAzureCreds))
+	mux.HandleFunc("GET /v1/azure/lease/{id}", s.requireToken(s.getAzureLease))
+	mux.HandleFunc("DELETE /v1/azure/lease/{id}", s.requireToken(s.revokeAzureLease))
+	mux.HandleFunc("LIST /v1/azure/lease/", s.requireToken(s.listAzureLeases))
+
 	// GCP dynamic secrets engine — generate service account keys or OAuth2 access tokens
 	mux.HandleFunc("PUT /v1/gcp/config", s.requireToken(s.putGCPConfig))
 	mux.HandleFunc("GET /v1/gcp/config", s.requireToken(s.getGCPConfig))

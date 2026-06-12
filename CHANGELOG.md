@@ -11,6 +11,111 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.23.0] — 2026-06-12
+
+### Added
+
+#### Azure Dynamic Secrets Engine (`internal/dynamic/azure`)
+
+Generate short-lived Azure AD client secrets for existing app registrations on
+demand, using the Microsoft Graph API. Completes the cloud trio: AWS (M21),
+GCP (M22), Azure (M23).
+
+Tuck adds a password credential to a configured Azure AD application, returns
+the client secret once, and on lease expiry / explicit revocation removes the
+credential via Graph API `removePassword`.
+
+Credentials resolve in order: `client_id` + `client_secret` in config →
+`DefaultAzureCredential` (Managed Identity on AKS, `AZURE_*` env vars, Azure CLI).
+
+**Config** (`PUT /v1/azure/config`)
+
+| Field | Description |
+|-------|-------------|
+| `tenant_id` | Azure AD tenant ID (required) |
+| `client_id` | Service principal client ID used to call Graph API (optional; empty = DefaultAzureCredential) |
+| `client_secret` | SP secret (stored encrypted; never returned on GET) |
+
+**Role** (`PUT /v1/azure/roles/{name}`)
+
+| Field | Description |
+|-------|-------------|
+| `application_object_id` | Object ID of the Azure AD app registration (used for Graph API calls) |
+| `application_id` | Client ID of the Azure AD app (returned as `client_id` in generated credentials) |
+| `default_ttl` | Credential lifetime; default 1 h |
+| `max_ttl` | Maximum TTL; default 12 h |
+
+**Generate result** (`POST /v1/azure/creds/{role}`)
+
+| Field | Description |
+|-------|-------------|
+| `lease_id` | ID for lease inspection / early revocation |
+| `tenant_id` | Azure AD tenant ID |
+| `client_id` | Application (client) ID |
+| `client_secret` | Generated secret value (shown once) |
+| `expires_at` | RFC 3339 expiry timestamp |
+
+**API endpoints** (11 total, all authenticated)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `PUT` | `/v1/azure/config` | Write config |
+| `GET` | `/v1/azure/config` | Read config (`client_secret` redacted) |
+| `DELETE` | `/v1/azure/config` | Delete config |
+| `PUT` | `/v1/azure/roles/{name}` | Create / update role |
+| `GET` | `/v1/azure/roles/{name}` | Read role |
+| `DELETE` | `/v1/azure/roles/{name}` | Delete role |
+| `LIST` | `/v1/azure/roles/` | List role names |
+| `POST` | `/v1/azure/creds/{role}` | Generate client secret |
+| `GET` | `/v1/azure/lease/{id}` | Inspect lease |
+| `DELETE` | `/v1/azure/lease/{id}` | Revoke lease early |
+| `LIST` | `/v1/azure/lease/` | List lease IDs |
+
+Background GC revokes expired leases every 15 minutes and removes Azure AD
+password credentials.
+
+**Example — AKS with Managed Identity**
+
+```sh
+# Configure (empty client_id/secret = use Managed Identity automatically)
+curl -XPUT https://tuck:8200/v1/azure/config \
+  -H "X-Tuck-Token: $TOKEN" \
+  -d '{"tenant_id":"00000000-0000-0000-0000-000000000000"}'
+
+# Create a role (find object_id in Azure Portal → App registrations → Overview)
+curl -XPUT https://tuck:8200/v1/azure/roles/api-app \
+  -H "X-Tuck-Token: $TOKEN" \
+  -d '{
+    "application_object_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    "application_id":        "11111111-2222-3333-4444-555555555555",
+    "default_ttl": "1h",
+    "max_ttl": "8h"
+  }'
+
+# Generate a client secret
+curl -XPOST https://tuck:8200/v1/azure/creds/api-app \
+  -H "X-Tuck-Token: $TOKEN"
+# → {
+#     "lease_id": "...",
+#     "tenant_id": "00000000-...",
+#     "client_id": "11111111-...",
+#     "client_secret": "xxx~xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+#     "expires_at": "2026-06-12T15:00:00Z"
+#   }
+
+# Revoke early
+curl -XDELETE https://tuck:8200/v1/azure/lease/<lease_id> \
+  -H "X-Tuck-Token: $TOKEN"
+```
+
+**Required Azure AD permissions for the Tuck service principal**
+
+The service principal or managed identity used by Tuck must have the Microsoft
+Graph application permission `Application.ReadWrite.OwnedBy` (or
+`Application.ReadWrite.All`) granted and admin-consented in the Azure AD tenant.
+
+---
+
 ## [0.22.0] — 2026-06-12
 
 ### Added

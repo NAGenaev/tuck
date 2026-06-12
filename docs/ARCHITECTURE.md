@@ -55,6 +55,7 @@ internal/
   dynamic/
     aws/            — AWS engine: IAM user creds + STS AssumeRole sessions
     gcp/            — GCP engine: service account keys + OAuth2 access tokens
+    azure/          — Azure engine: Azure AD client secrets (Graph API addPassword/removePassword)
     database/       — Database engine: PostgreSQL / MySQL dynamic creds
     pki/            — PKI engine: X.509 CA, role-based cert issuance, CRL
     transit/        — Transit engine: versioned keys, encrypt/decrypt/sign/HMAC
@@ -90,6 +91,8 @@ Client (curl / tuckcli / SDK / operator)
       ┌── KV v1/v2 (barrier.Get/Put/Delete/List)
       ├── Auth (token / k8s / jwt / approle / ldap)
       ├── AWS engine
+      ├── GCP engine
+      ├── Azure engine
       ├── Database engine
       ├── PKI engine
       ├── Transit engine
@@ -185,6 +188,9 @@ On restart: `seal.Unseal()` → root key → `barrier.Unseal()` → DEK decrypte
 | `dynamic/gcp/config` | GCP engine config (credentials_json encrypted in barrier) |
 | `dynamic/gcp/roles/<name>` | GCP role (credential_type, service_account_email, scopes, TTL) |
 | `dynamic/gcp/leases/<id>` | GCP credential lease (gcp_key_name for SA key deletion) |
+| `dynamic/azure/config` | Azure engine config (client_secret encrypted in barrier) |
+| `dynamic/azure/roles/<name>` | Azure role (application_object_id, application_id, TTL) |
+| `dynamic/azure/leases/<id>` | Azure credential lease (key_id for Graph API removePassword) |
 | `dynamic/aws/roles/<name>` | AWS role (credential_type, policy_arns, role_arns, TTL) |
 | `dynamic/aws/leases/<id>` | AWS credential lease (revoked flag, username for iam_user) |
 | `dynamic/database/config/<name>` | DB connection config |

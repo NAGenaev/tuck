@@ -11,6 +11,73 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.24.0] — 2026-06-12
+
+### Added
+
+#### Response Wrapping (`internal/wrapping`)
+
+Any JSON payload can be sealed inside a single-use wrapping token with a
+configurable TTL. The caller hands the token to a consumer; the consumer
+unwraps it once to retrieve the payload. Because the token is deleted
+atomically on the first unwrap attempt, a failed unwrap proves that someone
+else has already read the secret — an integrity guarantee impossible with
+plaintext delivery.
+
+**Token format:** `tuck_wrap_` + base64url(32 random bytes)
+
+**Default TTL:** 5 minutes. **Maximum TTL:** 24 hours.
+
+**Storage:** `sys/wrapping/<id>` in the barrier (AES-256-GCM encrypted).
+
+**API endpoints** (all authenticated)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/sys/wrapping/wrap` | Seal a JSON payload; return a wrapping token |
+| `POST` | `/v1/sys/wrapping/unwrap` | Consume the token and return the payload |
+| `POST` | `/v1/sys/wrapping/lookup` | Inspect token metadata without consuming it |
+| `DELETE` | `/v1/sys/wrapping/revoke` | Explicitly destroy a wrapping token |
+
+Background GC removes expired wrapping tokens every 15 minutes.
+
+**Example — CI hand-off**
+
+```sh
+# Stage 1: wrap a deployment secret
+WRAP=$(curl -s -XPOST https://tuck:8200/v1/sys/wrapping/wrap \
+  -H "X-Tuck-Token: $TOKEN" \
+  -d '{
+    "data": {"db_password": "s3cr3t", "db_user": "app"},
+    "ttl": "5m"
+  }')
+WRAP_TOKEN=$(echo $WRAP | jq -r .token)
+# → tuck_wrap_...  (hand this token to Stage 2, not the secret)
+
+# Stage 2: unwrap once
+curl -s -XPOST https://tuck:8200/v1/sys/wrapping/unwrap \
+  -H "X-Tuck-Token: $STAGE2_TOKEN" \
+  -d "{\"token\":\"$WRAP_TOKEN\"}"
+# → {"data": {"db_password": "s3cr3t", "db_user": "app"}}
+
+# Any subsequent unwrap attempt returns 404 — token is consumed:
+curl -s -XPOST https://tuck:8200/v1/sys/wrapping/unwrap \
+  -H "X-Tuck-Token: $STAGE2_TOKEN" \
+  -d "{\"token\":\"$WRAP_TOKEN\"}"
+# → {"error": "wrapping token not found or already used"}
+```
+
+**Inspect without consuming**
+
+```sh
+curl -XPOST https://tuck:8200/v1/sys/wrapping/lookup \
+  -H "X-Tuck-Token: $TOKEN" \
+  -d "{\"token\":\"$WRAP_TOKEN\"}"
+# → {"creation_time":"...","expires_at":"...","creation_ttl":300}
+```
+
+---
+
 ## [0.23.0] — 2026-06-12
 
 ### Added

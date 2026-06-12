@@ -4,7 +4,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.23.0-green)](https://github.com/NAGenaev/tuck/releases)
+[![Release](https://img.shields.io/badge/release-v0.24.0-green)](https://github.com/NAGenaev/tuck/releases)
 
 Tuck — open-source менеджер секретов для Kubernetes. Главная идея: **анти-Vault** — один статический бинарь, никакой внешней базы данных, автоматическое распечатывание по умолчанию. `kubectl apply` — и работает.
 
@@ -331,6 +331,7 @@ go build ./cmd/tuck-agent
 | M21 — AWS динамические секреты (IAM user + STS AssumeRole) | v0.21 | ✅ |
 | M22 — GCP динамические секреты (SA key + access token) | v0.22 | ✅ |
 | M23 — Azure динамические секреты (клиентские секреты AD, Graph API) | v0.23 | ✅ |
+| M24 — Response wrapping (одноразовые токены, безопасная передача секретов) | v0.24 | ✅ |
 | v1.0 GA — Внешний security audit | — | 🔜 |
 
 ---

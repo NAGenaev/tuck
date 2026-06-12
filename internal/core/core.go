@@ -4,6 +4,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -30,6 +31,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/policy"
 	"github.com/NAGenaev/tuck/internal/seal"
 	"github.com/NAGenaev/tuck/internal/token"
+	"github.com/NAGenaev/tuck/internal/wrapping"
 )
 
 const secretPrefix = "secret/"
@@ -79,6 +81,7 @@ type Core struct {
 	jwtStore     *jwt.Store
 	approleStore *approle.Store
 	ldapStore    *authlda.Store
+	wrapping     *wrapping.Store
 	dbManager    *database.Manager
 	awsEngine    *dynaws.Engine
 	gcpEngine    *gcp.Engine
@@ -119,6 +122,7 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		jwtStore:     jwt.NewStore(b),
 		approleStore: approle.NewStore(b),
 		ldapStore:    authlda.NewStore(b),
+		wrapping:     wrapping.NewStore(b),
 		dbManager:    database.NewManager(b),
 		awsEngine:    dynaws.New(b),
 		gcpEngine:    gcp.New(b),
@@ -787,6 +791,7 @@ func (c *Core) runGC(ctx context.Context) {
 	_ = c.awsEngine.RevokeExpired(ctx)
 	_ = c.gcpEngine.RevokeExpired(ctx)
 	_ = c.azureEngine.RevokeExpired(ctx)
+	_ = c.wrapping.RevokeExpired(ctx)
 }
 
 // --- GCP dynamic secrets engine ---
@@ -999,3 +1004,21 @@ func (c *Core) LoginLDAP(ctx context.Context, username, password string) (*token
 	return c.CreateToken(ctx, displayName, result.Policies, result.TTL)
 }
 
+
+// --- Response wrapping ---
+
+func (c *Core) WrapPayload(ctx context.Context, payload json.RawMessage, ttl time.Duration) (string, time.Time, error) {
+	return c.wrapping.Wrap(ctx, payload, ttl)
+}
+
+func (c *Core) UnwrapPayload(ctx context.Context, token string) (json.RawMessage, error) {
+	return c.wrapping.Unwrap(ctx, token)
+}
+
+func (c *Core) LookupWrappingToken(ctx context.Context, token string) (*wrapping.TokenInfo, error) {
+	return c.wrapping.Lookup(ctx, token)
+}
+
+func (c *Core) RevokeWrappingToken(ctx context.Context, token string) error {
+	return c.wrapping.Revoke(ctx, token)
+}

@@ -52,6 +52,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/sys/snapshot", s.requireToken(s.getSnapshot))
 	mux.HandleFunc("POST /v1/sys/rotate", s.requireToken(s.postRotate))
 
+	// Response wrapping — single-use tokens for secure secret delivery
+	mux.HandleFunc("POST /v1/sys/wrapping/wrap", s.requireToken(s.wrapPayload))
+	mux.HandleFunc("POST /v1/sys/wrapping/unwrap", s.requireToken(s.unwrapPayload))
+	mux.HandleFunc("POST /v1/sys/wrapping/lookup", s.requireToken(s.lookupWrappingToken))
+	mux.HandleFunc("DELETE /v1/sys/wrapping/revoke", s.requireToken(s.revokeWrappingToken))
+
 	mux.HandleFunc("GET /metrics", metrics.Handler())
 
 	mux.HandleFunc("GET /v1/secret/{path...}", s.requireToken(s.getSecret))

@@ -396,7 +396,7 @@ func cnOf(dn string) string {
 
 // defaultDial connects to the first reachable LDAP server in cfg.URLs.
 func defaultDial(_ context.Context, cfg Config) (Conn, error) {
-	tlsCfg := &tls.Config{InsecureSkipVerify: cfg.TLSInsecure} //nolint:gosec
+	tlsCfg := &tls.Config{InsecureSkipVerify: cfg.TLSInsecure} // #nosec G402 — controlled by operator config field TLSInsecure
 	var lastErr error
 	for _, u := range cfg.URLs {
 		conn, err := goldap.DialURL(u, goldap.DialWithTLSConfig(tlsCfg))

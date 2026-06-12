@@ -38,7 +38,7 @@ type client struct {
 func newClient(addr, token string, insecure bool) *client {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	if insecure {
-		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // #nosec G402 — gated by explicit --insecure flag
 	}
 	return &client{
 		addr:     strings.TrimRight(addr, "/"),
@@ -57,7 +57,7 @@ func (c *client) do(method, path string, body any) (*http.Response, error) {
 		}
 		bodyReader = bytes.NewReader(data)
 	}
-	req, err := http.NewRequest(method, c.addr+path, bodyReader)
+	req, err := http.NewRequest(method, c.addr+path, bodyReader) // #nosec G704 — CLI tool; addr is user-supplied server URL
 	if err != nil {
 		return nil, err
 	}
@@ -67,18 +67,18 @@ func (c *client) do(method, path string, body any) (*http.Response, error) {
 	if c.token != "" {
 		req.Header.Set("X-Tuck-Token", c.token)
 	}
-	return c.http.Do(req)
+	return c.http.Do(req) // #nosec G704
 }
 
 func (c *client) doRaw(method, path string, bodyReader io.Reader) (*http.Response, error) {
-	req, err := http.NewRequest(method, c.addr+path, bodyReader)
+	req, err := http.NewRequest(method, c.addr+path, bodyReader) // #nosec G704 — CLI tool; addr is user-supplied server URL
 	if err != nil {
 		return nil, err
 	}
 	if c.token != "" {
 		req.Header.Set("X-Tuck-Token", c.token)
 	}
-	return c.http.Do(req)
+	return c.http.Do(req) // #nosec G704
 }
 
 func mustJSON(resp *http.Response, ok int) map[string]any {
@@ -424,7 +424,7 @@ func cmdSSHSign(c *client, role, pubkeyPath, ttl string) {
 		}
 		pubkey = strings.TrimSpace(string(data))
 	} else {
-		data, err := os.ReadFile(pubkeyPath)
+		data, err := os.ReadFile(pubkeyPath) // #nosec G304 — user-supplied public key file path in CLI tool
 		if err != nil {
 			fatalf("read pubkey file %q: %v", pubkeyPath, err)
 		}

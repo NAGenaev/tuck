@@ -497,6 +497,213 @@ func cmdAuthJWTLogin(c *client, jwt, role string) {
 	printJSON(mustJSON(resp, 200))
 }
 
+// ---- identity ----
+
+func cmdIdentityEntityCreate(c *client, name string, policies []string) {
+	body := map[string]any{"name": name, "policies": policies}
+	resp, err := c.do("POST", "/v1/identity/entity", body)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
+func cmdIdentityEntityGet(c *client, id string) {
+	resp, err := c.do("GET", "/v1/identity/entity/id/"+id, nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
+func cmdIdentityEntityGetName(c *client, name string) {
+	resp, err := c.do("GET", "/v1/identity/entity/name/"+name, nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
+func cmdIdentityEntityUpdate(c *client, id string, policies []string, disabled *bool) {
+	body := map[string]any{}
+	if len(policies) > 0 {
+		body["policies"] = policies
+	}
+	if disabled != nil {
+		body["disabled"] = *disabled
+	}
+	resp, err := c.do("POST", "/v1/identity/entity/id/"+id, body)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
+func cmdIdentityEntityDelete(c *client, id string) {
+	resp, err := c.do("DELETE", "/v1/identity/entity/id/"+id, nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 204 {
+		body, _ := io.ReadAll(resp.Body)
+		fatalf("HTTP %d: %s", resp.StatusCode, body)
+	}
+	fmt.Println("OK")
+}
+
+func cmdIdentityEntityList(c *client) {
+	resp, err := c.doRaw("LIST", "/v1/identity/entity/", nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
+func cmdIdentityAliasCreate(c *client, entityID, mount, name string) {
+	body := map[string]any{"entity_id": entityID, "mount_accessor": mount, "name": name}
+	resp, err := c.do("POST", "/v1/identity/entity-alias", body)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
+func cmdIdentityAliasGet(c *client, id string) {
+	resp, err := c.do("GET", "/v1/identity/entity-alias/id/"+id, nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
+func cmdIdentityAliasDelete(c *client, id string) {
+	resp, err := c.do("DELETE", "/v1/identity/entity-alias/id/"+id, nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 204 {
+		body, _ := io.ReadAll(resp.Body)
+		fatalf("HTTP %d: %s", resp.StatusCode, body)
+	}
+	fmt.Println("OK")
+}
+
+func cmdIdentityAliasList(c *client) {
+	resp, err := c.doRaw("LIST", "/v1/identity/entity-alias/id/", nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
+func cmdIdentityGroupCreate(c *client, name string, policies, memberEntities, memberGroups []string) {
+	body := map[string]any{
+		"name":              name,
+		"policies":          policies,
+		"member_entity_ids": memberEntities,
+		"member_group_ids":  memberGroups,
+	}
+	resp, err := c.do("POST", "/v1/identity/group", body)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
+func cmdIdentityGroupGet(c *client, id string) {
+	resp, err := c.do("GET", "/v1/identity/group/id/"+id, nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
+func cmdIdentityGroupGetName(c *client, name string) {
+	resp, err := c.do("GET", "/v1/identity/group/name/"+name, nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
+func cmdIdentityGroupUpdate(c *client, id string, policies, memberEntities, memberGroups []string) {
+	body := map[string]any{}
+	if len(policies) > 0 {
+		body["policies"] = policies
+	}
+	if len(memberEntities) > 0 {
+		body["member_entity_ids"] = memberEntities
+	}
+	if len(memberGroups) > 0 {
+		body["member_group_ids"] = memberGroups
+	}
+	resp, err := c.do("POST", "/v1/identity/group/id/"+id, body)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
+func cmdIdentityGroupDelete(c *client, id string) {
+	resp, err := c.do("DELETE", "/v1/identity/group/id/"+id, nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 204 {
+		body, _ := io.ReadAll(resp.Body)
+		fatalf("HTTP %d: %s", resp.StatusCode, body)
+	}
+	fmt.Println("OK")
+}
+
+func cmdIdentityGroupList(c *client) {
+	resp, err := c.doRaw("LIST", "/v1/identity/group/", nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
+func cmdIdentityLookupEntity(c *client, id, name, aliasName, aliasMount string) {
+	body := map[string]any{}
+	switch {
+	case id != "":
+		body["id"] = id
+	case name != "":
+		body["name"] = name
+	case aliasName != "" && aliasMount != "":
+		body["alias_name"] = aliasName
+		body["alias_mount_accessor"] = aliasMount
+	default:
+		fatalf("lookup entity requires --id, --name, or --alias-name + --alias-mount")
+	}
+	resp, err := c.do("POST", "/v1/identity/lookup/entity", body)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
+func cmdIdentityLookupGroup(c *client, id, name string) {
+	body := map[string]any{}
+	switch {
+	case id != "":
+		body["id"] = id
+	case name != "":
+		body["name"] = name
+	default:
+		fatalf("lookup group requires --id or --name")
+	}
+	resp, err := c.do("POST", "/v1/identity/lookup/group", body)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
 // ---- main ----
 
 func usage() {
@@ -561,6 +768,29 @@ Auth logins:
   auth approle login --role-id=... --secret-id=...
   auth ldap login --username=... --password=...
   auth jwt login --jwt=... [--role=...]
+
+Identity:
+  identity entity create --name=<n> [--policy=p ...]
+  identity entity get <id>
+  identity entity get-name <name>
+  identity entity update <id> [--policy=p ...] [--disable] [--enable]
+  identity entity delete <id>
+  identity entity list
+
+  identity alias create --entity-id=<id> --mount=<m> --name=<n>
+  identity alias get <id>
+  identity alias delete <id>
+  identity alias list
+
+  identity group create --name=<n> [--policy=p ...] [--member-entity=id ...] [--member-group=id ...]
+  identity group get <id>
+  identity group get-name <name>
+  identity group update <id> [--policy=p ...] [--member-entity=id ...] [--member-group=id ...]
+  identity group delete <id>
+  identity group list
+
+  identity lookup entity [--id=...] [--name=...] [--alias-name=... --alias-mount=...]
+  identity lookup group [--id=...] [--name=...]
 `, Version)
 	os.Exit(2)
 }
@@ -841,6 +1071,164 @@ func main() {
 			cmdAuthJWTLogin(c, *jwt, *role)
 		default:
 			fatalf("unknown auth provider %q", args[1])
+		}
+
+	case "identity":
+		if len(args) < 3 {
+			fatalf("identity requires a resource and subcommand: entity, alias, group, lookup")
+		}
+		switch args[1] {
+		case "entity":
+			switch args[2] {
+			case "create":
+				fs := flag.NewFlagSet("identity entity create", flag.ExitOnError)
+				name := fs.String("name", "", "entity name (required)")
+				var policies multiFlag
+				fs.Var(&policies, "policy", "policy name (may be repeated)")
+				_ = fs.Parse(args[3:])
+				if *name == "" {
+					fatalf("identity entity create requires --name")
+				}
+				cmdIdentityEntityCreate(c, *name, []string(policies))
+			case "get":
+				if len(args) < 4 {
+					fatalf("identity entity get requires an id")
+				}
+				cmdIdentityEntityGet(c, args[3])
+			case "get-name":
+				if len(args) < 4 {
+					fatalf("identity entity get-name requires a name")
+				}
+				cmdIdentityEntityGetName(c, args[3])
+			case "update":
+				if len(args) < 4 {
+					fatalf("identity entity update requires an id")
+				}
+				fs := flag.NewFlagSet("identity entity update", flag.ExitOnError)
+				var policies multiFlag
+				fs.Var(&policies, "policy", "policy name (may be repeated)")
+				disable := fs.Bool("disable", false, "disable the entity")
+				enable := fs.Bool("enable", false, "enable the entity")
+				_ = fs.Parse(args[4:])
+				var disabledPtr *bool
+				if *disable {
+					t := true
+					disabledPtr = &t
+				} else if *enable {
+					f := false
+					disabledPtr = &f
+				}
+				cmdIdentityEntityUpdate(c, args[3], []string(policies), disabledPtr)
+			case "delete":
+				if len(args) < 4 {
+					fatalf("identity entity delete requires an id")
+				}
+				cmdIdentityEntityDelete(c, args[3])
+			case "list":
+				cmdIdentityEntityList(c)
+			default:
+				fatalf("unknown identity entity subcommand %q", args[2])
+			}
+
+		case "alias":
+			switch args[2] {
+			case "create":
+				fs := flag.NewFlagSet("identity alias create", flag.ExitOnError)
+				entityID := fs.String("entity-id", "", "entity ID (required)")
+				mount := fs.String("mount", "", "mount accessor e.g. auth_approle (required)")
+				name := fs.String("name", "", "alias name (required)")
+				_ = fs.Parse(args[3:])
+				if *entityID == "" || *mount == "" || *name == "" {
+					fatalf("identity alias create requires --entity-id, --mount, --name")
+				}
+				cmdIdentityAliasCreate(c, *entityID, *mount, *name)
+			case "get":
+				if len(args) < 4 {
+					fatalf("identity alias get requires an id")
+				}
+				cmdIdentityAliasGet(c, args[3])
+			case "delete":
+				if len(args) < 4 {
+					fatalf("identity alias delete requires an id")
+				}
+				cmdIdentityAliasDelete(c, args[3])
+			case "list":
+				cmdIdentityAliasList(c)
+			default:
+				fatalf("unknown identity alias subcommand %q", args[2])
+			}
+
+		case "group":
+			switch args[2] {
+			case "create":
+				fs := flag.NewFlagSet("identity group create", flag.ExitOnError)
+				name := fs.String("name", "", "group name (required)")
+				var policies, memberEntities, memberGroups multiFlag
+				fs.Var(&policies, "policy", "policy name (may be repeated)")
+				fs.Var(&memberEntities, "member-entity", "member entity ID (may be repeated)")
+				fs.Var(&memberGroups, "member-group", "member group ID (may be repeated)")
+				_ = fs.Parse(args[3:])
+				if *name == "" {
+					fatalf("identity group create requires --name")
+				}
+				cmdIdentityGroupCreate(c, *name, []string(policies), []string(memberEntities), []string(memberGroups))
+			case "get":
+				if len(args) < 4 {
+					fatalf("identity group get requires an id")
+				}
+				cmdIdentityGroupGet(c, args[3])
+			case "get-name":
+				if len(args) < 4 {
+					fatalf("identity group get-name requires a name")
+				}
+				cmdIdentityGroupGetName(c, args[3])
+			case "update":
+				if len(args) < 4 {
+					fatalf("identity group update requires an id")
+				}
+				fs := flag.NewFlagSet("identity group update", flag.ExitOnError)
+				var policies, memberEntities, memberGroups multiFlag
+				fs.Var(&policies, "policy", "policy name (may be repeated)")
+				fs.Var(&memberEntities, "member-entity", "member entity ID (may be repeated)")
+				fs.Var(&memberGroups, "member-group", "member group ID (may be repeated)")
+				_ = fs.Parse(args[4:])
+				cmdIdentityGroupUpdate(c, args[3], []string(policies), []string(memberEntities), []string(memberGroups))
+			case "delete":
+				if len(args) < 4 {
+					fatalf("identity group delete requires an id")
+				}
+				cmdIdentityGroupDelete(c, args[3])
+			case "list":
+				cmdIdentityGroupList(c)
+			default:
+				fatalf("unknown identity group subcommand %q", args[2])
+			}
+
+		case "lookup":
+			if len(args) < 4 {
+				fatalf("identity lookup requires: entity, group")
+			}
+			switch args[3] {
+			case "entity":
+				fs := flag.NewFlagSet("identity lookup entity", flag.ExitOnError)
+				id := fs.String("id", "", "entity ID")
+				name := fs.String("name", "", "entity name")
+				aliasName := fs.String("alias-name", "", "alias name")
+				aliasMount := fs.String("alias-mount", "", "alias mount accessor")
+				_ = fs.Parse(args[4:])
+				cmdIdentityLookupEntity(c, *id, *name, *aliasName, *aliasMount)
+			case "group":
+				fs := flag.NewFlagSet("identity lookup group", flag.ExitOnError)
+				id := fs.String("id", "", "group ID")
+				name := fs.String("name", "", "group name")
+				_ = fs.Parse(args[4:])
+				cmdIdentityLookupGroup(c, *id, *name)
+			default:
+				fatalf("unknown identity lookup target %q", args[3])
+			}
+
+		default:
+			fatalf("unknown identity resource %q", args[1])
 		}
 
 	default:

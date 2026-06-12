@@ -245,6 +245,8 @@ func (s *Server) Handler() http.Handler {
 
 // requireToken extracts and validates X-Tuck-Token, then stores the token ID
 // in context. Returns 401 on missing/invalid token, 503 if the barrier is sealed.
+// TrackUse is called here — exactly once per authenticated HTTP request —
+// to enforce MaxUses limits.
 func (s *Server) requireToken(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.Header.Get("X-Tuck-Token")
@@ -258,6 +260,10 @@ func (s *Server) requireToken(next http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid or expired token"})
+			return
+		}
+		if err := s.core.TrackUse(r.Context(), id); err != nil {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "token has exceeded its use limit"})
 			return
 		}
 		next(w, r.WithContext(context.WithValue(r.Context(), tokenCtxKey, id)))

@@ -4,7 +4,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.28.0-green)](https://github.com/NAGenaev/tuck/releases)
+[![Release](https://img.shields.io/badge/release-v0.29.0-green)](https://github.com/NAGenaev/tuck/releases)
 
 Tuck is an open-source secrets manager built for Kubernetes. The pitch: **anti-Vault** — a single static binary, no external database, auto-unseal by default. `kubectl apply` and it runs.
 
@@ -613,6 +613,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 | M26 — Token accessor (tuck_acc_ alias, lookup/revoke without raw token) | v0.26 | ✅ |
 | M27 — Policy deny rules (CapDeny; deny-first evaluation overrides any allow) | v0.27 | ✅ |
 | M28 — Renewable tokens with MaxTTL (renewable flag, max_ttl cap, lookup-self, renew-self) | v0.28 | ✅ |
+| M29 — Token MaxUses (num_uses; auto-revoke after N authenticated calls) | v0.29 | ✅ |
 | v1.0 GA — External security audit | — | 🔜 |
 
 ---

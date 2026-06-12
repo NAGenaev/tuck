@@ -266,6 +266,7 @@ func (c *Core) Seal() { c.barrier.Seal() }
 // Authenticate looks up tokenID and validates it. Returns ErrTokenInvalid on
 // any failure so callers cannot distinguish missing from expired.
 // ErrSealed is passed through as-is so HTTP callers can return 503.
+// Authenticate does NOT count uses — call TrackUse once per HTTP request.
 func (c *Core) Authenticate(ctx context.Context, tokenID string) (*token.Token, error) {
 	tok, err := c.tokens.Get(ctx, tokenID)
 	if err != nil {
@@ -278,6 +279,26 @@ func (c *Core) Authenticate(ctx context.Context, tokenID string) (*token.Token, 
 		return nil, ErrTokenInvalid
 	}
 	return tok, nil
+}
+
+// TrackUse increments the use counter for tokens with MaxUses > 0.
+// Call this exactly once per HTTP request, after Authenticate succeeds.
+// Returns ErrTokenInvalid (and auto-revokes) when the token is exhausted.
+func (c *Core) TrackUse(ctx context.Context, tokenID string) error {
+	tok, err := c.tokens.Get(ctx, tokenID)
+	if err != nil {
+		return ErrTokenInvalid
+	}
+	if tok.MaxUses == 0 {
+		return nil // unlimited
+	}
+	tok.UseCount++
+	if tok.UseCount > tok.MaxUses {
+		_ = c.tokens.Delete(ctx, tok.ID)
+		return ErrTokenInvalid
+	}
+	_ = c.tokens.Put(ctx, tok)
+	return nil
 }
 
 // EnforceAccess authenticates tokenID then checks that cap is permitted on
@@ -327,6 +348,14 @@ func WithRenewable(maxTTL time.Duration) TokenOpt {
 	return func(t *token.Token) {
 		t.Renewable = true
 		t.MaxTTL = maxTTL
+	}
+}
+
+// WithMaxUses limits the token to n authenticated API calls. After n uses the
+// token is automatically revoked. n=0 (default) means unlimited uses.
+func WithMaxUses(n int) TokenOpt {
+	return func(t *token.Token) {
+		t.MaxUses = n
 	}
 }
 

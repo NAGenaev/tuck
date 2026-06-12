@@ -195,13 +195,16 @@ func cmdKvList(c *client, prefix string) {
 
 // token subcommands
 
-func cmdTokenCreate(c *client, name string, policies []string, ttl string) {
+func cmdTokenCreate(c *client, name string, policies []string, ttl string, maxUses int) {
 	req := map[string]any{
 		"display_name": name,
 		"policies":     policies,
 	}
 	if ttl != "" {
 		req["ttl"] = ttl
+	}
+	if maxUses > 0 {
+		req["max_uses"] = maxUses
 	}
 	resp, err := c.do("POST", "/v1/auth/token", req)
 	if err != nil {
@@ -409,10 +412,11 @@ func main() {
 			fs := flag.NewFlagSet("token create", flag.ExitOnError)
 			name := fs.String("name", "", "display name")
 			ttl := fs.String("ttl", "", "TTL e.g. 24h (default never expires)")
+			maxUses := fs.Int("max-uses", 0, "max number of uses (0 = unlimited)")
 			var policies multiFlag
 			fs.Var(&policies, "policy", "policy name (may be repeated)")
 			_ = fs.Parse(args[2:])
-			cmdTokenCreate(c, *name, []string(policies), *ttl)
+			cmdTokenCreate(c, *name, []string(policies), *ttl, *maxUses)
 		case "get":
 			if len(args) < 3 {
 				fatalf("token get requires an id")

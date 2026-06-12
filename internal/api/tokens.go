@@ -15,9 +15,10 @@ import (
 type createTokenReq struct {
 	DisplayName string   `json:"display_name"`
 	Policies    []string `json:"policies"`
-	TTL         string   `json:"ttl"`     // e.g. "24h", "" = never expires
+	TTL         string   `json:"ttl"`      // e.g. "24h", "" = never expires
 	Renewable   bool     `json:"renewable"`
-	MaxTTL      string   `json:"max_ttl"` // cap on total lifetime; only meaningful when renewable=true
+	MaxTTL      string   `json:"max_ttl"`  // cap on total lifetime; only meaningful when renewable=true
+	MaxUses     int      `json:"max_uses"` // 0 = unlimited; N = revoke after N authenticated API calls
 }
 
 func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
@@ -55,6 +56,9 @@ func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
 	var opts []core.TokenOpt
 	if req.Renewable {
 		opts = append(opts, core.WithRenewable(maxTTL))
+	}
+	if req.MaxUses > 0 {
+		opts = append(opts, core.WithMaxUses(req.MaxUses))
 	}
 	tok, err := s.core.CreateToken(r.Context(), req.DisplayName, req.Policies, ttl, opts...)
 	if err != nil {

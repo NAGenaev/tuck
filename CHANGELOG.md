@@ -11,6 +11,56 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.29.0] — 2026-06-12
+
+### Added
+
+#### Token MaxUses (`internal/token`, `internal/core`, `internal/api`)
+
+Tokens can now be created with a **`max_uses`** limit. Once a token has been used
+for `max_uses` authenticated API calls it is automatically revoked — any further
+request returns 401.
+
+Use cases:
+- **Bootstrap tokens** — one-time tokens for agent initialisation (`max_uses: 1`)
+- **Limited-blast-radius tokens** — tokens that expire after a fixed number of
+  operations, minimising exposure if leaked
+- **AppRole-style tight coupling** — issue a short-lived, single-use token per
+  deploy pipeline run
+
+**How it works:**
+
+1. `Token.MaxUses int` (0 = unlimited) and `Token.UseCount int` are stored in the
+   barrier alongside the token record.
+2. The HTTP middleware (`requireToken`) calls `core.TrackUse` **exactly once per
+   authenticated request**. `Authenticate` and `EnforceAccess` never touch the
+   counter — double-counting is impossible.
+3. When `UseCount` exceeds `MaxUses` the token is deleted atomically and the
+   request is rejected with HTTP 401.
+
+**API:**
+```json
+POST /v1/auth/token
+{
+  "display_name": "bootstrap",
+  "policies": ["agent"],
+  "ttl": "5m",
+  "max_uses": 1
+}
+```
+
+**CLI:**
+```sh
+tuckcli token create --name=bootstrap --policy=agent --ttl=5m --max-uses=1
+```
+
+**Tests:** 3 new integration tests:
+- `TestTokenMaxUses` — max_uses=2 succeeds twice, fails on third call
+- `TestTokenMaxUsesOne` — max_uses=1 succeeds once, fails on second
+- `TestTokenMaxUsesZeroMeansUnlimited` — max_uses=0 (default) has no limit
+
+---
+
 ## [0.28.0] — 2026-06-12
 
 ### Added

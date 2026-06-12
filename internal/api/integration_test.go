@@ -204,6 +204,109 @@ func TestRootPolicyIsImmutable(t *testing.T) {
 	}
 }
 
+// TestTokenMaxUses verifies that a token with max_uses=N is revoked automatically
+// after the Nth authenticated API call and rejected on the (N+1)th.
+func TestTokenMaxUses(t *testing.T) {
+	ts, _, rootTok := newTestServer(t)
+
+	// Create a token with max_uses=2.
+	body := `{"display_name":"limited","policies":[],"max_uses":2}`
+	resp, err := http.DefaultClient.Do(authedReq(t, http.MethodPost, ts.URL+"/v1/auth/token", body, rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create token: status=%d body=%s", resp.StatusCode, raw)
+	}
+	limitedTok := parseTokenID(t, raw)
+
+	// Use 1: should succeed.
+	r1, err := http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/auth/token/lookup-self", "", limitedTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r1.Body.Close()
+	if r1.StatusCode != http.StatusOK {
+		t.Errorf("use 1: status=%d, want 200", r1.StatusCode)
+	}
+
+	// Use 2: should succeed.
+	r2, err := http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/auth/token/lookup-self", "", limitedTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2.Body.Close()
+	if r2.StatusCode != http.StatusOK {
+		t.Errorf("use 2: status=%d, want 200", r2.StatusCode)
+	}
+
+	// Use 3: token is exhausted → 401.
+	r3, err := http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/auth/token/lookup-self", "", limitedTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r3.Body.Close()
+	if r3.StatusCode != http.StatusUnauthorized {
+		t.Errorf("use 3 (exhausted): status=%d, want 401", r3.StatusCode)
+	}
+}
+
+// TestTokenMaxUsesOne verifies that a max_uses=1 token succeeds exactly once.
+func TestTokenMaxUsesOne(t *testing.T) {
+	ts, _, rootTok := newTestServer(t)
+
+	body := `{"display_name":"oneshot","policies":[],"max_uses":1}`
+	resp, err := http.DefaultClient.Do(authedReq(t, http.MethodPost, ts.URL+"/v1/auth/token", body, rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create: %d %s", resp.StatusCode, raw)
+	}
+	oneTok := parseTokenID(t, raw)
+
+	// Only use: succeeds.
+	r1, _ := http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/auth/token/lookup-self", "", oneTok))
+	r1.Body.Close()
+	if r1.StatusCode != http.StatusOK {
+		t.Errorf("use 1: status=%d, want 200", r1.StatusCode)
+	}
+
+	// Second use: fails.
+	r2, _ := http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/auth/token/lookup-self", "", oneTok))
+	r2.Body.Close()
+	if r2.StatusCode != http.StatusUnauthorized {
+		t.Errorf("use 2: status=%d, want 401", r2.StatusCode)
+	}
+}
+
+// TestTokenMaxUsesZeroMeansUnlimited verifies that max_uses=0 (default) is unlimited.
+func TestTokenMaxUsesZeroMeansUnlimited(t *testing.T) {
+	ts, _, rootTok := newTestServer(t)
+
+	body := `{"display_name":"unlimited","policies":[],"max_uses":0}`
+	resp, err := http.DefaultClient.Do(authedReq(t, http.MethodPost, ts.URL+"/v1/auth/token", body, rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	tok := parseTokenID(t, raw)
+
+	// Use it 5 times — all should succeed.
+	for i := 1; i <= 5; i++ {
+		r, _ := http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/auth/token/lookup-self", "", tok))
+		r.Body.Close()
+		if r.StatusCode != http.StatusOK {
+			t.Errorf("use %d: status=%d, want 200", i, r.StatusCode)
+		}
+	}
+}
+
 // TestInvalidTokenFormat verifies that a syntactically valid but unknown
 // token string is rejected with 401, not 500.
 func TestInvalidTokenFormat(t *testing.T) {

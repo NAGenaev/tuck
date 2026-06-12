@@ -23,6 +23,8 @@ type Token struct {
 	ExpiresAt   time.Time     `json:"expires_at"`  // zero means never
 	Renewable   bool          `json:"renewable"`   // false by default
 	MaxTTL      time.Duration `json:"max_ttl"`     // zero means no cap
+	MaxUses     int           `json:"max_uses"`    // 0 = unlimited; N = revoke after N authenticated API calls
+	UseCount    int           `json:"use_count"`   // incremented on each Authenticate call
 }
 
 // Generate creates a new token with a cryptographically random ID and accessor.

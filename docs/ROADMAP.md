@@ -1,6 +1,6 @@
 # Tuck — Production Roadmap
 
-> Состояние: M0–M30 завершены (v0.30.0). Следующий шаг: M31 (UI Crypto Engines) → M32 (CLI completeness) → security audit → v1.0 GA.
+> Состояние: M0–M32 завершены (v0.32.0). Следующий шаг: external security audit (QA-3) → v1.0 GA.
 
 ---
 
@@ -74,8 +74,8 @@ v1.0 GA = функциональная полнота + операционная
 | **Operations** | Rate limiting (per-IP token bucket) | ✅ |
 | **Operations** | Backup/restore (bbolt snapshot) | ✅ |
 | **Operations** | Key rotation (POST /v1/sys/rotate) | ✅ |
-| **UX** | Embedded web dashboard (/ui/) — частично (~50%) | ⚠️ |
-| **UX** | CLI client (tuckcli) — частично (kv/token/policy/sys) | ⚠️ |
+| **UX** | Embedded web dashboard (/ui/) — ~80% API coverage | ⚠️ |
+| **UX** | CLI client (tuckcli) — полный (kv/token/policy/sys/pki/transit/ssh/totp/auth/dynamic) | ✅ |
 | **UX** | Go SDK (pkg/client) — полный (70+ методов) | ✅ |
 | **UX** | OpenAPI 3.0 spec (/openapi.json) | ✅ |
 | **Release** | goreleaser (linux/darwin/windows × amd64/arm64, cosign, SBOM) | ✅ |
@@ -87,7 +87,7 @@ v1.0 GA = функциональная полнота + операционная
 
 ## Реальные пробелы до v1.0
 
-### UI — только 20% API доступно через браузер
+### UI — ~80% API доступно через браузер
 
 | Страница | Состояние |
 |---|---|
@@ -95,17 +95,17 @@ v1.0 GA = функциональная полнота + операционная
 | KV v1 secrets | ✅ |
 | Tokens | ✅ |
 | Policies | ✅ |
-| KV v2 (версии, CAS, metadata) | ❌ |
-| AppRole / LDAP / JWT / K8s конфигурация | ❌ |
-| Dynamic secrets (DB/AWS/GCP/Azure) + leases | ❌ |
-| PKI (CA status, issue cert, revoke, CRL) | ❌ |
-| SSH CA + sign | ❌ |
-| Transit (encrypt/decrypt/sign через форму) | ❌ |
-| TOTP (QR-код, validate) | ❌ |
-| Response Wrapping | ❌ |
-| Cluster management (Raft status, join/remove) | ❌ |
+| AppRole / LDAP / JWT / K8s конфигурация | ✅ M30 |
+| Dynamic secrets (DB/AWS/GCP/Azure) + leases | ✅ M30 |
+| PKI (CA, issue cert, revoke) | ✅ M31 |
+| SSH CA + sign | ✅ M31 |
+| Transit (encrypt/decrypt/sign/verify) | ✅ M31 |
+| TOTP (create, code, validate) | ✅ M31 |
+| KV v2 (версии, CAS, metadata) | ❌ v1.x |
+| Response Wrapping | ❌ v1.x |
+| Cluster management (Raft status, join/remove) | ❌ v1.x |
 
-### CLI — только базовые операции
+### CLI — полный охват API
 
 | Команды | Состояние |
 |---|---|
@@ -113,20 +113,13 @@ v1.0 GA = функциональная полнота + операционная
 | `token create/get/revoke/renew/list` | ✅ |
 | `policy get/put/delete/list` | ✅ |
 | `status/unseal/seal/rotate` | ✅ |
-| `token lookup-self`, `token renew-self` | ❌ |
-| `db creds <role>`, `aws creds <role>`, etc. | ❌ |
-| `pki issue <role>`, `pki revoke <serial>` | ❌ |
-| `transit encrypt/decrypt <key>` | ❌ |
-| `ssh sign <role> <pubkey>` | ❌ |
-| `totp code <key>` | ❌ |
-| `auth approle login`, `auth ldap login` | ❌ |
-
-### Token MaxUses — отсутствует
-
-Нет ограничения числа использований токена (`num_uses`). Критично для:
-- Bootstrap-токенов (одноразовые для инициализации агентов)
-- AppRole-паттернов, где секрет выдаётся один раз
-- Минимизации blast radius при компрометации
+| `token lookup-self`, `token renew-self` | ✅ M32 |
+| `db/aws/gcp/azure creds <role>` | ✅ M32 |
+| `pki issue <role>`, `pki revoke <serial>` | ✅ M32 |
+| `transit encrypt/decrypt <key>` | ✅ M32 |
+| `ssh sign <role> <pubkey>` | ✅ M32 |
+| `totp code <key>` | ✅ M32 |
+| `auth approle/ldap/jwt login` | ✅ M32 |
 
 ---
 

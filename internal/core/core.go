@@ -32,6 +32,7 @@ import (
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
 	"github.com/NAGenaev/tuck/internal/kvv2"
 	"github.com/NAGenaev/tuck/internal/namespace"
+	"github.com/NAGenaev/tuck/internal/kvsecret"
 	"github.com/NAGenaev/tuck/internal/physical"
 	"github.com/NAGenaev/tuck/internal/policy"
 	"github.com/NAGenaev/tuck/internal/seal"
@@ -693,26 +694,56 @@ func (c *Core) ListSecrets(ctx context.Context, ns, prefix string) ([]string, er
 	return result, nil
 }
 
-// GetSecret returns the bytes stored at the logical path, or (nil, false) if
-// nothing is stored there.
+// GetSecretEntry returns the full kvsecret.Entry for the logical path, or
+// (nil, nil) if no secret exists. Expired entries are deleted and return nil.
 // ns is the active namespace name (empty or "root" means root namespace).
-func (c *Core) GetSecret(ctx context.Context, ns, p string) ([]byte, bool, error) {
+func (c *Core) GetSecretEntry(ctx context.Context, ns, p string) (*kvsecret.Entry, error) {
 	key := namespace.StoragePrefix(ns) + secretKey(p)
 	e, err := c.barrier.Get(ctx, key)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	if e == nil {
-		return nil, false, nil
+		return nil, nil
 	}
-	return e.Value, true, nil
+	entry := kvsecret.Unmarshal(e.Value)
+	if entry.IsExpired() {
+		_ = c.barrier.Delete(ctx, key) // GC inline
+		return nil, nil
+	}
+	return entry, nil
 }
 
-// PutSecret stores bytes at the logical path.
+// GetSecret returns the raw value bytes stored at the logical path.
+// Returns (nil, false, nil) if not found or expired.
+// ns is the active namespace name (empty or "root" means root namespace).
+func (c *Core) GetSecret(ctx context.Context, ns, p string) ([]byte, bool, error) {
+	entry, err := c.GetSecretEntry(ctx, ns, p)
+	if err != nil {
+		return nil, false, err
+	}
+	if entry == nil {
+		return nil, false, nil
+	}
+	return entry.Value, true, nil
+}
+
+// PutSecret stores raw bytes at the logical path with no TTL or metadata.
 // ns is the active namespace name (empty or "root" means root namespace).
 func (c *Core) PutSecret(ctx context.Context, ns, p string, value []byte) error {
+	return c.PutSecretWithMeta(ctx, ns, p, value, nil, 0)
+}
+
+// PutSecretWithMeta stores bytes at the logical path with optional metadata and TTL.
+// ttl=0 means no expiry. metadata may be nil.
+func (c *Core) PutSecretWithMeta(ctx context.Context, ns, p string, value []byte, metadata map[string]string, ttl time.Duration) error {
+	entry := kvsecret.New(value, metadata, ttl)
+	raw, err := entry.Marshal()
+	if err != nil {
+		return err
+	}
 	key := namespace.StoragePrefix(ns) + secretKey(p)
-	return c.barrier.Put(ctx, &physical.Entry{Key: key, Value: value})
+	return c.barrier.Put(ctx, &physical.Entry{Key: key, Value: raw})
 }
 
 // DeleteSecret removes the secret at the logical path.

@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,11 +29,13 @@ const (
 	DriverVersion = "1.5.0"
 
 	// Volume context keys supplied by the StorageClass / PVC attributes.
-	ctxAddr      = "tuck.io/addr"       // e.g. "https://tuck:8200"
-	ctxPaths     = "tuck.io/paths"      // comma-separated secret paths
-	ctxNamespace = "tuck.io/namespace"  // optional Tuck namespace
-	ctxKVVersion = "tuck.io/kv-version" // "1" or "2" (default "1")
-	ctxInsecure  = "tuck.io/insecure"   // "true" to skip TLS verification
+	ctxAddr       = "tuck.io/addr"        // e.g. "https://tuck:8200"
+	ctxPaths      = "tuck.io/paths"       // comma-separated secret paths
+	ctxNamespace  = "tuck.io/namespace"   // optional Tuck namespace
+	ctxKVVersion  = "tuck.io/kv-version"  // "1" or "2" (default "1")
+	ctxInsecure   = "tuck.io/insecure"    // "true" to skip TLS verification
+	ctxExpandKeys = "tuck.io/expand-keys" // "true" → JSON object value exploded to per-key files
+	ctxMode       = "tuck.io/mode"        // octal file permission string, e.g. "0400" (default "0400")
 
 	// Secret key holding the Tuck token, passed via NodePublishSecrets.
 	secretKeyToken = "token"
@@ -82,6 +85,11 @@ func (d *Driver) NodeGetInfo(_ context.Context, _ *csispec.NodeGetInfoRequest) (
 
 // NodePublishVolume fetches the requested Tuck secrets and writes them as
 // files into a tmpfs mounted at req.TargetPath.
+//
+// Additional volume context attributes beyond the base set:
+//   - tuck.io/expand-keys=true — when the secret value is a JSON object,
+//     each key is written as a separate file rather than the whole JSON blob.
+//   - tuck.io/mode=<octal> — file permission bits, default 0400.
 func (d *Driver) NodePublishVolume(ctx context.Context, req *csispec.NodePublishVolumeRequest) (*csispec.NodePublishVolumeResponse, error) {
 	if req.TargetPath == "" {
 		return nil, status.Error(codes.InvalidArgument, "target path is required")
@@ -108,6 +116,14 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csispec.NodePublish
 		kvVersion = "1"
 	}
 	insecure := strings.EqualFold(vc[ctxInsecure], "true")
+	expandKeys := strings.EqualFold(vc[ctxExpandKeys], "true")
+
+	mode := os.FileMode(0o400)
+	if modeStr := vc[ctxMode]; modeStr != "" {
+		if m, err := strconv.ParseUint(modeStr, 8, 32); err == nil {
+			mode = os.FileMode(m)
+		}
+	}
 
 	paths := splitPaths(pathsRaw)
 
@@ -123,19 +139,26 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csispec.NodePublish
 
 	hc := httpClient(insecure)
 	for _, p := range paths {
-		value, err := fetchSecret(ctx, hc, addr, token, ns, p, kvVersion)
+		files, err := fetchSecretFiles(ctx, hc, addr, token, ns, p, kvVersion, expandKeys)
 		if err != nil {
 			_ = d.mounter.Unmount(req.TargetPath)
 			return nil, status.Errorf(codes.Internal, "fetch secret %q: %v", p, err)
 		}
-		fname := filepath.Base(p)
-		dest := filepath.Join(req.TargetPath, fname)
-		if err := os.WriteFile(dest, []byte(value), 0o400); err != nil {
-			_ = d.mounter.Unmount(req.TargetPath)
-			return nil, status.Errorf(codes.Internal, "write secret file %q: %v", fname, err)
+		for fname, value := range files {
+			dest := filepath.Join(req.TargetPath, fname)
+			if err := os.WriteFile(dest, []byte(value), mode); err != nil {
+				_ = d.mounter.Unmount(req.TargetPath)
+				return nil, status.Errorf(codes.Internal, "write secret file %q: %v", fname, err)
+			}
 		}
 	}
 	return &csispec.NodePublishVolumeResponse{}, nil
+}
+
+// NodeGetVolumeStats returns empty volume statistics (tmpfs metrics are not
+// tracked; returning an empty response is preferable to UNIMPLEMENTED).
+func (d *Driver) NodeGetVolumeStats(_ context.Context, _ *csispec.NodeGetVolumeStatsRequest) (*csispec.NodeGetVolumeStatsResponse, error) {
+	return &csispec.NodeGetVolumeStatsResponse{}, nil
 }
 
 // NodeUnpublishVolume unmounts the tmpfs and removes the target directory.
@@ -152,7 +175,12 @@ func (d *Driver) NodeUnpublishVolume(_ context.Context, req *csispec.NodeUnpubli
 
 // ─── Secret fetching ─────────────────────────────────────────────────────────
 
-func fetchSecret(ctx context.Context, hc *http.Client, addr, token, ns, path, kvVersion string) (string, error) {
+// fetchSecretFiles fetches a secret from Tuck and returns a filename→value map.
+//
+// When expandKeys is true and the secret value is a JSON object, each top-level
+// key becomes a separate file. Otherwise returns a single entry keyed by the
+// base name of path.
+func fetchSecretFiles(ctx context.Context, hc *http.Client, addr, token, ns, path, kvVersion string, expandKeys bool) (map[string]string, error) {
 	var urlPath string
 	if kvVersion == "2" {
 		urlPath = "/v2/secret/" + path
@@ -162,7 +190,7 @@ func fetchSecret(ctx context.Context, hc *http.Client, addr, token, ns, path, kv
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, addr+urlPath, nil)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	req.Header.Set("X-Tuck-Token", token)
 	if ns != "" {
@@ -171,28 +199,41 @@ func fetchSecret(ctx context.Context, hc *http.Client, addr, token, ns, path, kv
 
 	resp, err := hc.Do(req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("tuck API returned HTTP %d: %s", resp.StatusCode, body)
+		return nil, fmt.Errorf("tuck API returned HTTP %d: %s", resp.StatusCode, body)
 	}
 
 	var result map[string]any
 	if err := json.Unmarshal(body, &result); err != nil {
-		return "", fmt.Errorf("unmarshal response: %w", err)
+		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
 
 	v, ok := result["value"]
 	if !ok {
-		return "", fmt.Errorf("response missing \"value\" field")
+		return nil, fmt.Errorf("response missing \"value\" field")
 	}
-	return fmt.Sprintf("%v", v), nil
+	value := fmt.Sprintf("%v", v)
+
+	if expandKeys {
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(value), &obj); err == nil && len(obj) > 0 {
+			files := make(map[string]string, len(obj))
+			for k, fv := range obj {
+				files[k] = fmt.Sprintf("%v", fv)
+			}
+			return files, nil
+		}
+	}
+
+	return map[string]string{filepath.Base(path): value}, nil
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

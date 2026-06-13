@@ -69,6 +69,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/sys/leases/{id...}", s.requireToken(s.revokeLease))
 	mux.HandleFunc("LIST /v1/sys/leases/", s.requireToken(s.listLeases))
 
+	// Mount table — list, create, delete secret engine mounts
+	mux.HandleFunc("GET /v1/sys/mounts", s.requireToken(s.listMounts))
+	mux.HandleFunc("POST /v1/sys/mounts/{path...}", s.requireToken(s.createMount))
+	mux.HandleFunc("DELETE /v1/sys/mounts/{path...}", s.requireToken(s.deleteMount))
+
 	mux.HandleFunc("GET /v1/sys/seal-status", s.getSealStatus)
 	mux.HandleFunc("GET /v1/sys/ready", s.getReady)
 	mux.HandleFunc("POST /v1/sys/unseal", s.postUnseal)

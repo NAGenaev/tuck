@@ -32,6 +32,7 @@ import (
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
 	"github.com/NAGenaev/tuck/internal/kvv2"
 	"github.com/NAGenaev/tuck/internal/lease"
+	"github.com/NAGenaev/tuck/internal/mount"
 	"github.com/NAGenaev/tuck/internal/namespace"
 	"github.com/NAGenaev/tuck/internal/kvsecret"
 	"github.com/NAGenaev/tuck/internal/physical"
@@ -109,6 +110,7 @@ type Core struct {
 
 	sysconfigStore *sysconfig.Store
 	leaseManager   *lease.Manager
+	mountStore     *mount.Store
 
 	// optional — nil means k8s auth is disabled
 	k8sReviewer k8sauth.Reviewer
@@ -163,6 +165,7 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		k8sRoles:       k8sauth.NewRoleStore(b),
 	}
 	c.leaseManager = lease.NewWithEngines(c.dbManager, c.awsEngine, c.gcpEngine, c.azureEngine)
+	c.mountStore = mount.New(b)
 	return c
 }
 
@@ -203,6 +206,7 @@ func (c *Core) Start(ctx context.Context) (*StartResult, error) {
 		}
 		clear(result.RootKey)
 		_ = c.LoadAuditSinks(ctx)
+		c.registerBuiltinMounts(ctx)
 		rootTok, err := token.Generate(token.RootTokenDisplayName, []string{token.RootPolicyName}, 0)
 		if err != nil {
 			return nil, fmt.Errorf("generate root token: %w", err)
@@ -228,8 +232,18 @@ func (c *Core) Start(ctx context.Context) (*StartResult, error) {
 	}
 	clear(rootKey)
 	_ = c.LoadAuditSinks(ctx)
+	c.registerBuiltinMounts(ctx)
 	return nil, nil
 }
+
+func (c *Core) registerBuiltinMounts(ctx context.Context) {
+	for _, b := range mount.Builtins() {
+		_ = c.mountStore.RegisterBuiltin(ctx, b.Path, b.Type, b.Description)
+	}
+}
+
+// MountStore returns the secret engine mount table.
+func (c *Core) MountStore() *mount.Store { return c.mountStore }
 
 // UnsealShard accepts one base64url-encoded Shamir shard. When enough shards
 // have been collected the barrier is unsealed automatically. Returns true when

@@ -1,6 +1,8 @@
 package ratelimit
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -31,5 +33,67 @@ func TestLimiter_DifferentIPs(t *testing.T) {
 	}
 	if !l.Allow("10.0.0.2") {
 		t.Fatal("first Allow() for IP B should return true")
+	}
+}
+
+func TestTokenMiddleware_Exhausted(t *testing.T) {
+	l := New(0.001, 1) // 1 burst, near-zero refill
+	ok := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	h := l.TokenMiddleware(ok)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("X-Tuck-Token", "tok-abc")
+
+	// First request allowed.
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("first request: expected 200, got %d", rr.Code)
+	}
+
+	// Second request denied.
+	rr2 := httptest.NewRecorder()
+	h.ServeHTTP(rr2, req)
+	if rr2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request: expected 429, got %d", rr2.Code)
+	}
+}
+
+func TestTokenMiddleware_NoToken_Passes(t *testing.T) {
+	l := New(0.001, 1)
+	ok := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	h := l.TokenMiddleware(ok)
+
+	// Requests without a token are not rate-limited by this middleware.
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("request %d: expected 200 (no token), got %d", i+1, rr.Code)
+		}
+	}
+}
+
+func TestMaxBodyMiddleware(t *testing.T) {
+	ok := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	h := MaxBodyMiddleware(100, ok)
+
+	// Request within limit.
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req.ContentLength = 50
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	// Request over limit.
+	req2 := httptest.NewRequest(http.MethodPost, "/", nil)
+	req2.ContentLength = 101
+	rr2 := httptest.NewRecorder()
+	h.ServeHTTP(rr2, req2)
+	if rr2.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d", rr2.Code)
 	}
 }

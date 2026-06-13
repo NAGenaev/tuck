@@ -77,3 +77,31 @@ func (l *Limiter) Middleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+// TokenMiddleware returns an http.Handler that rate-limits by the value of the
+// X-Tuck-Token header. Requests without a token (unauthenticated) are not
+// limited by this middleware — use Middleware for IP-based limiting.
+func (l *Limiter) TokenMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tok := r.Header.Get("X-Tuck-Token")
+		if tok != "" && !l.Allow(tok) {
+			http.Error(w, `{"error":"rate limit exceeded"}`, http.StatusTooManyRequests)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// MaxBodyMiddleware returns an http.Handler that rejects requests whose
+// Content-Length exceeds maxBytes with 413 Request Entity Too Large.
+// Requests without Content-Length are not rejected (body is still limited by
+// the MaxBytesReader applied per-handler).
+func MaxBodyMiddleware(maxBytes int64, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.ContentLength > maxBytes {
+			http.Error(w, `{"error":"request body too large"}`, http.StatusRequestEntityTooLarge)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}

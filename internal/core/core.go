@@ -15,6 +15,7 @@ import (
 
 	"github.com/NAGenaev/tuck/internal/audit"
 	"github.com/NAGenaev/tuck/internal/auth/approle"
+	ghauth "github.com/NAGenaev/tuck/internal/auth/github"
 	"github.com/NAGenaev/tuck/internal/auth/jwt"
 	authlda "github.com/NAGenaev/tuck/internal/auth/ldap"
 	"github.com/NAGenaev/tuck/internal/barrier"
@@ -88,6 +89,7 @@ type Core struct {
 	auditStore  *audit.Store
 	dispatcher  *audit.Dispatcher
 	jwtStore     *jwt.Store
+	githubStore  *ghauth.Store
 	approleStore *approle.Store
 	ldapStore    *authlda.Store
 	cubbyhole    *cubbyhole.Store
@@ -136,6 +138,7 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		auditStore:  audit.NewStore(b),
 		dispatcher:  audit.NewDispatcher(audit.Nop()),
 		jwtStore:     jwt.NewStore(b),
+		githubStore:  ghauth.NewStore(b),
 		approleStore: approle.NewStore(b),
 		ldapStore:    authlda.NewStore(b),
 		cubbyhole:    cubbyhole.NewStore(b),
@@ -776,6 +779,48 @@ func (c *Core) LoginJWT(ctx context.Context, tokenStr string) (*token.Token, err
 		return nil, err
 	}
 	c.attachEntityToToken(ctx, tok, "auth_jwt", result.Subject, result.Groups)
+	return tok, nil
+}
+
+// --- GitHub Actions OIDC auth ---
+
+// PutGitHubRole creates or updates a GitHub auth role.
+func (c *Core) PutGitHubRole(ctx context.Context, role *ghauth.Role) error {
+	return c.githubStore.PutRole(ctx, role)
+}
+
+// GetGitHubRole returns a GitHub auth role by name.
+func (c *Core) GetGitHubRole(ctx context.Context, name string) (*ghauth.Role, error) {
+	return c.githubStore.GetRole(ctx, name)
+}
+
+// DeleteGitHubRole removes a GitHub auth role.
+func (c *Core) DeleteGitHubRole(ctx context.Context, name string) error {
+	return c.githubStore.DeleteRole(ctx, name)
+}
+
+// ListGitHubRoles returns all GitHub auth role names.
+func (c *Core) ListGitHubRoles(ctx context.Context) ([]string, error) {
+	return c.githubStore.ListRoles(ctx)
+}
+
+// LoginGitHub validates a GitHub Actions OIDC token against the named role
+// and issues a Tuck token carrying the role's policies.
+func (c *Core) LoginGitHub(ctx context.Context, tokenStr, roleName string) (*token.Token, error) {
+	role, err := c.githubStore.GetRole(ctx, roleName)
+	if err != nil {
+		return nil, err
+	}
+	provider := ghauth.NewProvider()
+	result, err := provider.Login(ctx, tokenStr, role)
+	if err != nil {
+		return nil, err
+	}
+	tok, err := c.CreateToken(ctx, "github:"+result.Subject, result.Policies, result.TTL)
+	if err != nil {
+		return nil, err
+	}
+	c.attachEntityToToken(ctx, tok, "auth_github", result.Subject, nil)
 	return tok, nil
 }
 

@@ -11,6 +11,22 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [1.28.0] — 2026-06-13
+
+### Added
+
+- **CSI driver completions** (`internal/csi/driver.go`): `tuck.io/expand-keys=true` volume attribute — when the secret value is a JSON object, each key is written as a separate file; `tuck.io/mode=<octal>` attribute for file permission control (default 0400); `NodeGetVolumeStats` stub returns empty response (preferred over UNIMPLEMENTED for kubelet health checks).
+
+---
+
+## [1.27.0] — 2026-06-13
+
+### Added
+
+- **`tuckcli audit enable-file`**: exposes the file audit sink endpoint (`PUT /v1/sys/audit/file/{name}`) added in v1.23.0; flags `--name`, `--path`, `--max-size-mb`, `--max-backups`; also adds the missing "Audit sinks" section to the CLI usage string.
+
+---
+
 ## [1.26.0] — 2026-06-13
 
 ### Added

@@ -15,7 +15,8 @@ type policyRuleReq struct {
 }
 
 type putPolicyReq struct {
-	Rules []policyRuleReq `json:"rules"`
+	Rules       []policyRuleReq `json:"rules"`
+	Inheritable bool            `json:"inheritable"` // when true, child namespaces can inherit this policy
 }
 
 type policyRuleResp struct {
@@ -24,8 +25,9 @@ type policyRuleResp struct {
 }
 
 type policyResp struct {
-	Name  string           `json:"name"`
-	Rules []policyRuleResp `json:"rules"`
+	Name        string           `json:"name"`
+	Rules       []policyRuleResp `json:"rules"`
+	Inheritable bool             `json:"inheritable"`
 }
 
 func (s *Server) putPolicy(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +46,7 @@ func (s *Server) putPolicy(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 		return
 	}
-	p := &policy.Policy{Name: name}
+	p := &policy.Policy{Name: name, Inheritable: req.Inheritable}
 	for _, rule := range req.Rules {
 		p.Rules = append(p.Rules, policy.Rule{
 			Path:         rule.Path,
@@ -73,7 +75,7 @@ func (s *Server) getPolicy(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	resp := policyResp{Name: p.Name}
+	resp := policyResp{Name: p.Name, Inheritable: p.Inheritable}
 	for _, rule := range p.Rules {
 		resp.Rules = append(resp.Rules, policyRuleResp{
 			Path:         rule.Path,

@@ -26,6 +26,10 @@ type Rule struct {
 type Policy struct {
 	Name  string `json:"name"`
 	Rules []Rule `json:"rules"`
+	// Inheritable marks this policy as available to child namespaces.
+	// When a token in a child namespace references this policy by name and no
+	// local override exists, the root namespace's definition is used.
+	Inheritable bool `json:"inheritable,omitempty"`
 }
 
 // RootPolicy grants full access to every path.

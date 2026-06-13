@@ -39,6 +39,33 @@ func (s *Server) putAuditWebhook(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// PUT /v1/sys/audit/file/{name} — register or update a file audit sink
+func (s *Server) putAuditFile(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "sys/audit/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
+	var body struct {
+		Path       string `json:"path"`
+		MaxSizeMB  int64  `json:"max_size_mb"`
+		MaxBackups int    `json:"max_backups"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxBodyBytes)).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+	if body.Path == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "path is required"})
+		return
+	}
+	if err := s.core.RegisterAuditFile(r.Context(), name, body.Path, body.MaxSizeMB, body.MaxBackups); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // DELETE /v1/sys/audit/{name} — remove a named audit sink
 func (s *Server) deleteAuditSink(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")

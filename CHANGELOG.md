@@ -11,6 +11,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [1.31.0] — 2026-06-13
+
+### Added
+
+- **Full OpenAPI 3.0.3 specification** (`internal/api/openapi.json`, served at `GET /openapi.json`): expanded from 20 to 124 documented paths covering all engines and auth methods — KV v1/v2, Transit, PKI, SSH, TOTP, AWS/GCP/Azure/Database dynamic secrets, AppRole/JWT/GitHub/LDAP/Kubernetes auth, Identity (entities, aliases, groups), namespaces, audit sinks, leases, mounts, plugins, replication, cluster, cubbyhole, wrapping, and Prometheus metrics. Includes 22 tags, 19 reusable schemas, and `operationId` on every operation for SDK generation. Version bumped to 1.31.0.
+
+---
+
 ## [1.30.0] — 2026-06-13
 
 ### Added

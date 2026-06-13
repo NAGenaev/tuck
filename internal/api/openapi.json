@@ -2,21 +2,41 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Tuck API",
-    "description": "Open-source Kubernetes-native secrets manager. Single binary, no external DB.",
-    "version": "0.9.0",
+    "description": "Open-source Kubernetes-native secrets manager. Single binary, no external DB.\n\n**Auth:** Set `X-Tuck-Token` header on all requests except those marked `security: []`.\n\n**LIST method:** Endpoints that enumerate keys use the non-standard `LIST` HTTP verb. In curl: `curl -X LIST`. In the spec these are represented as `get` operations on paths ending in `/`.",
+    "version": "1.30.0",
     "contact": { "email": "genaevlive@gmail.com" },
     "license": { "name": "Apache-2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0" }
   },
   "servers": [
     { "url": "https://localhost:8200", "description": "Local dev server" }
   ],
+  "tags": [
+    { "name": "sys", "description": "System operations (seal, unseal, rotate, snapshot, config)" },
+    { "name": "kv", "description": "KV v1 and KV v2 secret storage" },
+    { "name": "policy", "description": "ACL policy management" },
+    { "name": "auth-token", "description": "Token auth — create, look up, renew, revoke" },
+    { "name": "auth-approle", "description": "AppRole auth — machine-to-machine with RoleID + SecretID" },
+    { "name": "auth-kubernetes", "description": "Kubernetes ServiceAccount token auth" },
+    { "name": "auth-jwt", "description": "JWT / OIDC auth" },
+    { "name": "auth-github", "description": "GitHub Actions OIDC auth" },
+    { "name": "auth-ldap", "description": "LDAP / Active Directory auth" },
+    { "name": "transit", "description": "Encryption-as-a-Service (Transit engine)" },
+    { "name": "pki", "description": "PKI certificate authority" },
+    { "name": "ssh", "description": "SSH certificate signing" },
+    { "name": "totp", "description": "TOTP code management" },
+    { "name": "aws", "description": "AWS dynamic credentials" },
+    { "name": "gcp", "description": "GCP dynamic credentials" },
+    { "name": "azure", "description": "Azure dynamic credentials" },
+    { "name": "database", "description": "Database dynamic credentials" },
+    { "name": "identity", "description": "Identity — entities, aliases, groups" },
+    { "name": "namespaces", "description": "Namespace management" },
+    { "name": "cubbyhole", "description": "Per-token private storage" },
+    { "name": "wrapping", "description": "Response wrapping" },
+    { "name": "observability", "description": "Metrics and health" }
+  ],
   "components": {
     "securitySchemes": {
-      "TuckToken": {
-        "type": "apiKey",
-        "in": "header",
-        "name": "X-Tuck-Token"
-      }
+      "TuckToken": { "type": "apiKey", "in": "header", "name": "X-Tuck-Token" }
     },
     "schemas": {
       "Error": {
@@ -27,7 +47,7 @@
         "type": "object",
         "properties": {
           "sealed": { "type": "boolean" },
-          "type": { "type": "string", "enum": ["dev", "shamir", "transit"] },
+          "type": { "type": "string", "enum": ["dev", "shamir", "transit", "gcpckms", "awskms", "azurekeyvault"] },
           "required_shards": { "type": "integer" },
           "received_shards": { "type": "integer" }
         }
@@ -38,9 +58,23 @@
           "id": { "type": "string", "example": "tuck_abc123" },
           "display_name": { "type": "string" },
           "policies": { "type": "array", "items": { "type": "string" } },
+          "ttl": { "type": "number", "description": "Remaining TTL in seconds" },
           "expires_at": { "type": "string", "format": "date-time" },
           "created_at": { "type": "string", "format": "date-time" }
         }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "policies": { "type": "array", "items": { "type": "string" } },
+          "ttl": { "type": "number" },
+          "expires_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "KeyList": {
+        "type": "object",
+        "properties": { "keys": { "type": "array", "items": { "type": "string" } } }
       },
       "Policy": {
         "type": "object",
@@ -52,10 +86,7 @@
               "type": "object",
               "properties": {
                 "path": { "type": "string", "example": "secret/db/*" },
-                "capabilities": {
-                  "type": "array",
-                  "items": { "type": "string", "enum": ["read", "write", "delete", "list"] }
-                }
+                "capabilities": { "type": "integer", "description": "Bitmask: read=1, write=2, delete=4, list=8, sudo=16, deny=32" }
               }
             }
           }
@@ -94,10 +125,92 @@
         "properties": {
           "current_version": { "type": "integer" },
           "max_versions": { "type": "integer" },
-          "versions": {
-            "type": "object",
-            "additionalProperties": { "$ref": "#/components/schemas/VerMeta" }
-          }
+          "versions": { "type": "object", "additionalProperties": { "$ref": "#/components/schemas/VerMeta" } }
+        }
+      },
+      "TransitKey": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "type": { "type": "string", "enum": ["aes256-gcm96", "chacha20-poly1305", "ed25519", "ecdsa-p256", "rsa-2048", "rsa-4096"] },
+          "exportable": { "type": "boolean" },
+          "allow_plaintext_backup": { "type": "boolean" },
+          "min_decryption_version": { "type": "integer" },
+          "min_encryption_version": { "type": "integer" }
+        }
+      },
+      "DynamicCreds": {
+        "type": "object",
+        "properties": {
+          "lease_id": { "type": "string" },
+          "lease_duration": { "type": "integer" },
+          "access_key": { "type": "string" },
+          "secret_key": { "type": "string" },
+          "username": { "type": "string" },
+          "password": { "type": "string" }
+        }
+      },
+      "Entity": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "policies": { "type": "array", "items": { "type": "string" } },
+          "aliases": { "type": "array", "items": { "$ref": "#/components/schemas/EntityAlias" } },
+          "metadata": { "type": "object", "additionalProperties": { "type": "string" } }
+        }
+      },
+      "EntityAlias": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "mount_type": { "type": "string" },
+          "canonical_id": { "type": "string" }
+        }
+      },
+      "Group": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "policies": { "type": "array", "items": { "type": "string" } },
+          "member_entity_ids": { "type": "array", "items": { "type": "string" } },
+          "member_group_ids": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "Namespace": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "path": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Mount": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string" },
+          "path": { "type": "string" },
+          "description": { "type": "string" },
+          "config": { "type": "object" }
+        }
+      },
+      "Lease": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "path": { "type": "string" },
+          "expires_at": { "type": "string", "format": "date-time" },
+          "renewable": { "type": "boolean" }
+        }
+      },
+      "WrappingInfo": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string" },
+          "ttl": { "type": "integer" },
+          "creation_time": { "type": "string", "format": "date-time" }
         }
       }
     }
@@ -106,7 +219,9 @@
   "paths": {
     "/v1/health": {
       "get": {
+        "tags": ["observability"],
         "summary": "Liveness probe",
+        "operationId": "getHealth",
         "security": [],
         "responses": {
           "200": { "description": "Server is alive", "content": { "application/json": { "schema": { "type": "object", "properties": { "sealed": { "type": "boolean" } } } } } }
@@ -115,7 +230,9 @@
     },
     "/v1/sys/seal-status": {
       "get": {
+        "tags": ["sys"],
         "summary": "Seal status",
+        "operationId": "getSealStatus",
         "security": [],
         "responses": {
           "200": { "description": "Seal state", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SealStatus" } } } }
@@ -124,7 +241,9 @@
     },
     "/v1/sys/ready": {
       "get": {
+        "tags": ["sys"],
         "summary": "Readiness probe — 503 when sealed",
+        "operationId": "getReady",
         "security": [],
         "responses": {
           "200": { "description": "Unsealed and ready" },
@@ -134,21 +253,22 @@
     },
     "/v1/sys/unseal": {
       "post": {
-        "summary": "Submit a Shamir share",
+        "tags": ["sys"],
+        "summary": "Submit a Shamir unseal share",
+        "operationId": "postUnseal",
         "security": [],
-        "requestBody": {
-          "required": true,
-          "content": { "application/json": { "schema": { "type": "object", "properties": { "key": { "type": "string" } }, "required": ["key"] } } }
-        },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "key": { "type": "string" } }, "required": ["key"] } } } },
         "responses": {
-          "200": { "description": "Share accepted; returns seal status" },
+          "200": { "description": "Share accepted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SealStatus" } } } },
           "400": { "description": "Invalid share" }
         }
       }
     },
     "/v1/sys/seal": {
       "post": {
+        "tags": ["sys"],
         "summary": "Seal the server (drops DEK from memory)",
+        "operationId": "postSeal",
         "responses": {
           "204": { "description": "Sealed" },
           "403": { "description": "Forbidden" }
@@ -157,7 +277,9 @@
     },
     "/v1/sys/rotate": {
       "post": {
+        "tags": ["sys"],
         "summary": "Rotate root key — re-wraps DEK, returns new Shamir shares if applicable",
+        "operationId": "postRotate",
         "responses": {
           "200": { "description": "Key rotated", "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "type": "boolean" }, "shares": { "type": "array", "items": { "type": "string" } } } } } } },
           "403": { "description": "Root policy required" }
@@ -166,126 +288,364 @@
     },
     "/v1/sys/snapshot": {
       "get": {
-        "summary": "Download a bbolt database snapshot (for backup)",
+        "tags": ["sys"],
+        "summary": "Download a binary database snapshot (for backup)",
+        "operationId": "getSnapshot",
         "responses": {
           "200": { "description": "Binary snapshot", "content": { "application/octet-stream": {} } },
           "403": { "description": "Root policy required" }
         }
       }
     },
+    "/v1/sys/config": {
+      "get": {
+        "tags": ["sys"],
+        "summary": "Get runtime configuration",
+        "operationId": "getSysConfig",
+        "responses": { "200": { "description": "Config object" } }
+      },
+      "put": {
+        "tags": ["sys"],
+        "summary": "Update runtime configuration",
+        "operationId": "putSysConfig",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "204": { "description": "Updated" } }
+      }
+    },
+    "/v1/sys/audit/webhook/{name}": {
+      "put": {
+        "tags": ["sys"],
+        "summary": "Enable or update a webhook audit sink",
+        "operationId": "putAuditWebhook",
+        "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "url": { "type": "string" }, "hmac_key": { "type": "string" } } } } } },
+        "responses": { "204": { "description": "Enabled" } }
+      }
+    },
+    "/v1/sys/audit/file/{name}": {
+      "put": {
+        "tags": ["sys"],
+        "summary": "Enable or update a file audit sink",
+        "operationId": "putAuditFile",
+        "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "path": { "type": "string" }, "max_size_mb": { "type": "integer" }, "max_backups": { "type": "integer" } } } } } },
+        "responses": { "204": { "description": "Enabled" } }
+      }
+    },
+    "/v1/sys/audit/{name}": {
+      "delete": {
+        "tags": ["sys"],
+        "summary": "Disable an audit sink",
+        "operationId": "deleteAudit",
+        "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "204": { "description": "Disabled" } }
+      }
+    },
+    "/v1/sys/audit/": {
+      "get": {
+        "tags": ["sys"],
+        "summary": "List audit sinks (LIST method)",
+        "operationId": "listAuditSinks",
+        "responses": { "200": { "description": "Audit sinks", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
+      }
+    },
+    "/v1/sys/namespaces": {
+      "post": {
+        "tags": ["namespaces"],
+        "summary": "Create a namespace",
+        "operationId": "createNamespace",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] } } } },
+        "responses": {
+          "200": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Namespace" } } } },
+          "409": { "description": "Already exists" }
+        }
+      }
+    },
+    "/v1/sys/namespaces/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["namespaces"],
+        "summary": "Get a namespace",
+        "operationId": "getNamespace",
+        "responses": {
+          "200": { "description": "Namespace", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Namespace" } } } },
+          "404": { "description": "Not found" }
+        }
+      },
+      "delete": {
+        "tags": ["namespaces"],
+        "summary": "Delete a namespace",
+        "operationId": "deleteNamespace",
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/v1/sys/namespaces/": {
+      "get": {
+        "tags": ["namespaces"],
+        "summary": "List namespaces (LIST method)",
+        "operationId": "listNamespaces",
+        "responses": { "200": { "description": "Namespace names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
+      }
+    },
+    "/v1/sys/leases/renew": {
+      "post": {
+        "tags": ["sys"],
+        "summary": "Renew a lease",
+        "operationId": "renewLease",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "lease_id": { "type": "string" }, "increment": { "type": "integer", "description": "Seconds to extend" } } } } } },
+        "responses": {
+          "200": { "description": "Renewed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Lease" } } } },
+          "404": { "description": "Lease not found" }
+        }
+      }
+    },
+    "/v1/sys/leases/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["sys"],
+        "summary": "Look up a lease",
+        "operationId": "getLease",
+        "responses": {
+          "200": { "description": "Lease", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Lease" } } } },
+          "404": { "description": "Not found" }
+        }
+      },
+      "delete": {
+        "tags": ["sys"],
+        "summary": "Revoke a lease",
+        "operationId": "revokeLease",
+        "responses": { "204": { "description": "Revoked" } }
+      }
+    },
+    "/v1/sys/leases/": {
+      "get": {
+        "tags": ["sys"],
+        "summary": "List leases (LIST method)",
+        "operationId": "listLeases",
+        "responses": { "200": { "description": "Lease IDs", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
+      }
+    },
+    "/v1/sys/mounts": {
+      "get": {
+        "tags": ["sys"],
+        "summary": "List all mounts",
+        "operationId": "getMounts",
+        "responses": { "200": { "description": "Mount table" } }
+      }
+    },
+    "/v1/sys/mounts/{path}": {
+      "parameters": [{ "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "tags": ["sys"],
+        "summary": "Mount a secrets engine",
+        "operationId": "postMount",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Mount" } } } },
+        "responses": { "204": { "description": "Mounted" } }
+      },
+      "delete": {
+        "tags": ["sys"],
+        "summary": "Unmount a secrets engine",
+        "operationId": "deleteMount",
+        "responses": { "204": { "description": "Unmounted" } }
+      }
+    },
+    "/v1/sys/mounts-tune/{path}": {
+      "parameters": [{ "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["sys"],
+        "summary": "Get mount tuning config",
+        "operationId": "getMountTune",
+        "responses": { "200": { "description": "Tune config" } }
+      },
+      "post": {
+        "tags": ["sys"],
+        "summary": "Update mount tuning config",
+        "operationId": "postMountTune",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "default_lease_ttl": { "type": "string" }, "max_lease_ttl": { "type": "string" } } } } } },
+        "responses": { "204": { "description": "Updated" } }
+      }
+    },
+    "/v1/sys/cluster": {
+      "get": {
+        "tags": ["sys"],
+        "summary": "Get cluster status (Raft HA)",
+        "operationId": "getCluster",
+        "responses": { "200": { "description": "Cluster state" } }
+      }
+    },
+    "/v1/sys/cluster/join": {
+      "post": {
+        "tags": ["sys"],
+        "summary": "Join a Raft cluster as a follower",
+        "operationId": "joinCluster",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "leader_api_addr": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Joined" } }
+      }
+    },
+    "/v1/sys/cluster/node/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "delete": {
+        "tags": ["sys"],
+        "summary": "Remove a Raft node",
+        "operationId": "deleteClusterNode",
+        "responses": { "204": { "description": "Removed" } }
+      }
+    },
+    "/v1/sys/replication/status": {
+      "get": {
+        "tags": ["sys"],
+        "summary": "Replication status",
+        "operationId": "getReplicationStatus",
+        "responses": { "200": { "description": "Replication state" } }
+      }
+    },
+    "/v1/sys/replication/primary/enable": {
+      "post": {
+        "tags": ["sys"],
+        "summary": "Enable this node as replication primary",
+        "operationId": "enableReplicationPrimary",
+        "responses": { "200": { "description": "Enabled; returns bootstrap token" } }
+      }
+    },
+    "/v1/sys/replication/secondary/enable": {
+      "post": {
+        "tags": ["sys"],
+        "summary": "Enable this node as replication secondary",
+        "operationId": "enableReplicationSecondary",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "token": { "type": "string" }, "primary_api_addr": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Enabled" } }
+      }
+    },
+    "/v1/sys/replication/disable": {
+      "post": {
+        "tags": ["sys"],
+        "summary": "Disable replication on this node",
+        "operationId": "disableReplication",
+        "responses": { "204": { "description": "Disabled" } }
+      }
+    },
+    "/v1/sys/plugins/catalog/{type}/{name}": {
+      "parameters": [
+        { "name": "type", "in": "path", "required": true, "schema": { "type": "string", "enum": ["auth", "secret", "database"] } },
+        { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "get": {
+        "tags": ["sys"],
+        "summary": "Get a plugin catalog entry",
+        "operationId": "getPlugin",
+        "responses": { "200": { "description": "Plugin info" }, "404": { "description": "Not found" } }
+      },
+      "post": {
+        "tags": ["sys"],
+        "summary": "Register a plugin",
+        "operationId": "registerPlugin",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "command": { "type": "string" }, "sha256": { "type": "string" } } } } } },
+        "responses": { "204": { "description": "Registered" } }
+      },
+      "delete": {
+        "tags": ["sys"],
+        "summary": "Deregister a plugin",
+        "operationId": "deletePlugin",
+        "responses": { "204": { "description": "Deregistered" } }
+      }
+    },
+    "/v1/sys/plugins/catalog/{type}/": {
+      "parameters": [{ "name": "type", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["sys"],
+        "summary": "List plugins of a type (LIST method)",
+        "operationId": "listPluginsByType",
+        "responses": { "200": { "description": "Plugin names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
+      }
+    },
+    "/v1/sys/plugins/catalog/": {
+      "get": {
+        "tags": ["sys"],
+        "summary": "List all plugins (LIST method)",
+        "operationId": "listAllPlugins",
+        "responses": { "200": { "description": "Plugins by type" } }
+      }
+    },
     "/v1/secret/{path}": {
       "parameters": [{ "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }],
       "get": {
-        "summary": "Read a secret (KV v1)",
+        "tags": ["kv"],
+        "summary": "Read a KV v1 secret",
+        "operationId": "getKVv1",
         "responses": {
           "200": { "description": "Secret value", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KVv1Response" } } } },
           "404": { "description": "Not found" }
         }
       },
       "put": {
-        "summary": "Write a secret (KV v1)",
+        "tags": ["kv"],
+        "summary": "Write a KV v1 secret",
+        "operationId": "putKVv1",
         "requestBody": { "required": true, "content": { "application/octet-stream": {}, "text/plain": {} } },
-        "responses": {
-          "204": { "description": "Written" }
-        }
+        "responses": { "204": { "description": "Written" } }
       },
       "delete": {
-        "summary": "Delete a secret (KV v1)",
-        "responses": {
-          "204": { "description": "Deleted" }
-        }
-      }
-    },
-    "/v1/auth/token": {
-      "post": {
-        "summary": "Create a token",
-        "requestBody": {
-          "content": { "application/json": { "schema": { "type": "object", "properties": { "display_name": { "type": "string" }, "policies": { "type": "array", "items": { "type": "string" } }, "ttl": { "type": "string", "example": "24h" } } } } }
-        },
-        "responses": {
-          "200": { "description": "Token created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Token" } } } }
-        }
-      }
-    },
-    "/v1/auth/token/{id}": {
-      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "get": {
-        "summary": "Look up a token",
-        "responses": {
-          "200": { "description": "Token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Token" } } } },
-          "404": { "description": "Not found" }
-        }
-      },
-      "delete": {
-        "summary": "Revoke a token",
-        "responses": { "204": { "description": "Revoked" } }
-      }
-    },
-    "/v1/auth/token/{id}/renew": {
-      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "post": {
-        "summary": "Renew a token's TTL",
-        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "ttl": { "type": "string", "example": "48h" } } } } } },
-        "responses": {
-          "200": { "description": "Token renewed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Token" } } } }
-        }
-      }
-    },
-    "/v1/policy/{name}": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "get": {
-        "summary": "Get a policy",
-        "responses": { "200": { "description": "Policy", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Policy" } } } } }
-      },
-      "put": {
-        "summary": "Create or update a policy",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Policy" } } } },
-        "responses": { "204": { "description": "Saved" } }
-      },
-      "delete": {
-        "summary": "Delete a policy",
+        "tags": ["kv"],
+        "summary": "Delete a KV v1 secret",
+        "operationId": "deleteKVv1",
         "responses": { "204": { "description": "Deleted" } }
       }
     },
-    "/v1/auth/kubernetes/login": {
-      "post": {
-        "summary": "Exchange a Kubernetes ServiceAccount token for a Tuck token",
-        "security": [],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "token": { "type": "string" } }, "required": ["token"] } } } },
-        "responses": { "200": { "description": "Tuck token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Token" } } } } }
+    "/v1/secret/": {
+      "get": {
+        "tags": ["kv"],
+        "summary": "List KV v1 secret keys at a prefix (LIST method)",
+        "operationId": "listKVv1",
+        "parameters": [{ "name": "prefix", "in": "query", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Keys", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
       }
     },
     "/v2/secret/{path}": {
-      "parameters": [
-        { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }
-      ],
+      "parameters": [{ "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }],
       "get": {
+        "tags": ["kv"],
         "summary": "Read a versioned secret (KV v2)",
-        "parameters": [{ "name": "version", "in": "query", "schema": { "type": "integer" }, "description": "Version number (0 = current)" }],
+        "operationId": "getKVv2",
+        "parameters": [{ "name": "version", "in": "query", "schema": { "type": "integer" }, "description": "0 = current" }],
         "responses": {
-          "200": { "description": "Secret value and metadata", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KVv2Response" } } } },
+          "200": { "description": "Secret", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KVv2Response" } } } },
           "404": { "description": "Not found or deleted" }
         }
       },
       "put": {
+        "tags": ["kv"],
         "summary": "Write a new version (KV v2)",
-        "parameters": [{ "name": "cas", "in": "query", "schema": { "type": "integer" }, "description": "Check-and-set: reject if current version != cas" }],
+        "operationId": "putKVv2",
+        "parameters": [{ "name": "cas", "in": "query", "schema": { "type": "integer" }, "description": "Check-and-set version" }],
         "requestBody": { "required": true, "content": { "application/octet-stream": {}, "text/plain": {} } },
         "responses": {
-          "200": { "description": "Version written", "content": { "application/json": { "schema": { "type": "object", "properties": { "version": { "type": "integer" }, "path": { "type": "string" } } } } } },
+          "200": { "description": "Version written" },
           "409": { "description": "CAS mismatch" }
         }
       },
       "delete": {
+        "tags": ["kv"],
         "summary": "Soft-delete versions (KV v2)",
-        "parameters": [{ "name": "versions", "in": "query", "schema": { "type": "string" }, "description": "Comma-separated version numbers (default: current)" }],
+        "operationId": "deleteKVv2",
+        "parameters": [{ "name": "versions", "in": "query", "schema": { "type": "string" }, "description": "Comma-separated version numbers" }],
         "responses": { "204": { "description": "Soft-deleted" } }
+      }
+    },
+    "/v2/secret/": {
+      "get": {
+        "tags": ["kv"],
+        "summary": "List KV v2 secret keys (LIST method)",
+        "operationId": "listKVv2",
+        "parameters": [{ "name": "prefix", "in": "query", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Keys", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
       }
     },
     "/v2/secret/undelete/{path}": {
       "parameters": [{ "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }],
       "post": {
-        "summary": "Undelete versions (KV v2)",
+        "tags": ["kv"],
+        "summary": "Undelete specific versions (KV v2)",
+        "operationId": "undeleteKVv2",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "versions": { "type": "array", "items": { "type": "integer" } } } } } } },
         "responses": { "204": { "description": "Undeleted" } }
       }
@@ -293,7 +653,9 @@
     "/v2/secret/destroy/{path}": {
       "parameters": [{ "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }],
       "post": {
+        "tags": ["kv"],
         "summary": "Permanently destroy versions — data is unrecoverable (KV v2)",
+        "operationId": "destroyKVv2",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "versions": { "type": "array", "items": { "type": "integer" } } } } } } },
         "responses": { "204": { "description": "Destroyed" } }
       }
@@ -301,31 +663,913 @@
     "/v2/secret/metadata/{path}": {
       "parameters": [{ "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }],
       "get": {
+        "tags": ["kv"],
         "summary": "Get version metadata (KV v2)",
-        "responses": {
-          "200": { "description": "Metadata", "content": { "application/json": { "schema": { "type": "object", "properties": { "path": { "type": "string" }, "metadata": { "$ref": "#/components/schemas/KVMeta" } } } } } }
-        }
+        "operationId": "getKVv2Meta",
+        "responses": { "200": { "description": "Metadata", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KVMeta" } } } } }
       },
       "put": {
+        "tags": ["kv"],
         "summary": "Update metadata config (KV v2)",
+        "operationId": "putKVv2Meta",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "max_versions": { "type": "integer" } } } } } },
         "responses": { "204": { "description": "Updated" } }
       },
       "delete": {
+        "tags": ["kv"],
         "summary": "Delete all versions and metadata (KV v2)",
+        "operationId": "deleteKVv2Meta",
         "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/v1/policy/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["policy"],
+        "summary": "Get a policy",
+        "operationId": "getPolicy",
+        "responses": { "200": { "description": "Policy", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Policy" } } } }, "404": { "description": "Not found" } }
+      },
+      "put": {
+        "tags": ["policy"],
+        "summary": "Create or update a policy",
+        "operationId": "putPolicy",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Policy" } } } },
+        "responses": { "204": { "description": "Saved" } }
+      },
+      "delete": {
+        "tags": ["policy"],
+        "summary": "Delete a policy",
+        "operationId": "deletePolicy",
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/v1/policy/": {
+      "get": {
+        "tags": ["policy"],
+        "summary": "List policies (LIST method)",
+        "operationId": "listPolicies",
+        "responses": { "200": { "description": "Policy names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
+      }
+    },
+    "/v1/auth/token": {
+      "post": {
+        "tags": ["auth-token"],
+        "summary": "Create a token",
+        "operationId": "createToken",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "display_name": { "type": "string" }, "policies": { "type": "array", "items": { "type": "string" } }, "ttl": { "type": "string", "example": "24h" }, "no_parent": { "type": "boolean" } } } } } },
+        "responses": { "200": { "description": "Token created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Token" } } } } }
+      }
+    },
+    "/v1/auth/token/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["auth-token"],
+        "summary": "Look up a token",
+        "operationId": "lookupToken",
+        "responses": { "200": { "description": "Token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Token" } } } }, "404": { "description": "Not found" } }
+      },
+      "delete": {
+        "tags": ["auth-token"],
+        "summary": "Revoke a token",
+        "operationId": "revokeToken",
+        "responses": { "204": { "description": "Revoked" } }
+      }
+    },
+    "/v1/auth/token/{id}/renew": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "tags": ["auth-token"],
+        "summary": "Renew a token's TTL",
+        "operationId": "renewToken",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "ttl": { "type": "string", "example": "48h" } } } } } },
+        "responses": { "200": { "description": "Renewed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Token" } } } } }
+      }
+    },
+    "/v1/auth/token/": {
+      "get": {
+        "tags": ["auth-token"],
+        "summary": "List tokens (LIST method)",
+        "operationId": "listTokens",
+        "responses": { "200": { "description": "Token IDs", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
+      }
+    },
+    "/v1/auth/token/lookup-self": {
+      "get": {
+        "tags": ["auth-token"],
+        "summary": "Look up the caller's own token",
+        "operationId": "lookupSelf",
+        "responses": { "200": { "description": "Caller token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Token" } } } } }
+      }
+    },
+    "/v1/auth/token/renew-self": {
+      "post": {
+        "tags": ["auth-token"],
+        "summary": "Renew the caller's own token",
+        "operationId": "renewSelf",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "ttl": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Renewed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Token" } } } } }
+      }
+    },
+    "/v1/auth/token/lookup-accessor": {
+      "post": {
+        "tags": ["auth-token"],
+        "summary": "Look up a token by accessor (without exposing the token ID)",
+        "operationId": "lookupByAccessor",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "accessor": { "type": "string" } }, "required": ["accessor"] } } } },
+        "responses": { "200": { "description": "Token info", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Token" } } } } }
+      }
+    },
+    "/v1/auth/token/revoke-accessor": {
+      "delete": {
+        "tags": ["auth-token"],
+        "summary": "Revoke a token by accessor",
+        "operationId": "revokeByAccessor",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "accessor": { "type": "string" } } } } } },
+        "responses": { "204": { "description": "Revoked" } }
+      }
+    },
+    "/v1/auth/token/roles/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["auth-token"],
+        "summary": "Get a token role",
+        "operationId": "getTokenRole",
+        "responses": { "200": { "description": "Token role" }, "404": { "description": "Not found" } }
+      },
+      "put": {
+        "tags": ["auth-token"],
+        "summary": "Create or update a token role",
+        "operationId": "putTokenRole",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "allowed_policies": { "type": "array", "items": { "type": "string" } }, "ttl": { "type": "string" }, "max_ttl": { "type": "string" }, "renewable": { "type": "boolean" } } } } } },
+        "responses": { "204": { "description": "Saved" } }
+      },
+      "delete": {
+        "tags": ["auth-token"],
+        "summary": "Delete a token role",
+        "operationId": "deleteTokenRole",
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/v1/auth/token/roles/": {
+      "get": {
+        "tags": ["auth-token"],
+        "summary": "List token roles (LIST method)",
+        "operationId": "listTokenRoles",
+        "responses": { "200": { "description": "Role names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
+      }
+    },
+    "/v1/auth/token/roles/{role}/create": {
+      "parameters": [{ "name": "role", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "tags": ["auth-token"],
+        "summary": "Create a token constrained by a role",
+        "operationId": "createTokenByRole",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "display_name": { "type": "string" }, "ttl": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Token" } } } } }
+      }
+    },
+    "/v1/auth/approle/login": {
+      "post": {
+        "tags": ["auth-approle"],
+        "summary": "Exchange RoleID + SecretID for a Tuck token",
+        "operationId": "loginAppRole",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "role_id": { "type": "string" }, "secret_id": { "type": "string" } }, "required": ["role_id", "secret_id"] } } } },
+        "responses": {
+          "200": { "description": "Tuck token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } },
+          "401": { "description": "Invalid credentials" }
+        }
+      }
+    },
+    "/v1/auth/approle/role/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["auth-approle"],
+        "summary": "Get an AppRole",
+        "operationId": "getAppRole",
+        "responses": { "200": { "description": "Role" }, "404": { "description": "Not found" } }
+      },
+      "put": {
+        "tags": ["auth-approle"],
+        "summary": "Create or update an AppRole",
+        "operationId": "putAppRole",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "policies": { "type": "array", "items": { "type": "string" } }, "secret_id_ttl": { "type": "string" }, "secret_id_num_uses": { "type": "integer" }, "token_ttl": { "type": "string" }, "bound_cidrs": { "type": "array", "items": { "type": "string" } } } } } } },
+        "responses": { "204": { "description": "Saved" } }
+      },
+      "delete": {
+        "tags": ["auth-approle"],
+        "summary": "Delete an AppRole",
+        "operationId": "deleteAppRole",
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/v1/auth/approle/role/": {
+      "get": {
+        "tags": ["auth-approle"],
+        "summary": "List AppRoles (LIST method)",
+        "operationId": "listAppRoles",
+        "responses": { "200": { "description": "Role names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
+      }
+    },
+    "/v1/auth/approle/role/{name}/secret-id": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "tags": ["auth-approle"],
+        "summary": "Generate a SecretID for an AppRole",
+        "operationId": "generateSecretID",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "metadata": { "type": "object" }, "bound_cidrs": { "type": "array", "items": { "type": "string" } } } } } } },
+        "responses": { "200": { "description": "SecretID", "content": { "application/json": { "schema": { "type": "object", "properties": { "secret_id": { "type": "string" }, "secret_id_accessor": { "type": "string" }, "expires_at": { "type": "string", "format": "date-time" } } } } } } }
+      }
+    },
+    "/v1/auth/approle/role/{name}/secret-id/{id}": {
+      "parameters": [
+        { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } },
+        { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "get": {
+        "tags": ["auth-approle"],
+        "summary": "Look up a SecretID",
+        "operationId": "lookupSecretID",
+        "responses": { "200": { "description": "SecretID info" }, "404": { "description": "Not found" } }
+      },
+      "delete": {
+        "tags": ["auth-approle"],
+        "summary": "Revoke a SecretID",
+        "operationId": "revokeSecretID",
+        "responses": { "204": { "description": "Revoked" } }
+      }
+    },
+    "/v1/auth/kubernetes/login": {
+      "post": {
+        "tags": ["auth-kubernetes"],
+        "summary": "Exchange a Kubernetes ServiceAccount token for a Tuck token",
+        "operationId": "loginKubernetes",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "token": { "type": "string" } }, "required": ["token"] } } } },
+        "responses": { "200": { "description": "Tuck token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } } }
+      }
+    },
+    "/v1/auth/kubernetes/role/{namespace}/{sa}": {
+      "parameters": [
+        { "name": "namespace", "in": "path", "required": true, "schema": { "type": "string" } },
+        { "name": "sa", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "get": {
+        "tags": ["auth-kubernetes"],
+        "summary": "Get a Kubernetes auth role",
+        "operationId": "getK8sRole",
+        "responses": { "200": { "description": "Role" }, "404": { "description": "Not found" } }
+      },
+      "put": {
+        "tags": ["auth-kubernetes"],
+        "summary": "Create or update a Kubernetes auth role",
+        "operationId": "putK8sRole",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "policies": { "type": "array", "items": { "type": "string" } }, "ttl": { "type": "string" } } } } } },
+        "responses": { "204": { "description": "Saved" } }
+      },
+      "delete": {
+        "tags": ["auth-kubernetes"],
+        "summary": "Delete a Kubernetes auth role",
+        "operationId": "deleteK8sRole",
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/v1/auth/jwt/login": {
+      "post": {
+        "tags": ["auth-jwt"],
+        "summary": "Exchange a JWT/OIDC token for a Tuck token",
+        "operationId": "loginJWT",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "jwt": { "type": "string" }, "role": { "type": "string" } }, "required": ["jwt", "role"] } } } },
+        "responses": { "200": { "description": "Tuck token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } }, "401": { "description": "Invalid token" }, "403": { "description": "Claims mismatch" } }
+      }
+    },
+    "/v1/auth/jwt/config": {
+      "get": {
+        "tags": ["auth-jwt"],
+        "summary": "Get JWT provider config",
+        "operationId": "getJWTConfig",
+        "responses": { "200": { "description": "Config" } }
+      },
+      "put": {
+        "tags": ["auth-jwt"],
+        "summary": "Set JWT provider config",
+        "operationId": "putJWTConfig",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "jwks_uri": { "type": "string" }, "issuer": { "type": "string" }, "bound_issuer": { "type": "string" } } } } } },
+        "responses": { "204": { "description": "Saved" } }
+      }
+    },
+    "/v1/auth/jwt/role/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["auth-jwt"],
+        "summary": "Get a JWT role",
+        "operationId": "getJWTRole",
+        "responses": { "200": { "description": "Role" }, "404": { "description": "Not found" } }
+      },
+      "put": {
+        "tags": ["auth-jwt"],
+        "summary": "Create or update a JWT role",
+        "operationId": "putJWTRole",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "bound_subject": { "type": "string" }, "bound_audiences": { "type": "array", "items": { "type": "string" } }, "bound_claims": { "type": "object" }, "policies": { "type": "array", "items": { "type": "string" } }, "ttl": { "type": "string" } } } } } },
+        "responses": { "204": { "description": "Saved" } }
+      },
+      "delete": {
+        "tags": ["auth-jwt"],
+        "summary": "Delete a JWT role",
+        "operationId": "deleteJWTRole",
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/v1/auth/jwt/role/": {
+      "get": {
+        "tags": ["auth-jwt"],
+        "summary": "List JWT roles (LIST method)",
+        "operationId": "listJWTRoles",
+        "responses": { "200": { "description": "Role names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
+      }
+    },
+    "/v1/auth/github/login": {
+      "post": {
+        "tags": ["auth-github"],
+        "summary": "Exchange a GitHub Actions OIDC token for a Tuck token",
+        "operationId": "loginGitHub",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "token": { "type": "string", "description": "GitHub Actions OIDC token from ${{ secrets.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}" }, "role": { "type": "string" } }, "required": ["token", "role"] } } } },
+        "responses": { "200": { "description": "Tuck token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } }, "401": { "description": "Invalid or expired OIDC token" }, "403": { "description": "Claims do not match role" }, "404": { "description": "Role not found" } }
+      }
+    },
+    "/v1/auth/github/role/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["auth-github"],
+        "summary": "Get a GitHub auth role",
+        "operationId": "getGitHubRole",
+        "responses": { "200": { "description": "Role" }, "404": { "description": "Not found" } }
+      },
+      "put": {
+        "tags": ["auth-github"],
+        "summary": "Create or update a GitHub auth role",
+        "operationId": "putGitHubRole",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "repository": { "type": "string", "example": "myorg/myrepo" }, "repository_owner": { "type": "string" }, "ref": { "type": "string", "example": "refs/heads/main" }, "environment": { "type": "string" }, "workflow_ref": { "type": "string" }, "actor": { "type": "string" }, "audience": { "type": "string" }, "policies": { "type": "array", "items": { "type": "string" } }, "ttl": { "type": "string" } } } } } },
+        "responses": { "204": { "description": "Saved" } }
+      },
+      "delete": {
+        "tags": ["auth-github"],
+        "summary": "Delete a GitHub auth role",
+        "operationId": "deleteGitHubRole",
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/v1/auth/github/role/": {
+      "get": {
+        "tags": ["auth-github"],
+        "summary": "List GitHub auth roles (LIST method)",
+        "operationId": "listGitHubRoles",
+        "responses": { "200": { "description": "Role names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
+      }
+    },
+    "/v1/auth/ldap/login": {
+      "post": {
+        "tags": ["auth-ldap"],
+        "summary": "Authenticate with LDAP/Active Directory credentials",
+        "operationId": "loginLDAP",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "username": { "type": "string" }, "password": { "type": "string" } }, "required": ["username", "password"] } } } },
+        "responses": { "200": { "description": "Tuck token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } }, "401": { "description": "Invalid credentials" } }
+      }
+    },
+    "/v1/auth/ldap/config": {
+      "get": {
+        "tags": ["auth-ldap"],
+        "summary": "Get LDAP config",
+        "operationId": "getLDAPConfig",
+        "responses": { "200": { "description": "Config" } }
+      },
+      "put": {
+        "tags": ["auth-ldap"],
+        "summary": "Set LDAP config",
+        "operationId": "putLDAPConfig",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "url": { "type": "string", "example": "ldaps://ldap.example.com" }, "bind_dn": { "type": "string" }, "bind_password": { "type": "string" }, "user_dn": { "type": "string" }, "group_dn": { "type": "string" }, "insecure_tls": { "type": "boolean" } } } } } },
+        "responses": { "204": { "description": "Saved" } }
+      }
+    },
+    "/v1/auth/ldap/role/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["auth-ldap"],
+        "summary": "Get an LDAP role",
+        "operationId": "getLDAPRole",
+        "responses": { "200": { "description": "Role" }, "404": { "description": "Not found" } }
+      },
+      "put": {
+        "tags": ["auth-ldap"],
+        "summary": "Create or update an LDAP role",
+        "operationId": "putLDAPRole",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "groups": { "type": "array", "items": { "type": "string" } }, "users": { "type": "array", "items": { "type": "string" } }, "policies": { "type": "array", "items": { "type": "string" } }, "ttl": { "type": "string" } } } } } },
+        "responses": { "204": { "description": "Saved" } }
+      },
+      "delete": {
+        "tags": ["auth-ldap"],
+        "summary": "Delete an LDAP role",
+        "operationId": "deleteLDAPRole",
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/v1/auth/ldap/role/": {
+      "get": {
+        "tags": ["auth-ldap"],
+        "summary": "List LDAP roles (LIST method)",
+        "operationId": "listLDAPRoles",
+        "responses": { "200": { "description": "Role names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
+      }
+    },
+    "/v1/transit/keys/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["transit"],
+        "summary": "Get a transit key",
+        "operationId": "getTransitKey",
+        "responses": { "200": { "description": "Key info", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransitKey" } } } } }
+      },
+      "post": {
+        "tags": ["transit"],
+        "summary": "Create a transit key",
+        "operationId": "createTransitKey",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "type": { "type": "string", "enum": ["aes256-gcm96", "chacha20-poly1305", "ed25519", "ecdsa-p256", "rsa-2048", "rsa-4096"] }, "exportable": { "type": "boolean" } } } } } },
+        "responses": { "204": { "description": "Created" } }
+      },
+      "delete": {
+        "tags": ["transit"],
+        "summary": "Delete a transit key",
+        "operationId": "deleteTransitKey",
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/v1/transit/keys/": {
+      "get": {
+        "tags": ["transit"],
+        "summary": "List transit keys (LIST method)",
+        "operationId": "listTransitKeys",
+        "responses": { "200": { "description": "Key names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
+      }
+    },
+    "/v1/transit/keys/{name}/rotate": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "tags": ["transit"],
+        "summary": "Rotate a transit key",
+        "operationId": "rotateTransitKey",
+        "responses": { "204": { "description": "Rotated" } }
+      }
+    },
+    "/v1/transit/encrypt/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "tags": ["transit"],
+        "summary": "Encrypt plaintext with a transit key",
+        "operationId": "transitEncrypt",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "plaintext": { "type": "string", "description": "Base64-encoded plaintext" } }, "required": ["plaintext"] } } } },
+        "responses": { "200": { "description": "Ciphertext", "content": { "application/json": { "schema": { "type": "object", "properties": { "ciphertext": { "type": "string" } } } } } } }
+      }
+    },
+    "/v1/transit/decrypt/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "tags": ["transit"],
+        "summary": "Decrypt ciphertext with a transit key",
+        "operationId": "transitDecrypt",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "ciphertext": { "type": "string" } }, "required": ["ciphertext"] } } } },
+        "responses": { "200": { "description": "Plaintext (base64)", "content": { "application/json": { "schema": { "type": "object", "properties": { "plaintext": { "type": "string" } } } } } } }
+      }
+    },
+    "/v1/transit/sign/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "tags": ["transit"],
+        "summary": "Sign data with an asymmetric transit key",
+        "operationId": "transitSign",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "input": { "type": "string", "description": "Base64-encoded data" } } } } } },
+        "responses": { "200": { "description": "Signature", "content": { "application/json": { "schema": { "type": "object", "properties": { "signature": { "type": "string" } } } } } } }
+      }
+    },
+    "/v1/transit/verify/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "tags": ["transit"],
+        "summary": "Verify a signature",
+        "operationId": "transitVerify",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "input": { "type": "string" }, "signature": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Verification result", "content": { "application/json": { "schema": { "type": "object", "properties": { "valid": { "type": "boolean" } } } } } } }
+      }
+    },
+    "/v1/transit/hmac/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "tags": ["transit"],
+        "summary": "Generate an HMAC",
+        "operationId": "transitHMAC",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "input": { "type": "string" }, "algorithm": { "type": "string", "enum": ["sha2-256", "sha2-512"] } } } } } },
+        "responses": { "200": { "description": "HMAC", "content": { "application/json": { "schema": { "type": "object", "properties": { "hmac": { "type": "string" } } } } } } }
+      }
+    },
+    "/v1/transit/rewrap/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "tags": ["transit"],
+        "summary": "Re-encrypt ciphertext under the latest key version",
+        "operationId": "transitRewrap",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "ciphertext": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "New ciphertext" } }
+      }
+    },
+    "/v1/pki/generate/root": {
+      "post": {
+        "tags": ["pki"],
+        "summary": "Generate a self-signed root CA",
+        "operationId": "pkiGenerateRoot",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "common_name": { "type": "string" }, "ttl": { "type": "string" }, "key_type": { "type": "string", "enum": ["rsa", "ec"] }, "key_bits": { "type": "integer" } } } } } },
+        "responses": { "200": { "description": "CA certificate and private key" } }
+      }
+    },
+    "/v1/pki/import/ca": {
+      "post": {
+        "tags": ["pki"],
+        "summary": "Import an external CA certificate and key",
+        "operationId": "pkiImportCA",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "pem_bundle": { "type": "string" } } } } } },
+        "responses": { "204": { "description": "Imported" } }
+      }
+    },
+    "/v1/pki/ca/pem": {
+      "get": {
+        "tags": ["pki"],
+        "summary": "Get the CA certificate in PEM format",
+        "operationId": "pkiGetCA",
+        "security": [],
+        "responses": { "200": { "description": "PEM certificate", "content": { "application/x-pem-file": {} } } }
+      }
+    },
+    "/v1/pki/roles/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["pki"],
+        "summary": "Get a PKI role",
+        "operationId": "getPKIRole",
+        "responses": { "200": { "description": "Role" }, "404": { "description": "Not found" } }
+      },
+      "put": {
+        "tags": ["pki"],
+        "summary": "Create or update a PKI role",
+        "operationId": "putPKIRole",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "allowed_domains": { "type": "array", "items": { "type": "string" } }, "allow_subdomains": { "type": "boolean" }, "max_ttl": { "type": "string" }, "key_type": { "type": "string" } } } } } },
+        "responses": { "204": { "description": "Saved" } }
+      },
+      "delete": {
+        "tags": ["pki"],
+        "summary": "Delete a PKI role",
+        "operationId": "deletePKIRole",
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/v1/pki/issue/{role}": {
+      "parameters": [{ "name": "role", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "tags": ["pki"],
+        "summary": "Issue a certificate",
+        "operationId": "pkiIssue",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "common_name": { "type": "string" }, "alt_names": { "type": "string" }, "ttl": { "type": "string" } }, "required": ["common_name"] } } } },
+        "responses": { "200": { "description": "Certificate, key, CA chain" } }
+      }
+    },
+    "/v1/pki/revoke/{serial}": {
+      "parameters": [{ "name": "serial", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "tags": ["pki"],
+        "summary": "Revoke a certificate by serial number",
+        "operationId": "pkiRevoke",
+        "responses": { "200": { "description": "Revoked" } }
+      }
+    },
+    "/v1/ssh/generate/ca": {
+      "post": {
+        "tags": ["ssh"],
+        "summary": "Generate an SSH CA key pair",
+        "operationId": "sshGenerateCA",
+        "responses": { "200": { "description": "Public key" } }
+      }
+    },
+    "/v1/ssh/ca/public-key": {
+      "get": {
+        "tags": ["ssh"],
+        "summary": "Get the SSH CA public key",
+        "operationId": "sshGetCAPublicKey",
+        "security": [],
+        "responses": { "200": { "description": "OpenSSH public key", "content": { "text/plain": {} } } }
+      }
+    },
+    "/v1/ssh/roles/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["ssh"],
+        "summary": "Get an SSH role",
+        "operationId": "getSSHRole",
+        "responses": { "200": { "description": "Role" }, "404": { "description": "Not found" } }
+      },
+      "put": {
+        "tags": ["ssh"],
+        "summary": "Create or update an SSH role",
+        "operationId": "putSSHRole",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "allowed_users": { "type": "string" }, "allowed_extensions": { "type": "string" }, "default_extensions": { "type": "object" }, "ttl": { "type": "string" } } } } } },
+        "responses": { "204": { "description": "Saved" } }
+      },
+      "delete": {
+        "tags": ["ssh"],
+        "summary": "Delete an SSH role",
+        "operationId": "deleteSSHRole",
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/v1/ssh/sign/{role}": {
+      "parameters": [{ "name": "role", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "tags": ["ssh"],
+        "summary": "Sign a public key and issue an SSH certificate",
+        "operationId": "sshSign",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "public_key": { "type": "string" }, "valid_principals": { "type": "string" }, "ttl": { "type": "string" } }, "required": ["public_key"] } } } },
+        "responses": { "200": { "description": "Signed certificate" } }
+      }
+    },
+    "/v1/totp/keys/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["totp"],
+        "summary": "Get a TOTP key",
+        "operationId": "getTOTPKey",
+        "responses": { "200": { "description": "TOTP key info" }, "404": { "description": "Not found" } }
+      },
+      "post": {
+        "tags": ["totp"],
+        "summary": "Create a TOTP key",
+        "operationId": "createTOTPKey",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "generate": { "type": "boolean" }, "issuer": { "type": "string" }, "account_name": { "type": "string" }, "period": { "type": "integer" }, "algorithm": { "type": "string", "enum": ["SHA1", "SHA256", "SHA512"] }, "digits": { "type": "integer", "enum": [6, 8] } } } } } },
+        "responses": { "200": { "description": "TOTP key (includes QR URL when generate=true)" } }
+      },
+      "delete": {
+        "tags": ["totp"],
+        "summary": "Delete a TOTP key",
+        "operationId": "deleteTOTPKey",
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/v1/totp/code/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["totp"],
+        "summary": "Generate a TOTP code",
+        "operationId": "generateTOTPCode",
+        "responses": { "200": { "description": "Current TOTP code", "content": { "application/json": { "schema": { "type": "object", "properties": { "code": { "type": "string" } } } } } } }
+      },
+      "post": {
+        "tags": ["totp"],
+        "summary": "Validate a TOTP code",
+        "operationId": "validateTOTPCode",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "code": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Valid", "content": { "application/json": { "schema": { "type": "object", "properties": { "valid": { "type": "boolean" } } } } } }, "400": { "description": "Invalid code" } }
+      }
+    },
+    "/v1/aws/config": {
+      "get": { "tags": ["aws"], "summary": "Get AWS config", "operationId": "getAWSConfig", "responses": { "200": { "description": "Config" } } },
+      "put": { "tags": ["aws"], "summary": "Set AWS config", "operationId": "putAWSConfig", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "access_key": { "type": "string" }, "secret_key": { "type": "string" }, "region": { "type": "string" } } } } } }, "responses": { "204": { "description": "Saved" } } },
+      "delete": { "tags": ["aws"], "summary": "Delete AWS config", "operationId": "deleteAWSConfig", "responses": { "204": { "description": "Deleted" } } }
+    },
+    "/v1/aws/roles/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": { "tags": ["aws"], "summary": "Get an AWS role", "operationId": "getAWSRole", "responses": { "200": { "description": "Role" }, "404": { "description": "Not found" } } },
+      "put": { "tags": ["aws"], "summary": "Create or update an AWS role", "operationId": "putAWSRole", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "credential_type": { "type": "string", "enum": ["iam_user", "assumed_role", "federation_token"] }, "policy_arns": { "type": "array", "items": { "type": "string" } }, "role_arns": { "type": "array", "items": { "type": "string" } }, "ttl": { "type": "string" } } } } } }, "responses": { "204": { "description": "Saved" } } },
+      "delete": { "tags": ["aws"], "summary": "Delete an AWS role", "operationId": "deleteAWSRole", "responses": { "204": { "description": "Deleted" } } }
+    },
+    "/v1/aws/creds/{role}": {
+      "parameters": [{ "name": "role", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": { "tags": ["aws"], "summary": "Generate AWS credentials", "operationId": "getAWSCreds", "responses": { "200": { "description": "AWS credentials", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DynamicCreds" } } } } } }
+    },
+    "/v1/gcp/config": {
+      "get": { "tags": ["gcp"], "summary": "Get GCP config", "operationId": "getGCPConfig", "responses": { "200": { "description": "Config" } } },
+      "put": { "tags": ["gcp"], "summary": "Set GCP config", "operationId": "putGCPConfig", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "credentials": { "type": "string", "description": "GCP service account JSON" } } } } } }, "responses": { "204": { "description": "Saved" } } },
+      "delete": { "tags": ["gcp"], "summary": "Delete GCP config", "operationId": "deleteGCPConfig", "responses": { "204": { "description": "Deleted" } } }
+    },
+    "/v1/gcp/roles/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": { "tags": ["gcp"], "summary": "Get a GCP role", "operationId": "getGCPRole", "responses": { "200": { "description": "Role" }, "404": { "description": "Not found" } } },
+      "put": { "tags": ["gcp"], "summary": "Create or update a GCP role", "operationId": "putGCPRole", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "secret_type": { "type": "string", "enum": ["access_token", "service_account_key"] }, "project": { "type": "string" }, "bindings": { "type": "string", "description": "HCL or JSON IAM bindings" }, "ttl": { "type": "string" } } } } } }, "responses": { "204": { "description": "Saved" } } },
+      "delete": { "tags": ["gcp"], "summary": "Delete a GCP role", "operationId": "deleteGCPRole", "responses": { "204": { "description": "Deleted" } } }
+    },
+    "/v1/gcp/creds/{role}": {
+      "parameters": [{ "name": "role", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": { "tags": ["gcp"], "summary": "Generate GCP credentials", "operationId": "getGCPCreds", "responses": { "200": { "description": "GCP credentials", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DynamicCreds" } } } } } }
+    },
+    "/v1/azure/config": {
+      "get": { "tags": ["azure"], "summary": "Get Azure config", "operationId": "getAzureConfig", "responses": { "200": { "description": "Config" } } },
+      "put": { "tags": ["azure"], "summary": "Set Azure config", "operationId": "putAzureConfig", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "subscription_id": { "type": "string" }, "tenant_id": { "type": "string" }, "client_id": { "type": "string" }, "client_secret": { "type": "string" } } } } } }, "responses": { "204": { "description": "Saved" } } },
+      "delete": { "tags": ["azure"], "summary": "Delete Azure config", "operationId": "deleteAzureConfig", "responses": { "204": { "description": "Deleted" } } }
+    },
+    "/v1/azure/roles/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": { "tags": ["azure"], "summary": "Get an Azure role", "operationId": "getAzureRole", "responses": { "200": { "description": "Role" }, "404": { "description": "Not found" } } },
+      "put": { "tags": ["azure"], "summary": "Create or update an Azure role", "operationId": "putAzureRole", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "azure_roles": { "type": "array", "items": { "type": "object", "properties": { "role_name": { "type": "string" }, "scope": { "type": "string" } } } }, "ttl": { "type": "string" } } } } } }, "responses": { "204": { "description": "Saved" } } },
+      "delete": { "tags": ["azure"], "summary": "Delete an Azure role", "operationId": "deleteAzureRole", "responses": { "204": { "description": "Deleted" } } }
+    },
+    "/v1/azure/creds/{role}": {
+      "parameters": [{ "name": "role", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": { "tags": ["azure"], "summary": "Generate Azure credentials (service principal)", "operationId": "getAzureCreds", "responses": { "200": { "description": "Azure SP credentials", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DynamicCreds" } } } } } }
+    },
+    "/v1/database/config/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": { "tags": ["database"], "summary": "Get a database connection config", "operationId": "getDatabaseConfig", "responses": { "200": { "description": "Config" }, "404": { "description": "Not found" } } },
+      "put": { "tags": ["database"], "summary": "Create or update a database connection", "operationId": "putDatabaseConfig", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "plugin_name": { "type": "string", "example": "postgresql-database-plugin" }, "connection_url": { "type": "string" }, "username": { "type": "string" }, "password": { "type": "string" }, "allowed_roles": { "type": "array", "items": { "type": "string" } } } } } } }, "responses": { "204": { "description": "Saved" } } },
+      "delete": { "tags": ["database"], "summary": "Delete a database connection", "operationId": "deleteDatabaseConfig", "responses": { "204": { "description": "Deleted" } } }
+    },
+    "/v1/database/role/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": { "tags": ["database"], "summary": "Get a database role", "operationId": "getDatabaseRole", "responses": { "200": { "description": "Role" }, "404": { "description": "Not found" } } },
+      "put": { "tags": ["database"], "summary": "Create or update a database role", "operationId": "putDatabaseRole", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "db_name": { "type": "string" }, "creation_statements": { "type": "array", "items": { "type": "string" } }, "revocation_statements": { "type": "array", "items": { "type": "string" } }, "default_ttl": { "type": "string" }, "max_ttl": { "type": "string" } } } } } }, "responses": { "204": { "description": "Saved" } } },
+      "delete": { "tags": ["database"], "summary": "Delete a database role", "operationId": "deleteDatabaseRole", "responses": { "204": { "description": "Deleted" } } }
+    },
+    "/v1/database/creds/{role}": {
+      "parameters": [{ "name": "role", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": { "tags": ["database"], "summary": "Generate database credentials", "operationId": "getDatabaseCreds", "responses": { "200": { "description": "Username and password with lease", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DynamicCreds" } } } } } }
+    },
+    "/v1/identity/entity": {
+      "post": {
+        "tags": ["identity"],
+        "summary": "Create an identity entity",
+        "operationId": "createEntity",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" }, "policies": { "type": "array", "items": { "type": "string" } }, "metadata": { "type": "object" } } } } } },
+        "responses": { "200": { "description": "Entity", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Entity" } } } } }
+      }
+    },
+    "/v1/identity/entity/id/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+      "get": { "tags": ["identity"], "summary": "Get entity by ID", "operationId": "getEntityByID", "responses": { "200": { "description": "Entity", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Entity" } } } }, "404": { "description": "Not found" } } },
+      "post": { "tags": ["identity"], "summary": "Update entity by ID", "operationId": "updateEntityByID", "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Entity" } } } }, "responses": { "200": { "description": "Updated entity" } } },
+      "delete": { "tags": ["identity"], "summary": "Delete entity by ID", "operationId": "deleteEntityByID", "responses": { "204": { "description": "Deleted" } } }
+    },
+    "/v1/identity/entity/name/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": { "tags": ["identity"], "summary": "Get entity by name", "operationId": "getEntityByName", "responses": { "200": { "description": "Entity", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Entity" } } } }, "404": { "description": "Not found" } } },
+      "post": { "tags": ["identity"], "summary": "Update entity by name", "operationId": "updateEntityByName", "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Entity" } } } }, "responses": { "200": { "description": "Updated entity" } } },
+      "delete": { "tags": ["identity"], "summary": "Delete entity by name", "operationId": "deleteEntityByName", "responses": { "204": { "description": "Deleted" } } }
+    },
+    "/v1/identity/entity/": {
+      "get": { "tags": ["identity"], "summary": "List entities (LIST method)", "operationId": "listEntities", "responses": { "200": { "description": "Entity IDs", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } } }
+    },
+    "/v1/identity/entity-alias": {
+      "post": {
+        "tags": ["identity"],
+        "summary": "Create an entity alias",
+        "operationId": "createEntityAlias",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" }, "canonical_id": { "type": "string" }, "mount_type": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Alias", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EntityAlias" } } } } }
+      }
+    },
+    "/v1/identity/entity-alias/id/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": { "tags": ["identity"], "summary": "Get entity alias by ID", "operationId": "getEntityAlias", "responses": { "200": { "description": "Alias", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EntityAlias" } } } }, "404": { "description": "Not found" } } },
+      "post": { "tags": ["identity"], "summary": "Update entity alias", "operationId": "updateEntityAlias", "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EntityAlias" } } } }, "responses": { "200": { "description": "Updated" } } },
+      "delete": { "tags": ["identity"], "summary": "Delete entity alias", "operationId": "deleteEntityAlias", "responses": { "204": { "description": "Deleted" } } }
+    },
+    "/v1/identity/group": {
+      "post": {
+        "tags": ["identity"],
+        "summary": "Create a group",
+        "operationId": "createGroup",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Group" } } } },
+        "responses": { "200": { "description": "Group", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Group" } } } } }
+      }
+    },
+    "/v1/identity/group/id/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": { "tags": ["identity"], "summary": "Get group by ID", "operationId": "getGroupByID", "responses": { "200": { "description": "Group" }, "404": { "description": "Not found" } } },
+      "post": { "tags": ["identity"], "summary": "Update group by ID", "operationId": "updateGroupByID", "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Group" } } } }, "responses": { "200": { "description": "Updated" } } },
+      "delete": { "tags": ["identity"], "summary": "Delete group by ID", "operationId": "deleteGroupByID", "responses": { "204": { "description": "Deleted" } } }
+    },
+    "/v1/identity/group/name/{name}": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": { "tags": ["identity"], "summary": "Get group by name", "operationId": "getGroupByName", "responses": { "200": { "description": "Group" }, "404": { "description": "Not found" } } },
+      "post": { "tags": ["identity"], "summary": "Update group by name", "operationId": "updateGroupByName", "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Group" } } } }, "responses": { "200": { "description": "Updated" } } },
+      "delete": { "tags": ["identity"], "summary": "Delete group by name", "operationId": "deleteGroupByName", "responses": { "204": { "description": "Deleted" } } }
+    },
+    "/v1/identity/group/": {
+      "get": { "tags": ["identity"], "summary": "List groups (LIST method)", "operationId": "listGroups", "responses": { "200": { "description": "Group IDs", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } } }
+    },
+    "/v1/identity/group-alias": {
+      "post": {
+        "tags": ["identity"],
+        "summary": "Create a group alias",
+        "operationId": "createGroupAlias",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" }, "canonical_id": { "type": "string" }, "mount_type": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Group alias" } }
+      }
+    },
+    "/v1/identity/group-alias/id/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": { "tags": ["identity"], "summary": "Get group alias", "operationId": "getGroupAlias", "responses": { "200": { "description": "Group alias" }, "404": { "description": "Not found" } } },
+      "delete": { "tags": ["identity"], "summary": "Delete group alias", "operationId": "deleteGroupAlias", "responses": { "204": { "description": "Deleted" } } }
+    },
+    "/v1/identity/group-alias/": {
+      "get": { "tags": ["identity"], "summary": "List group aliases (LIST method)", "operationId": "listGroupAliases", "responses": { "200": { "description": "Alias IDs", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } } }
+    },
+    "/v1/identity/lookup/entity": {
+      "post": {
+        "tags": ["identity"],
+        "summary": "Look up entity by ID, name, or alias",
+        "operationId": "lookupEntity",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "id": { "type": "string" }, "name": { "type": "string" }, "alias_name": { "type": "string" }, "alias_mount_type": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Entity" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/v1/identity/lookup/group": {
+      "post": {
+        "tags": ["identity"],
+        "summary": "Look up group by ID, name, or alias",
+        "operationId": "lookupGroup",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "id": { "type": "string" }, "name": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Group" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/v1/cubbyhole/{path}": {
+      "parameters": [{ "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["cubbyhole"],
+        "summary": "Read from caller's private cubbyhole",
+        "operationId": "getCubbyhole",
+        "responses": { "200": { "description": "Value" }, "404": { "description": "Not found" } }
+      },
+      "put": {
+        "tags": ["cubbyhole"],
+        "summary": "Write to caller's private cubbyhole",
+        "operationId": "putCubbyhole",
+        "requestBody": { "required": true, "content": { "application/octet-stream": {}, "text/plain": {} } },
+        "responses": { "204": { "description": "Written" } }
+      },
+      "delete": {
+        "tags": ["cubbyhole"],
+        "summary": "Delete from caller's private cubbyhole",
+        "operationId": "deleteCubbyhole",
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/v1/sys/wrapping/wrap": {
+      "post": {
+        "tags": ["wrapping"],
+        "summary": "Wrap arbitrary data into a single-use token",
+        "operationId": "wrap",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "object" }, "ttl": { "type": "string", "example": "5m" } } } } } },
+        "responses": { "200": { "description": "Wrapping token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WrappingInfo" } } } } }
+      }
+    },
+    "/v1/sys/wrapping/unwrap": {
+      "post": {
+        "tags": ["wrapping"],
+        "summary": "Unwrap a wrapping token and return its payload",
+        "operationId": "unwrap",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "token": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Unwrapped data" }, "400": { "description": "Already unwrapped or expired" } }
+      }
+    },
+    "/v1/sys/wrapping/lookup": {
+      "post": {
+        "tags": ["wrapping"],
+        "summary": "Look up a wrapping token without consuming it",
+        "operationId": "lookupWrapping",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "token": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Wrapping info", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WrappingInfo" } } } } }
+      }
+    },
+    "/v1/sys/wrapping/revoke": {
+      "delete": {
+        "tags": ["wrapping"],
+        "summary": "Revoke a wrapping token without unwrapping",
+        "operationId": "revokeWrapping",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "token": { "type": "string" } } } } } },
+        "responses": { "204": { "description": "Revoked" } }
       }
     },
     "/metrics": {
       "get": {
+        "tags": ["observability"],
         "summary": "Prometheus metrics",
+        "operationId": "getMetrics",
         "security": [],
         "responses": { "200": { "description": "Prometheus text format", "content": { "text/plain": {} } } }
       }
     },
     "/openapi.json": {
       "get": {
+        "tags": ["observability"],
         "summary": "This OpenAPI specification",
+        "operationId": "getOpenAPI",
         "security": [],
         "responses": { "200": { "description": "OpenAPI 3.0 JSON", "content": { "application/json": {} } } }
       }

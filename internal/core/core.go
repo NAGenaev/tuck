@@ -1539,6 +1539,30 @@ func (c *Core) Dispatcher() *audit.Dispatcher { return c.dispatcher }
 // SetDispatcher replaces the dispatcher (called after the server sets up the file logger).
 func (c *Core) SetDispatcher(d *audit.Dispatcher) { c.dispatcher = d }
 
+// RegisterAuditFile creates or replaces a file audit sink backed by a
+// rotating file logger. maxSizeMB ≤ 0 uses the 100 MiB default; maxBackups ≤ 0
+// uses the 7-file default.
+func (c *Core) RegisterAuditFile(ctx context.Context, name, filePath string, maxSizeMB int64, maxBackups int) error {
+	if filePath == "" {
+		return fmt.Errorf("path is required")
+	}
+	sink, err := audit.NewFileSink(filePath, maxSizeMB, maxBackups)
+	if err != nil {
+		return fmt.Errorf("open audit file: %w", err)
+	}
+	c.dispatcher.Register(name, sink)
+	cfg := &audit.SinkConfig{
+		Name: name,
+		Type: "file",
+		Options: map[string]string{
+			"path":        filePath,
+			"max_size_mb": fmt.Sprintf("%d", maxSizeMB),
+			"max_backups": fmt.Sprintf("%d", maxBackups),
+		},
+	}
+	return c.auditStore.Put(ctx, cfg)
+}
+
 // RegisterAuditWebhook creates or replaces a webhook audit sink.
 func (c *Core) RegisterAuditWebhook(ctx context.Context, name, url string, timeoutSec int) error {
 	if url == "" {
@@ -1604,6 +1628,15 @@ func (c *Core) LoadAuditSinks(ctx context.Context) error {
 				to = time.Duration(sec) * time.Second
 			}
 			c.dispatcher.Register(name, audit.NewWebhookSink(url, to))
+		case "file":
+			filePath := cfg.Options["path"]
+			var maxSizeMB int64
+			fmt.Sscanf(cfg.Options["max_size_mb"], "%d", &maxSizeMB)
+			var maxBackups int
+			fmt.Sscanf(cfg.Options["max_backups"], "%d", &maxBackups)
+			if sink, ferr := audit.NewFileSink(filePath, maxSizeMB, maxBackups); ferr == nil {
+				c.dispatcher.Register(name, sink)
+			}
 		}
 	}
 	return nil

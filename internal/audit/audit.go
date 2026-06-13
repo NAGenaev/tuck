@@ -109,9 +109,14 @@ func ClientIP(r *http.Request) string {
 	return host
 }
 
+// Loggable is implemented by Logger and Dispatcher.
+type Loggable interface {
+	Log(Entry)
+}
+
 // Middleware wraps handler h, writing one audit entry per request.
 // requestIDKey is the context key used to propagate a request-id.
-func Middleware(l *Logger, h http.Handler) http.Handler {
+func Middleware(l Loggable, h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rw := &recorder{ResponseWriter: w, status: http.StatusOK}

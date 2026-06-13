@@ -902,6 +902,45 @@ func cmdNamespaceList(c *client) {
 	printJSON(mustJSON(resp, 200))
 }
 
+// ---- audit sink subcommands ----
+
+func cmdAuditEnableWebhook(c *client, name, url string, timeoutSec int) {
+	resp, err := c.do("PUT", "/v1/sys/audit/webhook/"+name, map[string]any{
+		"url":         url,
+		"timeout_sec": timeoutSec,
+	})
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 204 {
+		body, _ := io.ReadAll(resp.Body)
+		fatalf("HTTP %d: %s", resp.StatusCode, body)
+	}
+	fmt.Printf("audit webhook %q registered\n", name)
+}
+
+func cmdAuditDisable(c *client, name string) {
+	resp, err := c.do("DELETE", "/v1/sys/audit/"+name, nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 204 {
+		body, _ := io.ReadAll(resp.Body)
+		fatalf("HTTP %d: %s", resp.StatusCode, body)
+	}
+	fmt.Printf("audit sink %q disabled\n", name)
+}
+
+func cmdAuditList(c *client) {
+	resp, err := c.do("LIST", "/v1/sys/audit/", nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
 // ---- token role subcommands ----
 
 func cmdTokenRoleCreate(c *client, name string, policies []string, ttl, maxTTL string, maxUses int, renewable bool, period string) {
@@ -1510,6 +1549,32 @@ func main() {
 			cmdNamespaceList(c)
 		default:
 			fatalf("unknown namespace subcommand %q", args[1])
+		}
+
+	case "audit":
+		if len(args) < 2 {
+			fatalf("audit requires a subcommand: enable-webhook, disable, list")
+		}
+		switch args[1] {
+		case "enable-webhook":
+			fs := flag.NewFlagSet("audit enable-webhook", flag.ExitOnError)
+			name := fs.String("name", "", "sink name (required)")
+			url := fs.String("url", "", "webhook URL (required)")
+			timeout := fs.Int("timeout", 5, "HTTP timeout in seconds")
+			_ = fs.Parse(args[2:])
+			if *name == "" || *url == "" {
+				fatalf("audit enable-webhook requires --name and --url")
+			}
+			cmdAuditEnableWebhook(c, *name, *url, *timeout)
+		case "disable":
+			if len(args) < 3 {
+				fatalf("audit disable requires a name")
+			}
+			cmdAuditDisable(c, args[2])
+		case "list":
+			cmdAuditList(c)
+		default:
+			fatalf("unknown audit subcommand %q", args[1])
 		}
 
 	default:

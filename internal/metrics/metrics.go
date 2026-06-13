@@ -6,7 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"sync/atomic"
+	"time"
 )
+
+// startTime is set once at process start; used to compute uptime_seconds.
+var startTime = time.Now()
 
 // Counters exposed globally.
 var (
@@ -15,6 +19,15 @@ var (
 	SealedRequests  atomic.Int64 // requests rejected because sealed
 	UnsealOps       atomic.Int64 // POST /v1/sys/unseal calls
 	GCRemovedTokens atomic.Int64
+	WrappingRevokes atomic.Int64 // wrapping tokens revoked/expired
+	AuditSinkErrors atomic.Int64 // cumulative errors across all sinks
+)
+
+// Gauges — set by core on state changes.
+var (
+	SealedGauge       atomic.Int32 // 0 = unsealed, 1 = sealed
+	ActiveTokensGauge atomic.Int64 // live (non-expired, non-revoked) tokens
+	LeaseCountGauge   atomic.Int64 // active dynamic-secret leases
 )
 
 // Inc2xx increments 2xx counter and total.
@@ -38,8 +51,17 @@ func IncUnsealOp() { UnsealOps.Add(1) }
 // IncGCRemoved increments GC removed tokens counter.
 func IncGCRemoved(n int64) { GCRemovedTokens.Add(n) }
 
-// SealedGauge is set by core on seal/unseal events.
-var SealedGauge atomic.Int32 // 0 = unsealed, 1 = sealed
+// IncAuditSinkError increments the audit sink error counter.
+func IncAuditSinkError() { AuditSinkErrors.Add(1) }
+
+// SetActiveTokens sets the active token gauge.
+func SetActiveTokens(n int64) { ActiveTokensGauge.Store(n) }
+
+// SetLeaseCount sets the active lease gauge.
+func SetLeaseCount(n int64) { LeaseCountGauge.Store(n) }
+
+// UptimeSeconds returns seconds elapsed since process start.
+func UptimeSeconds() float64 { return time.Since(startTime).Seconds() }
 
 // Handler returns an http.HandlerFunc serving Prometheus text metrics.
 func Handler() http.HandlerFunc {
@@ -67,5 +89,21 @@ func Handler() http.HandlerFunc {
 		fmt.Fprintf(w, "# HELP tuck_gc_removed_tokens_total Expired tokens removed by GC\n")
 		fmt.Fprintf(w, "# TYPE tuck_gc_removed_tokens_total counter\n")
 		fmt.Fprintf(w, "tuck_gc_removed_tokens_total %d\n", GCRemovedTokens.Load())
+
+		fmt.Fprintf(w, "# HELP tuck_uptime_seconds Seconds since the tuck process started\n")
+		fmt.Fprintf(w, "# TYPE tuck_uptime_seconds gauge\n")
+		fmt.Fprintf(w, "tuck_uptime_seconds %.3f\n", UptimeSeconds())
+
+		fmt.Fprintf(w, "# HELP tuck_active_tokens Active (non-expired) token count\n")
+		fmt.Fprintf(w, "# TYPE tuck_active_tokens gauge\n")
+		fmt.Fprintf(w, "tuck_active_tokens %d\n", ActiveTokensGauge.Load())
+
+		fmt.Fprintf(w, "# HELP tuck_lease_count Active dynamic-secret lease count\n")
+		fmt.Fprintf(w, "# TYPE tuck_lease_count gauge\n")
+		fmt.Fprintf(w, "tuck_lease_count %d\n", LeaseCountGauge.Load())
+
+		fmt.Fprintf(w, "# HELP tuck_audit_sink_errors_total Cumulative errors across all audit sinks\n")
+		fmt.Fprintf(w, "# TYPE tuck_audit_sink_errors_total counter\n")
+		fmt.Fprintf(w, "tuck_audit_sink_errors_total %d\n", AuditSinkErrors.Load())
 	}
 }

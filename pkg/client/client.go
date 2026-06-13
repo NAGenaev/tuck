@@ -94,6 +94,22 @@ func (c *Client) SealStatus(ctx context.Context) (*SealStatus, error) {
 	return &s, c.get(ctx, "/v1/sys/seal-status", &s)
 }
 
+// HealthInfo holds the response from GET /v1/health.
+type HealthInfo struct {
+	Version       string  `json:"version"`
+	Commit        string  `json:"commit"`
+	BuildDate     string  `json:"build_date"`
+	Sealed        bool    `json:"sealed"`
+	HAEnabled     bool    `json:"ha_enabled"`
+	UptimeSeconds float64 `json:"uptime_seconds"`
+}
+
+// Health returns server health, version, and uptime information.
+func (c *Client) Health(ctx context.Context) (*HealthInfo, error) {
+	var h HealthInfo
+	return &h, c.get(ctx, "/v1/health", &h)
+}
+
 // Unseal submits one Shamir share. Returns the updated seal status.
 func (c *Client) Unseal(ctx context.Context, share string) (*SealStatus, error) {
 	var s SealStatus

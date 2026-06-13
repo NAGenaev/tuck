@@ -13,6 +13,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/metrics"
 	physraft "github.com/NAGenaev/tuck/internal/physical/raft"
 	"github.com/NAGenaev/tuck/internal/ui"
+	"github.com/NAGenaev/tuck/internal/version"
 )
 
 const maxBodyBytes = 1 << 20 // 1 MiB
@@ -346,7 +347,16 @@ func nsFromCtx(ctx context.Context) string {
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"sealed": s.core.Sealed()})
+	sealed := s.core.Sealed()
+	haEnabled := s.core.ClusterBackend() != nil
+	writeJSON(w, http.StatusOK, map[string]any{
+		"version":        version.Version,
+		"commit":         version.Commit,
+		"build_date":     version.BuildDate,
+		"sealed":         sealed,
+		"ha_enabled":     haEnabled,
+		"uptime_seconds": metrics.UptimeSeconds(),
+	})
 }
 
 func writeErr(w http.ResponseWriter, err error) {

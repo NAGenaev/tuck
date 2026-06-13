@@ -296,6 +296,9 @@ function renderApp() {
     ${navItem('token-roles', '🎭', 'Token Roles')}
     ${navItem('audit', '📜', 'Audit Sinks')}
     ${navItem('cluster', '🖧', 'Cluster')}
+    ${navItem('mounts', '🗂', 'Mounts')}
+    ${navItem('plugins', '🔌', 'Plugins')}
+    ${navItem('replication', '🔄', 'Replication')}
   </nav>
   <div class="sidebar-footer">
     <button class="logout-btn" id="logout-btn">Sign out</button>
@@ -328,6 +331,9 @@ function renderPage() {
     case 'token-roles': return pageTokenRoles();
     case 'audit':       return pageAuditSinks();
     case 'cluster':     return pageCluster();
+    case 'mounts':      return pageMounts();
+    case 'plugins':     return pagePlugins();
+    case 'replication': return pageReplication();
     default: return '';
   }
 }
@@ -415,7 +421,9 @@ function pageSecrets() {
       <div class="card-body">
         <form id="put-form">
           <div class="form-row"><label>Path</label><input name="path" placeholder="db/password"></div>
-          <div class="form-row"><label>Value (raw bytes)</label><textarea name="value" placeholder="secret value"></textarea></div>
+          <div class="form-row"><label>Value</label><textarea name="value" placeholder="secret value"></textarea></div>
+          <div class="form-row"><label>TTL (optional, e.g. 24h)</label><input name="ttl" placeholder=""></div>
+          <div class="form-row"><label>Metadata JSON (optional, e.g. {"env":"prod"})</label><input name="metadata" placeholder=""></div>
           <button class="btn btn-primary" type="submit">Save</button>
         </form>
       </div>
@@ -1542,7 +1550,17 @@ function bind() {
       const d = await api('GET', `/v1/secret/${path}`);
       const res = document.getElementById('get-result');
       const v = d.encoding === 'base64' ? `[base64] ${d.value}` : d.value;
-      res.innerHTML = `<div class="alert alert-info"><strong>Value:</strong><br><span class="mono">${esc(v)}</span></div>`;
+      const meta = d.metadata && Object.keys(d.metadata).length
+        ? Object.entries(d.metadata).map(([k,val])=>`<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('')
+        : '<dd style="color:var(--muted)">none</dd>';
+      res.innerHTML = `<div class="card-body">
+        <dl class="kv-grid">
+          <dt>Value</dt><dd class="mono">${esc(v)}</dd>
+          <dt>Created</dt><dd>${d.created_at ? new Date(d.created_at).toLocaleString() : '–'}</dd>
+          <dt>Expires</dt><dd>${d.expires_at ? new Date(d.expires_at).toLocaleString() : '–'}</dd>
+          <dt>Metadata</dt>${meta}
+        </dl>
+      </div>`;
     } catch (e) {
       document.getElementById('get-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
     }
@@ -1551,14 +1569,16 @@ function bind() {
   onSubmit('#put-form', async fd => {
     const path = fd.get('path').trim();
     const value = fd.get('value');
+    const ttl = fd.get('ttl').trim();
+    const metaRaw = fd.get('metadata').trim();
     if (!path) return;
     try {
-      const r = await fetch(`/v1/secret/${path}`, {
-        method: 'PUT',
-        headers: { 'X-Tuck-Token': S.token },
-        body: value,
-      });
-      if (!r.ok) { const d = await r.json(); throw new Error(d.error || r.status); }
+      const body = { value };
+      if (ttl) body.ttl = ttl;
+      if (metaRaw) {
+        try { body.metadata = JSON.parse(metaRaw); } catch { flash('error', 'Invalid metadata JSON'); return; }
+      }
+      await api('PUT', `/v1/secret/${path}`, body);
       flash('success', `Secret "${path}" saved.`); render();
     } catch (e) { flash('error', e.message); }
   });
@@ -1593,6 +1613,9 @@ function bind() {
   bindTokenRoles();
   bindAuditSinks();
   bindCluster();
+  bindMounts();
+  bindPlugins();
+  bindReplication();
 
   onSubmit('#create-policy-form', async fd => {
     const name = fd.get('name').trim();
@@ -2834,6 +2857,306 @@ async function loadClusterStatus() {
         <td>${esc(n.address||'')}</td>
         <td>${esc(n.state||'')}</td>
         <td>${n.leader?'✓':''}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+// ─────────── Mounts bind ───────────
+function bindMounts() {
+  on('click', '#refresh-mounts', loadMounts);
+
+  onSubmit('#mount-form', async () => {
+    const path = document.getElementById('mount-path')?.value.trim();
+    const type = document.getElementById('mount-type')?.value;
+    const desc = document.getElementById('mount-desc')?.value.trim();
+    if (!path || !type) { flash('error', 'Path and type are required'); return; }
+    try {
+      await api('POST', `/v1/sys/mounts/${path}`, { type, description: desc });
+      flash('success', `Mount "${path}" registered.`);
+      await loadMounts();
+    } catch (e) { flash('error', e.message); }
+  });
+
+  on('click', '[data-del-mount]', async e => {
+    const path = e.currentTarget.dataset.delMount;
+    if (!confirm(`Unmount "${path}"?`)) return;
+    try {
+      await api('DELETE', `/v1/sys/mounts/${path}`);
+      flash('success', `Mount "${path}" removed.`);
+      await loadMounts();
+    } catch (e) { flash('error', e.message); }
+  });
+
+  if (S.page === 'mounts') loadMounts();
+}
+
+// ─────────── Plugins bind ───────────
+function bindPlugins() {
+  on('click', '#refresh-plugins', loadPlugins);
+  on('change', '#plugin-type-filter', loadPlugins);
+
+  onSubmit('#plugin-form', async () => {
+    const name    = document.getElementById('plugin-name')?.value.trim();
+    const type    = document.getElementById('plugin-type')?.value;
+    const command = document.getElementById('plugin-command')?.value.trim();
+    const sha256  = document.getElementById('plugin-sha256')?.value.trim();
+    const version = document.getElementById('plugin-version')?.value.trim();
+    if (!name || !command || !sha256) { flash('error', 'Name, command and sha256 required'); return; }
+    try {
+      await api('POST', `/v1/sys/plugins/catalog/${type}/${name}`, { command, sha256, version });
+      flash('success', `Plugin "${name}" registered.`);
+      await loadPlugins();
+    } catch (e) { flash('error', e.message); }
+  });
+
+  on('click', '[data-del-plugin]', async e => {
+    const ref = e.currentTarget.dataset.delPlugin; // "type/name"
+    if (!confirm(`Delete plugin "${ref}"?`)) return;
+    const [type, ...rest] = ref.split('/');
+    const name = rest.join('/');
+    try {
+      await api('DELETE', `/v1/sys/plugins/catalog/${type}/${name}`);
+      flash('success', `Plugin "${name}" deleted.`);
+      await loadPlugins();
+    } catch (e) { flash('error', e.message); }
+  });
+
+  if (S.page === 'plugins') loadPlugins();
+}
+
+// ─────────── Replication bind ───────────
+function bindReplication() {
+  on('click', '#refresh-repl', loadReplStatus);
+  on('click', '#load-wal', loadWALEntries);
+
+  on('click', '#enable-primary', async () => {
+    try {
+      await api('POST', '/v1/sys/replication/primary/enable', {});
+      flash('success', 'Replication set to primary mode.');
+      await loadReplStatus();
+    } catch (e) { flash('error', e.message); }
+  });
+
+  onSubmit('#enable-secondary-form', async () => {
+    const addr = document.getElementById('primary-addr')?.value.trim();
+    if (!addr) { flash('error', 'Primary address required'); return; }
+    try {
+      await api('POST', '/v1/sys/replication/secondary/enable', { primary_addr: addr });
+      flash('success', 'Replication set to secondary mode.');
+      await loadReplStatus();
+    } catch (e) { flash('error', e.message); }
+  });
+
+  on('click', '#disable-repl', async () => {
+    if (!confirm('Disable replication on this node?')) return;
+    try {
+      await api('POST', '/v1/sys/replication/disable', {});
+      flash('success', 'Replication disabled.');
+      await loadReplStatus();
+    } catch (e) { flash('error', e.message); }
+  });
+
+  if (S.page === 'replication') loadReplStatus();
+}
+
+// ─────────── Mounts page ───────────
+function pageMounts() {
+  return `
+<div class="page-header">
+  <h1>Secret Engine Mounts</h1>
+  <p>Mounted secret engines and their paths</p>
+</div>
+<div class="page-body">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header">Register Mount</div>
+    <div class="card-body">
+      <form id="mount-form">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+          <div class="form-row"><label>Path</label><input id="mount-path" placeholder="my-kv/"></div>
+          <div class="form-row"><label>Type</label>
+            <select id="mount-type">
+              <option>kv</option><option>transit</option><option>pki</option>
+              <option>database</option><option>aws</option><option>gcp</option>
+              <option>azure</option><option>ssh</option><option>totp</option>
+            </select>
+          </div>
+          <div class="form-row"><label>Description</label><input id="mount-desc" placeholder="optional"></div>
+        </div>
+        <div class="form-actions"><button class="btn btn-primary btn-sm" type="submit">Register</button></div>
+      </form>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">Active Mounts <button class="btn btn-ghost btn-sm" id="refresh-mounts">↻ Refresh</button></div>
+    <div id="mounts-list"><div style="padding:14px;color:var(--muted)">Loading…</div></div>
+  </div>
+</div>`;
+}
+
+async function loadMounts() {
+  const el = document.getElementById('mounts-list');
+  if (!el) return;
+  try {
+    const d = await api('GET', '/v1/sys/mounts');
+    if (!d) return;
+    const mounts = d.mounts || [];
+    if (!mounts.length) { el.innerHTML = '<div style="padding:14px;color:var(--muted)">No mounts found.</div>'; return; }
+    el.innerHTML = `<table class="table">
+      <thead><tr><th>Path</th><th>Type</th><th>Accessor</th><th>Builtin</th><th>Description</th><th></th></tr></thead>
+      <tbody>${mounts.map(m=>`<tr>
+        <td class="mono">${esc(m.path||'')}</td>
+        <td><span class="tag">${esc(m.type||'')}</span></td>
+        <td class="mono" style="font-size:10px">${esc(m.accessor||'')}</td>
+        <td>${m.builtin?'✓':'–'}</td>
+        <td>${esc(m.description||'')}</td>
+        <td>${m.builtin?'':`<button class="btn btn-danger btn-sm" data-del-mount="${esc(m.path||'')}">Unmount</button>`}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+// ─────────── Plugins page ───────────
+function pagePlugins() {
+  return `
+<div class="page-header">
+  <h1>Plugin Catalog</h1>
+  <p>External secret engine and auth method plugins</p>
+</div>
+<div class="page-body">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header">Register Plugin</div>
+    <div class="card-body">
+      <form id="plugin-form">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+          <div class="form-row"><label>Name</label><input id="plugin-name" placeholder="my-engine"></div>
+          <div class="form-row"><label>Type</label>
+            <select id="plugin-type">
+              <option value="secret">secret</option>
+              <option value="auth">auth</option>
+              <option value="database">database</option>
+            </select>
+          </div>
+          <div class="form-row"><label>Version</label><input id="plugin-version" placeholder="v1.0.0"></div>
+          <div class="form-row"><label>Command</label><input id="plugin-command" placeholder="/opt/plugins/my-engine"></div>
+          <div class="form-row"><label>SHA-256</label><input id="plugin-sha256" placeholder="deadbeef…"></div>
+        </div>
+        <div class="form-actions"><button class="btn btn-primary btn-sm" type="submit">Register</button></div>
+      </form>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      Plugins
+      <div style="display:flex;gap:8px">
+        <select id="plugin-type-filter" style="font-size:12px;padding:3px 8px;border:1px solid var(--border);border-radius:var(--radius)">
+          <option value="">All types</option>
+          <option value="secret">secret</option>
+          <option value="auth">auth</option>
+          <option value="database">database</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" id="refresh-plugins">↻ Refresh</button>
+      </div>
+    </div>
+    <div id="plugins-list"><div style="padding:14px;color:var(--muted)">Loading…</div></div>
+  </div>
+</div>`;
+}
+
+async function loadPlugins() {
+  const el = document.getElementById('plugins-list');
+  if (!el) return;
+  const t = (document.getElementById('plugin-type-filter')||{}).value || '';
+  const path = t ? `/v1/sys/plugins/catalog/${t}/` : '/v1/sys/plugins/catalog/';
+  try {
+    const d = await api('LIST', path);
+    if (!d) return;
+    const plugins = d.plugins || [];
+    if (!plugins.length) { el.innerHTML = '<div style="padding:14px;color:var(--muted)">No plugins registered.</div>'; return; }
+    el.innerHTML = `<table class="table">
+      <thead><tr><th>Name</th><th>Type</th><th>Version</th><th>Command</th><th>Builtin</th><th></th></tr></thead>
+      <tbody>${plugins.map(p=>`<tr>
+        <td>${esc(p.name||'')}</td>
+        <td><span class="tag">${esc(p.type||'')}</span></td>
+        <td class="mono">${esc(p.version||'–')}</td>
+        <td class="mono" style="font-size:10px">${esc(p.command||'')}</td>
+        <td>${p.builtin?'✓':'–'}</td>
+        <td>${p.builtin?'':
+          `<button class="btn btn-danger btn-sm" data-del-plugin="${esc(p.type||'')}/${esc(p.name||'')}">Delete</button>`}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+// ─────────── Replication page ───────────
+function pageReplication() {
+  return `
+<div class="page-header">
+  <h1>Replication</h1>
+  <p>WAL-based primary/secondary replication status and controls</p>
+</div>
+<div class="page-body">
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-header">Status <button class="btn btn-ghost btn-sm" id="refresh-repl">↻ Refresh</button></div>
+      <div id="repl-status"><div style="padding:14px;color:var(--muted)">Loading…</div></div>
+    </div>
+    <div class="card">
+      <div class="card-header">Controls</div>
+      <div class="card-body">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <button class="btn btn-primary btn-sm" id="enable-primary">Enable Primary</button>
+          <form id="enable-secondary-form" style="display:flex;gap:8px;align-items:center">
+            <input id="primary-addr" placeholder="https://primary:8200" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px">
+            <button class="btn btn-primary btn-sm" type="submit">Enable Secondary</button>
+          </form>
+          <button class="btn btn-ghost btn-sm" id="disable-repl">Disable Replication</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      WAL Entries
+      <input id="wal-after" type="number" min="0" placeholder="after seq" style="width:120px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px">
+      <button class="btn btn-ghost btn-sm" id="load-wal">Load</button>
+    </div>
+    <div id="wal-entries"><div style="padding:14px;color:var(--muted)">Click Load to fetch WAL entries.</div></div>
+  </div>
+</div>`;
+}
+
+async function loadReplStatus() {
+  const el = document.getElementById('repl-status');
+  if (!el) return;
+  try {
+    const d = await api('GET', '/v1/sys/replication/status');
+    if (!d) return;
+    el.innerHTML = `<div class="card-body"><dl class="kv-grid">
+      <dt>Mode</dt><dd><span class="tag">${esc(d.mode||'disabled')}</span></dd>
+      <dt>Last sequence</dt><dd class="mono">${d.last_sequence||0}</dd>
+      ${d.primary_addr?`<dt>Primary</dt><dd class="mono">${esc(d.primary_addr)}</dd>`:''}
+      <dt>Updated</dt><dd>${d.updated_at?new Date(d.updated_at).toLocaleString():'–'}</dd>
+    </dl></div>`;
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+async function loadWALEntries() {
+  const el = document.getElementById('wal-entries');
+  if (!el) return;
+  const after = (document.getElementById('wal-after')||{}).value || '0';
+  try {
+    const d = await api('GET', `/v1/sys/replication/wal?after=${after}`);
+    if (!d) return;
+    const entries = d.entries || [];
+    if (!entries.length) { el.innerHTML = '<div style="padding:14px;color:var(--muted)">No WAL entries found.</div>'; return; }
+    el.innerHTML = `<table class="table">
+      <thead><tr><th>Seq</th><th>Op</th><th>Key</th><th>Timestamp</th></tr></thead>
+      <tbody>${entries.map(e=>`<tr>
+        <td class="mono">${e.seq}</td>
+        <td><span class="tag">${esc(e.operation||'')}</span></td>
+        <td class="mono" style="font-size:10px">${esc(e.key||'')}</td>
+        <td style="font-size:11px">${e.timestamp?new Date(e.timestamp).toLocaleString():'–'}</td>
       </tr>`).join('')}</tbody>
     </table>`;
   } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }

@@ -25,9 +25,10 @@ import (
 
 // Client talks to a Tuck server.
 type Client struct {
-	addr  string
-	token string
-	http  *http.Client
+	addr      string
+	token     string
+	namespace string // X-Tuck-Namespace header value; empty = root
+	http      *http.Client
 }
 
 // Option configures a Client.
@@ -48,6 +49,19 @@ func WithInsecure() Option {
 // WithHTTPClient replaces the default HTTP client.
 func WithHTTPClient(h *http.Client) Option {
 	return func(c *Client) { c.http = h }
+}
+
+// WithNamespace scopes all requests to a Tuck namespace.
+func WithNamespace(ns string) Option {
+	return func(c *Client) { c.namespace = ns }
+}
+
+// Scoped returns a shallow copy of c bound to the given namespace.
+// All requests made by the returned client will carry X-Tuck-Namespace: ns.
+func (c *Client) Scoped(ns string) *Client {
+	cp := *c
+	cp.namespace = ns
+	return &cp
 }
 
 // New creates a Client. addr is the server base URL (e.g. "https://tuck:8200"),
@@ -457,6 +471,9 @@ func (c *Client) newReq(ctx context.Context, method, path string, body io.Reader
 	}
 	if c.token != "" {
 		req.Header.Set("X-Tuck-Token", c.token)
+	}
+	if c.namespace != "" {
+		req.Header.Set("X-Tuck-Namespace", c.namespace)
 	}
 	return req, nil
 }

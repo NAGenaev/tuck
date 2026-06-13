@@ -884,7 +884,7 @@ function pagePolicies() {
 // ─────────── Auth Methods page ───────────
 function pageAuth() {
   const tab = S.authTab;
-  const tabs = [['approle','AppRole'],['jwt','JWT/OIDC'],['ldap','LDAP'],['k8s','Kubernetes']];
+  const tabs = [['approle','AppRole'],['jwt','JWT/OIDC'],['ldap','LDAP'],['k8s','Kubernetes'],['github','GitHub Actions']];
   return `
 <div class="page-header">
   <h1>Auth Methods</h1>
@@ -898,6 +898,7 @@ function pageAuth() {
   ${tab==='jwt'     ? renderJWTTab()     : ''}
   ${tab==='ldap'    ? renderLDAPTab()    : ''}
   ${tab==='k8s'     ? renderK8sTab()     : ''}
+  ${tab==='github'  ? renderGitHubTab()  : ''}
 </div>`;
 }
 
@@ -1037,6 +1038,51 @@ function renderK8sTab() {
       </div>
     </form>
     <div id="k8s-role-result" style="margin-top:12px"></div>
+  </div>
+</div>`;
+}
+
+function renderGitHubTab() {
+  return `
+<div class="card">
+  <div class="card-header">
+    GitHub Actions OIDC Auth
+    <span style="font-size:12px;font-weight:normal;color:var(--muted);margin-left:8px">JWKS: token.actions.githubusercontent.com — no config required</span>
+  </div>
+  <div class="card-body">
+    <p style="color:var(--muted);font-size:12px;margin-bottom:14px">
+      GitHub Actions automatically injects short-lived OIDC tokens into workflow runs.
+      Create a role that maps repository/ref/environment claims to Tuck policies.
+    </p>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header">Roles <button class="btn btn-primary btn-sm" id="list-gh-roles-btn">Refresh</button></div>
+  <div class="card-body"><div id="gh-role-list"><em style="color:var(--muted)">Click Refresh.</em></div></div>
+</div>
+<div class="card">
+  <div class="card-header">Create / Update Role</div>
+  <div class="card-body">
+    <form id="create-gh-role-form">
+      <div class="card-grid">
+        <div class="form-row"><label>Role Name</label><input name="name" placeholder="deploy-prod" required></div>
+        <div class="form-row"><label>Repository (org/repo)</label><input name="repository" placeholder="myorg/myrepo"></div>
+      </div>
+      <div class="card-grid">
+        <div class="form-row"><label>Ref (branch/tag)</label><input name="ref" placeholder="refs/heads/main"></div>
+        <div class="form-row"><label>Environment</label><input name="environment" placeholder="production"></div>
+      </div>
+      <div class="card-grid">
+        <div class="form-row"><label>Actor (GitHub username)</label><input name="actor" placeholder="octocat"></div>
+        <div class="form-row"><label>Workflow Ref</label><input name="workflow_ref" placeholder=".github/workflows/deploy.yml@refs/heads/main"></div>
+      </div>
+      <div class="card-grid">
+        <div class="form-row"><label>Policies (comma-separated)</label><input name="policies" placeholder="deploy-prod" required></div>
+        <div class="form-row"><label>Token TTL</label><input name="ttl" placeholder="1h"></div>
+      </div>
+      <p style="color:var(--muted);font-size:11px;margin:4px 0 10px">Leave claim fields blank to match any value (wildcard).</p>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Save Role</button></div>
+    </form>
   </div>
 </div>`;
 }
@@ -2038,6 +2084,24 @@ function bindAuth() {
     catch (e) { flash('error', e.message); }
   });
 
+  // GitHub Actions OIDC
+  on('click', '#list-gh-roles-btn', loadGitHubRoles);
+  onSubmit('#create-gh-role-form', async fd => {
+    const name = fd.get('name').trim();
+    if (!name) return;
+    const policies = (fd.get('policies')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    if (!policies.length) { flash('error', 'At least one policy required'); return; }
+    const body = { policies };
+    if (fd.get('repository').trim())   body.repository    = fd.get('repository').trim();
+    if (fd.get('ref').trim())          body.ref           = fd.get('ref').trim();
+    if (fd.get('environment').trim())  body.environment   = fd.get('environment').trim();
+    if (fd.get('actor').trim())        body.actor         = fd.get('actor').trim();
+    if (fd.get('workflow_ref').trim()) body.workflow_ref  = fd.get('workflow_ref').trim();
+    if (fd.get('ttl').trim())          body.ttl           = fd.get('ttl').trim();
+    try { await api('PUT', `/v1/auth/github/role/${name}`, body); flash('success', `GitHub role "${name}" saved.`); render(); }
+    catch (e) { flash('error', e.message); }
+  });
+
   // ─── Dynamic Secrets ───
   // Database
   on('click', '#list-db-configs-btn', loadDBConfigs);
@@ -2463,6 +2527,19 @@ async function loadLDAPRoles() {
     if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No roles.</em>'; return; }
     el.innerHTML = renderKeyTable(d.keys, (name) => [
       `<button class="btn btn-danger btn-sm" onclick="delPath('/v1/auth/ldap/role/${esc(name)}','LDAP role')">Delete</button>`
+    ]);
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+async function loadGitHubRoles() {
+  const el = document.getElementById('gh-role-list');
+  if (!el) return;
+  try {
+    const d = await apiList('/v1/auth/github/role/');
+    if (!d) return;
+    if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No roles.</em>'; return; }
+    el.innerHTML = renderKeyTable(d.keys, (name) => [
+      `<button class="btn btn-danger btn-sm" onclick="delPath('/v1/auth/github/role/${esc(name)}','GitHub role')">Delete</button>`
     ]);
   } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
 }

@@ -11,6 +11,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [1.29.0] — 2026-06-13
+
+### Added
+
+- **Terraform provider** (`contrib/terraform-provider-tuck/`): standalone Go module (`terraform-provider-tuck`) using Terraform Plugin Framework v1.13. Provides `tuck_kv_secret` resource (create/read/update/delete, path immutable), `tuck_kv_secret` data source (read-only), and `tuck_policy` resource (create/read/update/delete, name immutable). Inline HTTP client with env-var fallback (`TUCK_ADDR`, `TUCK_TOKEN`, `TUCK_NAMESPACE`), TLS skip option. Registry address `registry.terraform.io/NAGenaev/tuck`. Example configuration in `contrib/terraform-provider-tuck/examples/main.tf`.
+
+---
+
 ## [1.28.0] — 2026-06-13
 
 ### Added

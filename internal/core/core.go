@@ -343,21 +343,38 @@ func (c *Core) EnforceAccess(ctx context.Context, tokenID, logicalPath string, c
 	return nil
 }
 
-// resolvePolicies loads named policies from ns. "root" is never stored — it is
-// injected directly so it cannot be accidentally deleted via the API.
+// resolvePolicies loads named policies for a token in namespace ns.
+//
+// Resolution order (first match wins):
+//  1. "root" → RootPolicy (built-in, cannot be overridden).
+//  2. ns policy store (namespace-local definition).
+//  3. root namespace policy store (inherited, if ns is non-root and the policy
+//     exists in the root namespace and is marked Inheritable).
+//
+// A policy not found in either store is an error.
 func (c *Core) resolvePolicies(ctx context.Context, ns string, names []string) ([]policy.Policy, error) {
-	store := c.Policies(ns)
+	nsStore := c.Policies(ns)
+	rootStore := c.policies // always root — c.policies is initialised without a namespace prefix
 	out := make([]policy.Policy, 0, len(names))
 	for _, name := range names {
 		if name == token.RootPolicyName {
 			out = append(out, policy.RootPolicy)
 			continue
 		}
-		p, err := store.Get(ctx, name)
-		if err != nil {
-			return nil, fmt.Errorf("policy %q: %w", name, err)
+		p, err := nsStore.Get(ctx, name)
+		if err == nil {
+			out = append(out, *p)
+			continue
 		}
-		out = append(out, *p)
+		// Fallback: try root namespace only when the caller is in a child namespace.
+		if ns != "" && ns != "root" {
+			rp, rerr := rootStore.Get(ctx, name)
+			if rerr == nil && rp.Inheritable {
+				out = append(out, *rp)
+				continue
+			}
+		}
+		return nil, fmt.Errorf("policy %q: %w", name, err)
 	}
 	return out, nil
 }

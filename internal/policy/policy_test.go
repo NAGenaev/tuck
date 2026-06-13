@@ -92,3 +92,51 @@ func TestAllowed_noPoliciesReturnsFalse(t *testing.T) {
 		t.Fatal("expected false with no policies")
 	}
 }
+
+func TestPolicy_Inheritable(t *testing.T) {
+	// A policy with Inheritable=true should be usable in child namespaces.
+	p := Policy{
+		Name:        "shared-reader",
+		Inheritable: true,
+		Rules: []Rule{
+			{Path: "secret/**", Capabilities: CapRead},
+		},
+	}
+	if !p.Inheritable {
+		t.Fatal("expected Inheritable=true")
+	}
+	if !Allowed([]Policy{p}, "secret/db", CapRead) {
+		t.Fatal("expected read allowed via inherited policy")
+	}
+}
+
+func TestPolicy_InheritableDefault(t *testing.T) {
+	// Policies are NOT inheritable by default.
+	p := Policy{Name: "local-only", Rules: []Rule{
+		{Path: "secret/**", Capabilities: CapRead},
+	}}
+	if p.Inheritable {
+		t.Fatal("expected Inheritable=false by default")
+	}
+}
+
+func TestPolicy_MarshalRoundTrip(t *testing.T) {
+	import_p := Policy{
+		Name:        "ns-policy",
+		Inheritable: true,
+		Rules: []Rule{
+			{Path: "secret/*", Capabilities: CapRead | CapList},
+		},
+	}
+	data, err := import_p.marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := unmarshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "ns-policy" || !got.Inheritable || len(got.Rules) != 1 {
+		t.Fatalf("unexpected unmarshalled policy: %+v", got)
+	}
+}

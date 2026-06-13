@@ -110,11 +110,12 @@ type Core struct {
 	totpManager    *dynTOTP.Manager
 	identity *identity.Store
 
-	sysconfigStore *sysconfig.Store
-	leaseManager   *lease.Manager
-	mountStore     *mount.Store
-	pluginCatalog  *plugin.Catalog
-	wal            *replication.WAL
+	sysconfigStore  *sysconfig.Store
+	leaseManager    *lease.Manager
+	mountStore      *mount.Store
+	mountConfigStore *mount.ConfigStore
+	pluginCatalog   *plugin.Catalog
+	wal             *replication.WAL
 
 	// optional — nil means k8s auth is disabled
 	k8sReviewer k8sauth.Reviewer
@@ -170,6 +171,7 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 	}
 	c.leaseManager = lease.NewWithEngines(c.dbManager, c.awsEngine, c.gcpEngine, c.azureEngine)
 	c.mountStore = mount.New(b)
+	c.mountConfigStore = mount.NewConfigStore(b)
 	c.pluginCatalog = plugin.New(b)
 	c.wal = replication.New(b)
 	return c
@@ -250,6 +252,9 @@ func (c *Core) registerBuiltinMounts(ctx context.Context) {
 
 // MountStore returns the secret engine mount table.
 func (c *Core) MountStore() *mount.Store { return c.mountStore }
+
+// MountConfigStore returns the per-mount tuning configuration store.
+func (c *Core) MountConfigStore() *mount.ConfigStore { return c.mountConfigStore }
 
 // PluginCatalog returns the plugin registry.
 func (c *Core) PluginCatalog() *plugin.Catalog { return c.pluginCatalog }

@@ -639,6 +639,69 @@ func TestKVInvalidTTL(t *testing.T) {
 	}
 }
 
+func TestMountTune(t *testing.T) {
+	ts, _, tok := newTestServer(t)
+
+	// GET tune on a builtin mount (secret/) — should return default empty config.
+	resp, err := http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/sys/mounts-tune/secret", "", tok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET tune status = %d, body = %s", resp.StatusCode, raw)
+	}
+
+	// POST tune — set a TTL.
+	tuneBody := `{"default_lease_ttl":"2h","max_lease_ttl":"24h","force_no_cache":true}`
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodPost, ts.URL+"/v1/sys/mounts-tune/secret", tuneBody, tok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("POST tune status = %d, want 204", resp.StatusCode)
+	}
+
+	// GET tune — check TTLs are stored.
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/sys/mounts-tune/secret", "", tok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET tune after set status = %d, body = %s", resp.StatusCode, raw)
+	}
+	var cfg map[string]any
+	_ = json.Unmarshal(raw, &cfg)
+	// default_lease_ttl is stored as nanoseconds (time.Duration).
+	if cfg["force_no_cache"] != true {
+		t.Errorf("force_no_cache = %v, want true", cfg["force_no_cache"])
+	}
+
+	// POST tune — invalid TTL.
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodPost, ts.URL+"/v1/sys/mounts-tune/secret", `{"default_lease_ttl":"bad"}`, tok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad TTL status = %d, want 400", resp.StatusCode)
+	}
+
+	// POST tune — default > max.
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodPost, ts.URL+"/v1/sys/mounts-tune/secret", `{"default_lease_ttl":"48h","max_lease_ttl":"24h"}`, tok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("default>max status = %d, want 400", resp.StatusCode)
+	}
+}
+
 func TestMountTableCRUD(t *testing.T) {
 	ts, _, tok := newTestServer(t)
 

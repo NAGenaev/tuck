@@ -155,11 +155,22 @@ func (c *Client) Snapshot(ctx context.Context, w io.Writer) error {
 
 // --- KV v1 ---
 
-// GetSecret reads a secret by logical path. Returns (nil, nil) if not found.
-func (c *Client) GetSecret(ctx context.Context, path string) ([]byte, error) {
+// SecretEntry is the full envelope returned for a KV v1 secret.
+type SecretEntry struct {
+	Value     []byte
+	Metadata  map[string]string
+	CreatedAt string // RFC3339; empty for legacy secrets
+	ExpiresAt string // RFC3339; empty when no TTL is set
+}
+
+// GetSecretEntry reads the full envelope at path. Returns (nil, nil) if not found.
+func (c *Client) GetSecretEntry(ctx context.Context, path string) (*SecretEntry, error) {
 	var resp struct {
-		Value    string `json:"value"`
-		Encoding string `json:"encoding"`
+		Value     string            `json:"value"`
+		Encoding  string            `json:"encoding"`
+		Metadata  map[string]string `json:"metadata"`
+		CreatedAt string            `json:"created_at"`
+		ExpiresAt string            `json:"expires_at"`
 	}
 	if err := c.get(ctx, "/v1/secret/"+trimSlash(path), &resp); err != nil {
 		if IsNotFound(err) {
@@ -167,10 +178,49 @@ func (c *Client) GetSecret(ctx context.Context, path string) ([]byte, error) {
 		}
 		return nil, err
 	}
+	var value []byte
+	var err error
 	if resp.Encoding == "base64" {
-		return base64.StdEncoding.DecodeString(resp.Value)
+		value, err = base64.StdEncoding.DecodeString(resp.Value)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		value = []byte(resp.Value)
 	}
-	return []byte(resp.Value), nil
+	return &SecretEntry{
+		Value:     value,
+		Metadata:  resp.Metadata,
+		CreatedAt: resp.CreatedAt,
+		ExpiresAt: resp.ExpiresAt,
+	}, nil
+}
+
+// GetSecret reads a secret by logical path. Returns (nil, nil) if not found.
+func (c *Client) GetSecret(ctx context.Context, path string) ([]byte, error) {
+	e, err := c.GetSecretEntry(ctx, path)
+	if err != nil || e == nil {
+		return nil, err
+	}
+	return e.Value, nil
+}
+
+// SecretWriteOptions carries optional TTL and metadata for PutSecretWithMeta.
+type SecretWriteOptions struct {
+	TTL      string            // e.g. "24h"; empty = no expiry
+	Metadata map[string]string // optional labels
+}
+
+// PutSecretWithMeta stores value at path along with optional TTL and metadata.
+func (c *Client) PutSecretWithMeta(ctx context.Context, path string, value []byte, opts SecretWriteOptions) error {
+	body := map[string]any{"value": string(value)}
+	if opts.TTL != "" {
+		body["ttl"] = opts.TTL
+	}
+	if len(opts.Metadata) > 0 {
+		body["metadata"] = opts.Metadata
+	}
+	return c.putJSON(ctx, "/v1/secret/"+trimSlash(path), body)
 }
 
 // PutSecret stores bytes at the logical path.

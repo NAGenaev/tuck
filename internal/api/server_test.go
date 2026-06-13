@@ -518,6 +518,127 @@ func TestAuditSinkManagement(t *testing.T) {
 	}
 }
 
+func TestKVSecretTTLAndMetadata(t *testing.T) {
+	ts, _, tok := newTestServer(t)
+
+	// Write with TTL and metadata using the structured API.
+	body := `{"value":"top-secret","ttl":"1h","metadata":{"owner":"team-a","env":"prod"}}`
+	resp, err := http.DefaultClient.Do(authedReq(t, http.MethodPut, ts.URL+"/v1/secret/proj/api-key", body, tok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("PUT status = %d, want 204", resp.StatusCode)
+	}
+
+	// Read back — must include metadata and expires_at.
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/secret/proj/api-key", "", tok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET status = %d, body = %s", resp.StatusCode, raw)
+	}
+	var result map[string]any
+	if err := json.Unmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal response: %v; body: %s", err, raw)
+	}
+	if result["value"] != "top-secret" {
+		t.Errorf("value = %v, want top-secret", result["value"])
+	}
+	meta, _ := result["metadata"].(map[string]any)
+	if meta["owner"] != "team-a" {
+		t.Errorf("metadata.owner = %v, want team-a", meta["owner"])
+	}
+	if meta["env"] != "prod" {
+		t.Errorf("metadata.env = %v, want prod", meta["env"])
+	}
+	if result["expires_at"] == nil {
+		t.Error("expires_at must be present when TTL is set")
+	}
+	if result["created_at"] == nil {
+		t.Error("created_at must be present")
+	}
+}
+
+func TestKVSecretNoTTL(t *testing.T) {
+	ts, _, tok := newTestServer(t)
+
+	body := `{"value":"no-expiry","metadata":{"k":"v"}}`
+	resp, err := http.DefaultClient.Do(authedReq(t, http.MethodPut, ts.URL+"/v1/secret/x/y", body, tok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("PUT status = %d, want 204", resp.StatusCode)
+	}
+
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/secret/x/y", "", tok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET status = %d, body = %s", resp.StatusCode, raw)
+	}
+	var result map[string]any
+	_ = json.Unmarshal(raw, &result)
+	if result["value"] != "no-expiry" {
+		t.Errorf("value = %v, want no-expiry", result["value"])
+	}
+	if result["expires_at"] != nil {
+		t.Errorf("expires_at must be absent when TTL is not set, got %v", result["expires_at"])
+	}
+}
+
+func TestKVLegacyRawBytes(t *testing.T) {
+	ts, _, tok := newTestServer(t)
+
+	// Write raw bytes (not JSON) — backward-compat path.
+	resp, err := http.DefaultClient.Do(authedReq(t, http.MethodPut, ts.URL+"/v1/secret/legacy/raw", "plain-text", tok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("PUT status = %d, want 204", resp.StatusCode)
+	}
+
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/secret/legacy/raw", "", tok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET status = %d, body = %s", resp.StatusCode, raw)
+	}
+	var result map[string]any
+	_ = json.Unmarshal(raw, &result)
+	if result["value"] != "plain-text" {
+		t.Errorf("value = %v, want plain-text", result["value"])
+	}
+}
+
+func TestKVInvalidTTL(t *testing.T) {
+	ts, _, tok := newTestServer(t)
+
+	body := `{"value":"x","ttl":"not-a-duration"}`
+	resp, err := http.DefaultClient.Do(authedReq(t, http.MethodPut, ts.URL+"/v1/secret/bad/ttl", body, tok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid TTL status = %d, want 400", resp.StatusCode)
+	}
+}
+
 func TestGitHubRoleCRUD(t *testing.T) {
 	ts, _, rootTok := newTestServer(t)
 

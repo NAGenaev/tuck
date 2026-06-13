@@ -80,6 +80,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/secret/{path...}", s.requireToken(s.deleteSecret))
 	mux.HandleFunc("LIST /v1/secret/{path...}", s.requireToken(s.listSecrets))
 
+	// Token roles
+	mux.HandleFunc("PUT /v1/auth/token/roles/{name}", s.requireToken(s.putTokenRole))
+	mux.HandleFunc("GET /v1/auth/token/roles/{name}", s.requireToken(s.getTokenRole))
+	mux.HandleFunc("DELETE /v1/auth/token/roles/{name}", s.requireToken(s.deleteTokenRole))
+	mux.HandleFunc("LIST /v1/auth/token/roles/", s.requireToken(s.listTokenRoles))
+	mux.HandleFunc("POST /v1/auth/token/roles/{role}/create", s.requireToken(s.createTokenFromRole))
+
 	mux.HandleFunc("POST /v1/auth/token", s.requireToken(s.createToken))
 	mux.HandleFunc("GET /v1/auth/token/{id}", s.requireToken(s.lookupToken))
 	mux.HandleFunc("DELETE /v1/auth/token/{id}", s.requireToken(s.revokeToken))

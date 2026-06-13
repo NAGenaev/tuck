@@ -366,3 +366,96 @@ func TestNamespaceCRUD(t *testing.T) {
 		t.Fatalf("get deleted namespace status = %d, want 404", resp.StatusCode)
 	}
 }
+
+func TestTokenRoleRoundTrip(t *testing.T) {
+	ts, _, rootTok := newTestServer(t)
+
+	// Create role
+	roleBody := `{"policies":["root"],"ttl":"1h","renewable":true,"max_uses":5}`
+	resp, err := http.DefaultClient.Do(authedReq(t, http.MethodPut, ts.URL+"/v1/auth/token/roles/ci", roleBody, rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("put role status = %d, want 204", resp.StatusCode)
+	}
+
+	// Get role
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/auth/token/roles/ci", "", rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get role status = %d, body = %s", resp.StatusCode, body)
+	}
+	var role map[string]any
+	_ = json.Unmarshal(body, &role)
+	if role["name"] != "ci" {
+		t.Errorf("role name = %v, want ci", role["name"])
+	}
+	if role["renewable"] != true {
+		t.Errorf("role renewable = %v, want true", role["renewable"])
+	}
+
+	// List roles
+	resp, err = http.DefaultClient.Do(authedReq(t, "LIST", ts.URL+"/v1/auth/token/roles/", "", rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list roles status = %d", resp.StatusCode)
+	}
+	var listRes map[string]any
+	_ = json.Unmarshal(body, &listRes)
+	keys, _ := listRes["keys"].([]any)
+	if len(keys) != 1 || keys[0] != "ci" {
+		t.Errorf("list roles = %v, want [ci]", keys)
+	}
+
+	// Create token from role
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodPost, ts.URL+"/v1/auth/token/roles/ci/create", "", rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create-from-role status = %d, body = %s", resp.StatusCode, body)
+	}
+	var tok map[string]any
+	_ = json.Unmarshal(body, &tok)
+	if tok["id"] == "" {
+		t.Error("created token has no id")
+	}
+	if tok["renewable"] != true {
+		t.Errorf("token renewable = %v, want true", tok["renewable"])
+	}
+	if tok["max_uses"].(float64) != 5 {
+		t.Errorf("token max_uses = %v, want 5", tok["max_uses"])
+	}
+
+	// Delete role
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodDelete, ts.URL+"/v1/auth/token/roles/ci", "", rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete role status = %d", resp.StatusCode)
+	}
+
+	// Create from deleted role → 404
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodPost, ts.URL+"/v1/auth/token/roles/ci/create", "", rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("create from deleted role status = %d, want 404", resp.StatusCode)
+	}
+}

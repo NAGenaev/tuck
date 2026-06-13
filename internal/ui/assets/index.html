@@ -148,11 +148,13 @@ nav { padding: 8px 0; flex: 1; }
 
 /* Login */
 .login-card {
-  width: 360px; background: var(--card); border-radius: 10px;
+  width: 380px; background: var(--card); border-radius: 10px;
   padding: 36px; box-shadow: 0 4px 24px rgba(0,0,0,.3);
 }
 .login-card h1 { font-size: 22px; text-align: center; margin-bottom: 6px; }
-.login-card p  { text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+.login-card p  { text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+.login-hint { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; font-size: 12px; color: var(--muted); text-align: left !important; margin-bottom: 20px !important; line-height: 1.6; }
+.login-hint code { background: rgba(0,0,0,.06); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
 
 /* Spinner */
 .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; }
@@ -190,6 +192,7 @@ const S = {
   cryptoTab:  'pki',
   kvPrefix:  '',     // current KV v1 folder path
   kvPrefixV2: '',    // current KV v2 folder path
+  health:    null,   // cached /v1/sys/health response
 };
 
 // ─────────── API ───────────
@@ -242,6 +245,21 @@ function logout() {
 function setPage(p) {
   if (p !== S.page) { S.kvPrefix = ''; S.kvPrefixV2 = ''; }
   S.page = p; S.msg = null; render();
+  autoLoad(p);
+}
+function autoLoad(p) {
+  switch(p) {
+    case 'status':      loadServerHealth(); break;
+    case 'tokens':      loadTokens(); break;
+    case 'policies':    loadPolicies(); break;
+    case 'namespaces':  loadNamespaces(); break;
+    case 'token-roles': loadTokenRoles(); break;
+    case 'audit':       loadAuditSinks(); break;
+    case 'cluster':     loadClusterStatus(); break;
+    case 'mounts':      loadMounts(); break;
+    case 'plugins':     loadPlugins(); break;
+    case 'replication': loadReplStatus(); break;
+  }
 }
 function flash(type, text) { S.msg = {type, text}; render(); }
 
@@ -277,6 +295,32 @@ async function refreshSeal() {
   } catch (_) {}
 }
 
+async function loadServerHealth() {
+  try {
+    const d = await api('GET', '/v1/sys/health');
+    if (!d) return;
+    S.health = d;
+    const el = document.getElementById('server-health-card');
+    if (!el) return;
+    const uptime = d.uptime_seconds != null
+      ? (d.uptime_seconds < 60 ? `${Math.round(d.uptime_seconds)}s`
+        : d.uptime_seconds < 3600 ? `${Math.round(d.uptime_seconds/60)}m`
+        : `${Math.round(d.uptime_seconds/3600)}h`)
+      : '–';
+    el.innerHTML = `
+      <dl class="kv-grid">
+        <dt>Version</dt><dd>${esc(d.version || 'dev')}</dd>
+        <dt>Mode</dt><dd>${esc(d.sealed ? '🔴 Sealed' : d.standby ? '🟡 Standby' : '🟢 Active')}</dd>
+        <dt>Uptime</dt><dd>${esc(uptime)}</dd>
+        <dt>HA</dt><dd>${d.ha_enabled ? 'enabled' : 'disabled'}</dd>
+        <dt>Commit</dt><dd class="mono" style="font-size:11px">${esc(d.commit || 'unknown')}</dd>
+      </dl>`;
+  } catch (e) {
+    const el = document.getElementById('server-health-card');
+    if (el) el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
+  }
+}
+
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -301,7 +345,13 @@ function renderLogin() {
   return `
 <div class="login-card">
   <h1>🔐 Tuck</h1>
-  <p>Enter your root or service token to continue.</p>
+  <p>Secrets manager — enter your token to continue.</p>
+  <div class="login-hint">
+    <strong>Где взять токен?</strong><br>
+    • Локально: запустите <code>tuck server -dev</code> и скопируйте <em>Root Token</em> из вывода.<br>
+    • Kubernetes: <code>kubectl -n tuck logs deploy/tuck-server | grep "Root Token"</code><br>
+    • Или используйте сервисный токен, выданный администратором.
+  </div>
   ${S.msg ? `<div class="alert alert-${S.msg.type}">${esc(S.msg.text)}</div>` : ''}
   <form id="login-form">
     <div class="form-row">
@@ -390,10 +440,10 @@ function pageStatus() {
   return `
 <div class="page-header">
   <h1>System Status</h1>
-  <p>Seal state and maintenance operations</p>
+  <p>Server health, seal state, and maintenance operations</p>
 </div>
 <div class="page-body">
-  <div class="card-grid">
+  <div class="card-grid" style="margin-bottom:16px">
     <div class="card">
       <div class="card-header">Seal Status</div>
       <div class="card-body">
@@ -405,6 +455,12 @@ function pageStatus() {
           <dt>Seal type</dt><dd>${esc(S.sealType || '–')}</dd>
           ${S.sealRequired ? `<dt>Shards</dt><dd>${S.sealReceived||0} / ${S.sealRequired} required</dd>` : ''}
         </dl>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">Server Info</div>
+      <div class="card-body" id="server-health-card">
+        <div style="color:var(--muted);font-size:12px">Loading…</div>
       </div>
     </div>
     ${sealed ? `
@@ -424,6 +480,7 @@ function pageStatus() {
       <div class="card-header">Actions</div>
       <div class="card-body" style="display:flex;flex-direction:column;gap:8px">
         <button class="btn btn-ghost" id="rotate-btn">🔄 Rotate Key</button>
+        <button class="btn btn-ghost" id="snapshot-btn">💾 Download Snapshot</button>
         <button class="btn btn-danger" id="seal-btn">🔒 Seal Server</button>
       </div>
     </div>`}
@@ -436,7 +493,7 @@ function pageSecrets() {
   return `
 <div class="page-header">
   <h1>KV Secrets</h1>
-  <p>Browse, read, and manage key-value secrets</p>
+  <p>Simple key-value store — one value per key, no versioning. For versioned secrets use <button class="btn btn-ghost btn-sm" data-page="kvv2" style="margin-left:4px">📚 KV v2</button></p>
 </div>
 <div class="page-body">
   <div class="card">
@@ -454,7 +511,10 @@ function pageSecrets() {
     </div>
   </div>
   <div class="card" id="kv-detail-card" style="display:none">
-    <div class="card-header" id="kv-detail-header">Secret</div>
+    <div class="card-header" id="kv-detail-header" style="display:flex;justify-content:space-between;align-items:center">
+      <span>Secret</span>
+      <button class="btn btn-ghost btn-sm" id="kv-detail-close">✕ Close</button>
+    </div>
     <div id="kv-detail-body" class="card-body"></div>
   </div>
   <div class="card">
@@ -477,7 +537,7 @@ function pageKVv2() {
   return `
 <div class="page-header">
   <h1>KV v2 — Versioned Secrets</h1>
-  <p>Browse, read, and manage versioned key-value secrets</p>
+  <p>Each write creates a new version — old values are retained and recoverable. Supports soft delete, destroy, and CAS.</p>
 </div>
 <div class="page-body">
   <div class="card">
@@ -495,7 +555,10 @@ function pageKVv2() {
     </div>
   </div>
   <div class="card" id="v2-detail-card" style="display:none">
-    <div id="v2-detail-header" class="card-header">Secret</div>
+    <div id="v2-detail-header" class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+      <span>Secret</span>
+      <button class="btn btn-ghost btn-sm" id="v2-detail-close">✕ Close</button>
+    </div>
     <div id="v2-detail-body" class="card-body"></div>
   </div>
   <div class="card">
@@ -504,7 +567,10 @@ function pageKVv2() {
       <form id="v2-write-form">
         <div class="form-row"><label>Path</label><input name="path" placeholder="db/password" id="v2-write-path"></div>
         <div class="form-row"><label>Value</label><textarea name="value" placeholder="secret value"></textarea></div>
-        <div class="form-row"><label>CAS (optional)</label><input name="cas" placeholder="expected version, e.g. 0"></div>
+        <div class="form-row">
+          <label>Compare-And-Swap — CAS (optional)</label>
+          <input name="cas" placeholder="Expected current version, e.g. 1 — leave blank to overwrite any version">
+        </div>
         <div class="form-actions"><button class="btn btn-primary" type="submit">Write</button></div>
       </form>
       <div id="v2-write-result" style="margin-top:10px"></div>
@@ -782,26 +848,31 @@ function pagePolicies() {
   return `
 <div class="page-header">
   <h1>Policies</h1>
-  <p>Define path-based access control rules</p>
+  <p>Path-based access control. Capabilities: <code>read</code> <code>list</code> <code>create</code> <code>update</code> <code>delete</code> <code>sudo</code></p>
 </div>
 <div class="page-body">
   <div class="card">
     <div class="card-header">
       Policy List
-      <button class="btn btn-primary btn-sm" id="list-policies-btn">Refresh</button>
+      <button class="btn btn-primary btn-sm" id="list-policies-btn">↻ Refresh</button>
     </div>
     <div class="card-body">
-      <div id="policy-list"><em style="color:var(--muted)">Click Refresh to load policies.</em></div>
+      <div id="policy-list"><div style="color:var(--muted);font-size:12px">Loading…</div></div>
     </div>
   </div>
   <div class="card">
     <div class="card-header">Create / Update Policy</div>
     <div class="card-body">
       <form id="create-policy-form">
-        <div class="form-row"><label>Name</label><input name="name" placeholder="read-only"></div>
+        <div class="form-row"><label>Name</label><input name="name" placeholder="prod-readonly" required></div>
         <div class="form-row">
           <label>Rules (JSON array)</label>
-          <textarea name="rules" placeholder='[{"path":"secret/*","capabilities":["read","list"]}]'></textarea>
+          <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" type="button" id="tpl-readonly">📖 Read-only</button>
+            <button class="btn btn-ghost btn-sm" type="button" id="tpl-readwrite">✏️ Read-write</button>
+            <button class="btn btn-ghost btn-sm" type="button" id="tpl-admin">👑 Admin</button>
+          </div>
+          <textarea name="rules" rows="5" placeholder='[{"path":"secret/*","capabilities":["read","list"]}]'></textarea>
         </div>
         <button class="btn btn-primary" type="submit">Save Policy</button>
       </form>
@@ -1535,6 +1606,23 @@ function bind() {
     } catch (e) { flash('error', e.message); }
   });
 
+  on('click', '#snapshot-btn', async () => {
+    try {
+      const r = await apiRaw('GET', '/v1/sys/snapshot');
+      if (!r || !r.ok) { flash('error', 'Snapshot failed'); return; }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tuck-snapshot-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.snap`;
+      a.click();
+      URL.revokeObjectURL(url);
+      flash('success', 'Snapshot downloaded.');
+    } catch (e) { flash('error', e.message); }
+  });
+
+  on('click', '#kv-detail-close', () => { const c = document.getElementById('kv-detail-card'); if (c) c.style.display = 'none'; });
+  on('click', '#v2-detail-close', () => { const c = document.getElementById('v2-detail-card'); if (c) c.style.display = 'none'; });
   on('click', '#kv-refresh-btn', () => kvListAt(S.kvPrefix));
   on('click', '#kv-goto-btn', () => {
     const v = (document.getElementById('kv-manual-prefix')?.value || '').trim();
@@ -1571,16 +1659,29 @@ function bind() {
     if (fd.get('ttl')) body.ttl = fd.get('ttl').trim();
     try {
       const d = await api('POST', '/v1/auth/token', body);
-      document.getElementById('new-token-result').innerHTML =
-        `<div class="alert alert-success">
-          <strong>Token created (shown once):</strong><br>
-          <span class="mono">${esc(d.id)}</span>
-        </div>`;
+      const el = document.getElementById('new-token-result');
+      el.innerHTML = `<div class="alert alert-success">
+        <strong>Token создан — сохраните его сейчас, он больше не будет показан:</strong>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+          <code class="mono" style="flex:1;background:rgba(0,0,0,.05);padding:8px 10px;border-radius:4px;word-break:break-all;font-size:11px">${esc(d.id)}</code>
+          <button class="btn btn-ghost btn-sm" id="copy-new-token-btn" style="white-space:nowrap">📋 Copy</button>
+        </div>
+        <small style="color:var(--muted)">Policies: ${esc((d.policies||[]).join(', ')||'none')} &nbsp;|&nbsp; TTL: ${d.ttl||'never'}</small>
+      </div>`;
+      el.querySelector('#copy-new-token-btn').onclick = () => copyText(d.id);
     } catch (e) { flash('error', e.message); }
   });
 
   // Policies
   on('click', '#list-policies-btn', loadPolicies);
+
+  const _tplRO  = [{"path":"secret/*","capabilities":["read","list"]}];
+  const _tplRW  = [{"path":"secret/*","capabilities":["read","list","create","update","delete"]}];
+  const _tplAdm = [{"path":"*","capabilities":["read","list","create","update","delete","sudo"]}];
+  on('click', '#tpl-readonly',  () => { const t = document.querySelector('#create-policy-form [name=rules]'); if (t) t.value = JSON.stringify(_tplRO,  null, 2); });
+  on('click', '#tpl-readwrite', () => { const t = document.querySelector('#create-policy-form [name=rules]'); if (t) t.value = JSON.stringify(_tplRW,  null, 2); });
+  on('click', '#tpl-admin',     () => { const t = document.querySelector('#create-policy-form [name=rules]'); if (t) t.value = JSON.stringify(_tplAdm, null, 2); });
+
   on('click', '[data-auth-tab]',    e => { S.authTab   = e.currentTarget.dataset.authTab;   render(); });
   on('click', '[data-dyn-tab]',     e => { S.dynamicTab = e.currentTarget.dataset.dynTab;   render(); });
   on('click', '[data-crypto-tab]',  e => { S.cryptoTab  = e.currentTarget.dataset.cryptoTab; render(); });
@@ -1665,7 +1766,8 @@ async function kvShowSecret(path) {
   const body = document.getElementById('kv-detail-body');
   if (!card) return;
   card.style.display = '';
-  header.textContent = path;
+  const titleSpan = header?.querySelector('span');
+  if (titleSpan) titleSpan.textContent = path; else if (header) header.textContent = path;
   body.innerHTML = '<div style="color:var(--muted)">Loading…</div>';
   card.scrollIntoView({behavior:'smooth'});
   try {
@@ -1715,10 +1817,11 @@ async function deleteSecret(path) {
 }
 
 async function loadTokens() {
+  const el = document.getElementById('token-list');
+  if (!el) return;
   try {
     const d = await apiList('/v1/auth/token/');
     if (!d) return;
-    const el = document.getElementById('token-list');
     if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No tokens.</em>'; return; }
     el.innerHTML = `<table class="table">
       <thead><tr><th>ID</th><th>Name</th><th>Policies</th><th>Expires</th><th></th></tr></thead>
@@ -1744,32 +1847,50 @@ async function loadTokens() {
           method: 'DELETE', headers: { 'X-Tuck-Token': S.token }
         });
         if (!r.ok) { const d = await r.json(); throw new Error(d.error || r.status); }
-        flash('success', 'Token revoked.'); render();
+        flash('success', 'Token revoked.'); loadTokens();
       } catch (e) { flash('error', e.message); }
     });
-  } catch (e) { flash('error', e.message); }
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
 }
 
 async function loadPolicies() {
+  const el = document.getElementById('policy-list');
+  if (!el) return;
   try {
     const d = await apiList('/v1/policy/');
     if (!d) return;
-    const el = document.getElementById('policy-list');
     if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No policies.</em>'; return; }
     el.innerHTML = `<table class="table">
       <thead><tr><th>Name</th><th></th></tr></thead>
       <tbody>${d.keys.map(name=>`<tr>
         <td>${esc(name)}</td>
-        <td style="width:120px">
-          <button class="btn btn-ghost btn-sm" data-view-policy="${esc(name)}">View</button>
+        <td style="width:170px">
+          <button class="btn btn-ghost btn-sm" data-edit-policy="${esc(name)}">Edit</button>
+          <button class="btn btn-ghost btn-sm" data-view-policy="${esc(name)}" style="margin-left:4px">View</button>
           <button class="btn btn-danger btn-sm" data-del-policy="${esc(name)}" style="margin-left:4px">Delete</button>
         </td>
       </tr>`).join('')}</tbody>
-    </table>`;
+    </table>
+    <div id="policy-detail" style="display:none;margin-top:12px"></div>`;
+    el.querySelectorAll('[data-edit-policy]').forEach(b => b.onclick = async () => {
+      try {
+        const p = await api('GET', `/v1/policy/${b.dataset.editPolicy}`);
+        const nameInput = document.querySelector('#create-policy-form [name=name]');
+        const rulesInput = document.querySelector('#create-policy-form [name=rules]');
+        if (nameInput) nameInput.value = p.name || b.dataset.editPolicy;
+        if (rulesInput) rulesInput.value = JSON.stringify(p.rules || [], null, 2);
+        document.getElementById('create-policy-form')?.scrollIntoView({behavior:'smooth'});
+      } catch (e) { flash('error', e.message); }
+    });
     el.querySelectorAll('[data-view-policy]').forEach(b => b.onclick = async () => {
       try {
         const p = await api('GET', `/v1/policy/${b.dataset.viewPolicy}`);
-        alert(JSON.stringify(p, null, 2));
+        const det = document.getElementById('policy-detail');
+        if (det) {
+          det.style.display = '';
+          det.innerHTML = `<div class="card"><div class="card-header">${esc(b.dataset.viewPolicy)}</div>
+            <div class="card-body"><pre style="font-size:11px;overflow:auto">${esc(JSON.stringify(p, null, 2))}</pre></div></div>`;
+        }
       } catch (e) { flash('error', e.message); }
     });
     el.querySelectorAll('[data-del-policy]').forEach(b => b.onclick = async () => {
@@ -1778,11 +1899,13 @@ async function loadPolicies() {
         const r = await fetch(`/v1/policy/${b.dataset.delPolicy}`, {
           method: 'DELETE', headers: { 'X-Tuck-Token': S.token }
         });
-        if (!r.ok) { const d = await r.json(); throw new Error(d.error || r.status); }
+        if (!r.ok) { const dd = await r.json(); throw new Error(dd.error || r.status); }
         flash('success', 'Policy deleted.'); render();
       } catch (e) { flash('error', e.message); }
     });
-  } catch (e) { flash('error', e.message); }
+  } catch (e) {
+    if (el) el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
+  }
 }
 
 // ─────────── Auth bind (added in bind() via separate calls) ───────────
@@ -2630,7 +2753,8 @@ function bindKVv2() {
     const body = document.getElementById('v2-detail-body');
     if (!card) return;
     card.style.display = '';
-    header.textContent = path;
+    const ts2 = header?.querySelector('span');
+    if (ts2) ts2.textContent = path; else if (header) header.textContent = path;
     body.innerHTML = '<div style="color:var(--muted)">Loading…</div>';
     card.scrollIntoView({behavior:'smooth'});
     try {
@@ -2668,7 +2792,8 @@ function bindKVv2() {
     const body = document.getElementById('v2-detail-body');
     if (!card) return;
     card.style.display = '';
-    header.textContent = path + ' — metadata';
+    const ts3 = header?.querySelector('span');
+    if (ts3) ts3.textContent = path + ' — metadata'; else if (header) header.textContent = path + ' — metadata';
     body.innerHTML = '<div style="color:var(--muted)">Loading…</div>';
     card.scrollIntoView({behavior:'smooth'});
     try {
@@ -2680,7 +2805,7 @@ function bindKVv2() {
       <pre style="font-size:11px;margin-top:8px;overflow:auto;background:var(--bg);padding:10px;border-radius:var(--radius)">${esc(JSON.stringify(d.metadata?.versions,null,2))}</pre>
       <div style="margin-top:10px">
         <strong>Read version:</strong>
-        ${Object.keys(d.metadata?.versions||{}).map(v=>`<button class="btn btn-ghost btn-sm" style="margin:2px" onclick="(${v2ShowSecret.toString()})('${esc(path)}', ${v})">v${v}</button>`).join('')}
+        ${Object.keys(d.metadata?.versions||{}).map(v=>`<button class="btn btn-ghost btn-sm" style="margin:2px" data-v2-read-path="${esc(path)}" data-v2-read-ver="${v}">v${v}</button>`).join('')}
       </div>`;
     } catch (e) { body.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
   }
@@ -2691,6 +2816,10 @@ function bindKVv2() {
     v2ListAt(v);
   });
   on('keydown', '#v2-manual-prefix', e => { if (e.key === 'Enter') { e.preventDefault(); v2ListAt(e.target.value.trim()); } });
+  on('click', '[data-v2-read-path]', e => {
+    const btn = e.currentTarget;
+    v2ShowSecret(btn.dataset.v2ReadPath, parseInt(btn.dataset.v2ReadVer, 10));
+  });
 
   if (S.page === 'kvv2') v2ListAt(S.kvPrefixV2);
 
@@ -2748,10 +2877,15 @@ function bindWrapping() {
     try { payload = JSON.parse(payloadStr); } catch { el.innerHTML = '<div class="alert alert-error">Payload must be valid JSON</div>'; return; }
     try {
       const d = await api('POST', '/v1/sys/wrapping/wrap', payload);
-      el.innerHTML = `<div class="alert alert-success" style="word-break:break-all">
-        <strong>Wrapping Token:</strong><br><code>${esc(d.token)}</code>
-        <br><small>TTL: ${d.ttl ?? ''}s &nbsp;|&nbsp; Expires: ${d.expires_at ?? ''}</small>
+      el.innerHTML = `<div class="alert alert-success">
+        <strong>Wrapping Token — передайте получателю:</strong>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+          <code style="flex:1;word-break:break-all;font-size:11px">${esc(d.token)}</code>
+          <button class="btn btn-ghost btn-sm" id="copy-wrap-token">📋 Copy</button>
+        </div>
+        <small>TTL: ${d.ttl ?? ''}s &nbsp;|&nbsp; Expires: ${d.expires_at ?? ''}</small>
       </div>`;
+      el.querySelector('#copy-wrap-token').onclick = () => copyText(d.token);
     } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
   });
 
@@ -3269,7 +3403,7 @@ function startPoll() {
 
 // ─────────── Boot ───────────
 render();
-if (S.token) startPoll();
+if (S.token) { startPoll(); autoLoad(S.page); }
 </script>
 </body>
 </html>

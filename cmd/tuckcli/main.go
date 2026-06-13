@@ -29,22 +29,24 @@ var Version = "dev"
 
 // client is a thin HTTP wrapper for the Tuck API.
 type client struct {
-	addr     string
-	token    string
-	insecure bool
-	http     *http.Client
+	addr      string
+	token     string
+	namespace string
+	insecure  bool
+	http      *http.Client
 }
 
-func newClient(addr, token string, insecure bool) *client {
+func newClient(addr, token, ns string, insecure bool) *client {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	if insecure {
 		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // #nosec G402 — gated by explicit --insecure flag
 	}
 	return &client{
-		addr:     strings.TrimRight(addr, "/"),
-		token:    token,
-		insecure: insecure,
-		http:     &http.Client{Transport: tr, Timeout: 30 * time.Second},
+		addr:      strings.TrimRight(addr, "/"),
+		token:     token,
+		namespace: ns,
+		insecure:  insecure,
+		http:      &http.Client{Transport: tr, Timeout: 30 * time.Second},
 	}
 }
 
@@ -66,6 +68,9 @@ func (c *client) do(method, path string, body any) (*http.Response, error) {
 	}
 	if c.token != "" {
 		req.Header.Set("X-Tuck-Token", c.token)
+	}
+	if c.namespace != "" {
+		req.Header.Set("X-Tuck-Namespace", c.namespace)
 	}
 	return c.http.Do(req) // #nosec G704
 }
@@ -841,13 +846,59 @@ Identity:
 
   identity lookup entity [--id=...] [--name=...] [--alias-name=... --alias-mount=...]
   identity lookup group [--id=...] [--name=...]
+
+Namespaces (use --namespace=<ns> or TUCK_NAMESPACE to operate inside a namespace):
+  namespace create <name>
+  namespace get <name>
+  namespace delete <name>
+  namespace list
 `, Version)
 	os.Exit(2)
+}
+
+// ---- namespace subcommands ----
+
+func cmdNamespaceCreate(c *client, name string) {
+	resp, err := c.do("POST", "/v1/sys/namespaces", map[string]string{"name": name})
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 201))
+}
+
+func cmdNamespaceGet(c *client, name string) {
+	resp, err := c.do("GET", "/v1/sys/namespaces/"+name, nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
+func cmdNamespaceDelete(c *client, name string) {
+	resp, err := c.do("DELETE", "/v1/sys/namespaces/"+name, nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 204 {
+		body, _ := io.ReadAll(resp.Body)
+		fatalf("HTTP %d: %s", resp.StatusCode, body)
+	}
+	fmt.Printf("namespace %q deleted\n", name)
+}
+
+func cmdNamespaceList(c *client) {
+	resp, err := c.do("LIST", "/v1/sys/namespaces/", nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
 }
 
 func main() {
 	addr := flag.String("addr", envOr("TUCK_ADDR", "http://127.0.0.1:8200"), "server address")
 	token := flag.String("token", os.Getenv("TUCK_TOKEN"), "bearer token")
+	ns := flag.String("namespace", envOr("TUCK_NAMESPACE", ""), "namespace (empty = root)")
 	insecure := flag.Bool("insecure", false, "skip TLS verification")
 	flag.Usage = usage
 	flag.Parse()
@@ -857,7 +908,7 @@ func main() {
 		usage()
 	}
 
-	c := newClient(*addr, *token, *insecure)
+	c := newClient(*addr, *token, *ns, *insecure)
 
 	switch args[0] {
 	case "version":
@@ -1310,6 +1361,32 @@ func main() {
 
 		default:
 			fatalf("unknown identity resource %q", args[1])
+		}
+
+	case "namespace":
+		if len(args) < 2 {
+			fatalf("namespace requires a subcommand: create, get, delete, list")
+		}
+		switch args[1] {
+		case "create":
+			if len(args) < 3 {
+				fatalf("namespace create requires a name")
+			}
+			cmdNamespaceCreate(c, args[2])
+		case "get":
+			if len(args) < 3 {
+				fatalf("namespace get requires a name")
+			}
+			cmdNamespaceGet(c, args[2])
+		case "delete":
+			if len(args) < 3 {
+				fatalf("namespace delete requires a name")
+			}
+			cmdNamespaceDelete(c, args[2])
+		case "list":
+			cmdNamespaceList(c)
+		default:
+			fatalf("unknown namespace subcommand %q", args[1])
 		}
 
 	default:

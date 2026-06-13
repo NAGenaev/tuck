@@ -19,7 +19,10 @@ const maxBodyBytes = 1 << 20 // 1 MiB
 
 type contextKey int
 
-const tokenCtxKey contextKey = iota
+const (
+	tokenCtxKey contextKey = iota
+	nsCtxKey
+)
 
 // Server adapts a core.Core to HTTP.
 type Server struct {
@@ -45,6 +48,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/health", s.health)
 
 	// Sys endpoints: seal-status and unseal are unauthenticated; seal requires root.
+	// Namespace management
+	mux.HandleFunc("POST /v1/sys/namespaces", s.requireToken(s.createNamespace))
+	mux.HandleFunc("GET /v1/sys/namespaces/{name}", s.requireToken(s.getNamespace))
+	mux.HandleFunc("DELETE /v1/sys/namespaces/{name}", s.requireToken(s.deleteNamespace))
+	mux.HandleFunc("LIST /v1/sys/namespaces/", s.requireToken(s.listNamespaces))
+
 	mux.HandleFunc("GET /v1/sys/seal-status", s.getSealStatus)
 	mux.HandleFunc("GET /v1/sys/ready", s.getReady)
 	mux.HandleFunc("POST /v1/sys/unseal", s.postUnseal)
@@ -299,13 +308,22 @@ func (s *Server) requireToken(next http.HandlerFunc) http.HandlerFunc {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "token has exceeded its use limit"})
 			return
 		}
-		next(w, r.WithContext(context.WithValue(r.Context(), tokenCtxKey, id)))
+		ctx := context.WithValue(r.Context(), tokenCtxKey, id)
+		if ns := r.Header.Get("X-Tuck-Namespace"); ns != "" {
+			ctx = context.WithValue(ctx, nsCtxKey, ns)
+		}
+		next(w, r.WithContext(ctx))
 	}
 }
 
 func tokenFromCtx(ctx context.Context) string {
 	id, _ := ctx.Value(tokenCtxKey).(string)
 	return id
+}
+
+func nsFromCtx(ctx context.Context) string {
+	ns, _ := ctx.Value(nsCtxKey).(string)
+	return ns
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {

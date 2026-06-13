@@ -29,6 +29,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/identity"
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
 	"github.com/NAGenaev/tuck/internal/kvv2"
+	"github.com/NAGenaev/tuck/internal/namespace"
 	"github.com/NAGenaev/tuck/internal/physical"
 	"github.com/NAGenaev/tuck/internal/policy"
 	"github.com/NAGenaev/tuck/internal/seal"
@@ -75,12 +76,13 @@ type ClusterBackender interface {
 
 // Core is Tuck's runtime: storage + crypto + seal, plus the logical KV and identity APIs.
 type Core struct {
-	backend  physical.Backend
-	barrier  *barrier.Barrier
-	seal     seal.Seal
-	tokens   *token.Store
-	policies *policy.Store
-	kv2      *kvv2.Store
+	backend    physical.Backend
+	barrier    *barrier.Barrier
+	seal       seal.Seal
+	tokens     *token.Store
+	policies   *policy.Store
+	kv2        *kvv2.Store
+	namespaces *namespace.Store
 	jwtStore     *jwt.Store
 	approleStore *approle.Store
 	ldapStore    *authlda.Store
@@ -125,6 +127,7 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		tokens:      token.NewStore(b),
 		policies:    policy.NewStore(b),
 		kv2:         kvv2.New(b),
+		namespaces:  namespace.NewStore(b),
 		jwtStore:     jwt.NewStore(b),
 		approleStore: approle.NewStore(b),
 		ldapStore:    authlda.NewStore(b),
@@ -313,7 +316,7 @@ func (c *Core) EnforceAccess(ctx context.Context, tokenID, logicalPath string, c
 	if err != nil {
 		return err
 	}
-	policies, err := c.resolvePolicies(ctx, tok.Policies)
+	policies, err := c.resolvePolicies(ctx, tok.Namespace, tok.Policies)
 	if err != nil {
 		return fmt.Errorf("resolve policies: %w", err)
 	}
@@ -323,16 +326,17 @@ func (c *Core) EnforceAccess(ctx context.Context, tokenID, logicalPath string, c
 	return nil
 }
 
-// resolvePolicies loads named policies. "root" is never stored — it is
+// resolvePolicies loads named policies from ns. "root" is never stored — it is
 // injected directly so it cannot be accidentally deleted via the API.
-func (c *Core) resolvePolicies(ctx context.Context, names []string) ([]policy.Policy, error) {
+func (c *Core) resolvePolicies(ctx context.Context, ns string, names []string) ([]policy.Policy, error) {
+	store := c.Policies(ns)
 	out := make([]policy.Policy, 0, len(names))
 	for _, name := range names {
 		if name == token.RootPolicyName {
 			out = append(out, policy.RootPolicy)
 			continue
 		}
-		p, err := c.policies.Get(ctx, name)
+		p, err := store.Get(ctx, name)
 		if err != nil {
 			return nil, fmt.Errorf("policy %q: %w", name, err)
 		}
@@ -454,21 +458,21 @@ func (c *Core) RenewToken(ctx context.Context, tokenID string, ttl time.Duration
 
 // --- Policy management ---
 
-func (c *Core) PutPolicy(ctx context.Context, p *policy.Policy) error {
-	return c.policies.Put(ctx, p)
+func (c *Core) PutPolicy(ctx context.Context, ns string, p *policy.Policy) error {
+	return c.Policies(ns).Put(ctx, p)
 }
 
-func (c *Core) GetPolicy(ctx context.Context, name string) (*policy.Policy, error) {
-	return c.policies.Get(ctx, name)
+func (c *Core) GetPolicy(ctx context.Context, ns, name string) (*policy.Policy, error) {
+	return c.Policies(ns).Get(ctx, name)
 }
 
-func (c *Core) DeletePolicy(ctx context.Context, name string) error {
-	return c.policies.Delete(ctx, name)
+func (c *Core) DeletePolicy(ctx context.Context, ns, name string) error {
+	return c.Policies(ns).Delete(ctx, name)
 }
 
-// ListPolicies returns all policy names in the store.
-func (c *Core) ListPolicies(ctx context.Context) ([]string, error) {
-	return c.policies.List(ctx)
+// ListPolicies returns all policy names in the given namespace.
+func (c *Core) ListPolicies(ctx context.Context, ns string) ([]string, error) {
+	return c.Policies(ns).List(ctx)
 }
 
 // --- Kubernetes auth ---
@@ -524,12 +528,12 @@ func (c *Core) DeleteK8sRole(ctx context.Context, namespace, sa string) error {
 
 // ListSecrets returns all secret keys whose storage key starts with the given
 // prefix path. An empty prefix lists every secret.
-func (c *Core) ListSecrets(ctx context.Context, prefix string) ([]string, error) {
-	storagePrefix := secretPrefix
+// ns is the active namespace name (empty or "root" means root namespace).
+func (c *Core) ListSecrets(ctx context.Context, ns, prefix string) ([]string, error) {
+	nsPrefix := namespace.StoragePrefix(ns)
+	storagePrefix := nsPrefix + secretPrefix
 	if prefix != "" {
-		p := secretKey(prefix)
-		// Ensure a trailing slash so we list within the directory, not just
-		// exact matches.
+		p := nsPrefix + secretKey(prefix)
 		if !strings.HasSuffix(p, "/") {
 			p += "/"
 		}
@@ -539,17 +543,20 @@ func (c *Core) ListSecrets(ctx context.Context, prefix string) ([]string, error)
 	if err != nil {
 		return nil, err
 	}
+	trim := nsPrefix + secretPrefix
 	result := make([]string, len(keys))
 	for i, k := range keys {
-		result[i] = strings.TrimPrefix(k, secretPrefix)
+		result[i] = strings.TrimPrefix(k, trim)
 	}
 	return result, nil
 }
 
 // GetSecret returns the bytes stored at the logical path, or (nil, false) if
 // nothing is stored there.
-func (c *Core) GetSecret(ctx context.Context, p string) ([]byte, bool, error) {
-	e, err := c.barrier.Get(ctx, secretKey(p))
+// ns is the active namespace name (empty or "root" means root namespace).
+func (c *Core) GetSecret(ctx context.Context, ns, p string) ([]byte, bool, error) {
+	key := namespace.StoragePrefix(ns) + secretKey(p)
+	e, err := c.barrier.Get(ctx, key)
 	if err != nil {
 		return nil, false, err
 	}
@@ -560,13 +567,16 @@ func (c *Core) GetSecret(ctx context.Context, p string) ([]byte, bool, error) {
 }
 
 // PutSecret stores bytes at the logical path.
-func (c *Core) PutSecret(ctx context.Context, p string, value []byte) error {
-	return c.barrier.Put(ctx, &physical.Entry{Key: secretKey(p), Value: value})
+// ns is the active namespace name (empty or "root" means root namespace).
+func (c *Core) PutSecret(ctx context.Context, ns, p string, value []byte) error {
+	key := namespace.StoragePrefix(ns) + secretKey(p)
+	return c.barrier.Put(ctx, &physical.Entry{Key: key, Value: value})
 }
 
 // DeleteSecret removes the secret at the logical path.
-func (c *Core) DeleteSecret(ctx context.Context, p string) error {
-	return c.barrier.Delete(ctx, secretKey(p))
+// ns is the active namespace name (empty or "root" means root namespace).
+func (c *Core) DeleteSecret(ctx context.Context, ns, p string) error {
+	return c.barrier.Delete(ctx, namespace.StoragePrefix(ns)+secretKey(p))
 }
 
 // secretKey maps a logical path to a backend key, cleaning it so a request
@@ -575,8 +585,22 @@ func secretKey(p string) string {
 	return secretPrefix + path.Clean("/"+p)[1:]
 }
 
-// KVv2 returns the versioned KV store.
-func (c *Core) KVv2() *kvv2.Store { return c.kv2 }
+// KVv2 returns the versioned KV store for the given namespace.
+// Root namespace returns the default store; named namespaces get a prefix-scoped view.
+func (c *Core) KVv2(ns string) *kvv2.Store {
+	if prefix := namespace.StoragePrefix(ns); prefix != "" {
+		return kvv2.New(c.barrier.View(prefix))
+	}
+	return c.kv2
+}
+
+// Policies returns the policy store for the given namespace.
+func (c *Core) Policies(ns string) *policy.Store {
+	if prefix := namespace.StoragePrefix(ns); prefix != "" {
+		return policy.NewStore(c.barrier.View(prefix))
+	}
+	return c.policies
+}
 
 // ClusterBackend returns the cluster interface if the physical backend
 // implements it (i.e. Raft mode), otherwise nil.
@@ -1242,6 +1266,44 @@ func (c *Core) IdentityDeleteGroupAlias(ctx context.Context, id string) error {
 }
 func (c *Core) IdentityListGroupAliasIDs(ctx context.Context) ([]string, error) {
 	return c.identity.ListGroupAliasIDs(ctx)
+}
+
+// --- Namespace management ---
+
+// CreateNamespace creates a new namespace. Returns an error if the name is invalid
+// or the namespace already exists.
+func (c *Core) CreateNamespace(ctx context.Context, name string) (*namespace.Namespace, error) {
+	if err := namespace.ValidateName(name); err != nil {
+		return nil, err
+	}
+	existing, err := c.namespaces.Get(ctx, name)
+	if err == nil && existing != nil {
+		return nil, fmt.Errorf("namespace %q already exists", name)
+	}
+	ns := &namespace.Namespace{Name: name, CreatedAt: time.Now().UTC()}
+	if err := c.namespaces.Put(ctx, ns); err != nil {
+		return nil, err
+	}
+	return ns, nil
+}
+
+// GetNamespace returns the namespace with the given name.
+func (c *Core) GetNamespace(ctx context.Context, name string) (*namespace.Namespace, error) {
+	return c.namespaces.Get(ctx, name)
+}
+
+// DeleteNamespace removes a namespace. Secrets and policies stored within it
+// remain in storage but become inaccessible until the namespace is recreated.
+func (c *Core) DeleteNamespace(ctx context.Context, name string) error {
+	if name == "" || name == namespace.RootNamespace {
+		return fmt.Errorf("cannot delete the root namespace")
+	}
+	return c.namespaces.Delete(ctx, name)
+}
+
+// ListNamespaces returns the names of all non-root namespaces.
+func (c *Core) ListNamespaces(ctx context.Context) ([]string, error) {
+	return c.namespaces.List(ctx)
 }
 
 // --- Cubbyhole (per-token private storage) ---

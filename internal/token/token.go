@@ -19,6 +19,7 @@ type Token struct {
 	Accessor    string        `json:"accessor"`            // HMAC-safe alias; returned on create/lookup
 	DisplayName string        `json:"display_name"`
 	Policies    []string      `json:"policies"`
+	Namespace   string        `json:"namespace,omitempty"` // namespace this token is bound to; empty = root
 	EntityID    string        `json:"entity_id,omitempty"` // set when issued via an auth method login
 	CreatedAt   time.Time     `json:"created_at"`
 	ExpiresAt   time.Time     `json:"expires_at"` // zero means never

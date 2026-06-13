@@ -459,3 +459,61 @@ func TestTokenRoleRoundTrip(t *testing.T) {
 		t.Fatalf("create from deleted role status = %d, want 404", resp.StatusCode)
 	}
 }
+
+func TestAuditSinkManagement(t *testing.T) {
+	ts, _, rootTok := newTestServer(t)
+
+	// Register a webhook sink (points to a fake URL — we only test storage/API)
+	body := `{"url":"http://localhost:19999/hook","timeout_sec":3}`
+	resp, err := http.DefaultClient.Do(authedReq(t, http.MethodPut, ts.URL+"/v1/sys/audit/webhook/test-hook", body, rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("register webhook status = %d, want 204", resp.StatusCode)
+	}
+
+	// List — should contain our sink
+	resp, err = http.DefaultClient.Do(authedReq(t, "LIST", ts.URL+"/v1/sys/audit/", "", rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list sinks status = %d", resp.StatusCode)
+	}
+	var listRes map[string]any
+	_ = json.Unmarshal(raw, &listRes)
+	sinks, _ := listRes["sinks"].([]any)
+	if len(sinks) != 1 {
+		t.Fatalf("list sinks = %v, want 1 entry", sinks)
+	}
+
+	// Deregister
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodDelete, ts.URL+"/v1/sys/audit/test-hook", "", rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete sink status = %d, want 204", resp.StatusCode)
+	}
+
+	// List again — should be empty
+	resp, err = http.DefaultClient.Do(authedReq(t, "LIST", ts.URL+"/v1/sys/audit/", "", rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list sinks after delete status = %d", resp.StatusCode)
+	}
+	_ = json.Unmarshal(raw, &listRes)
+	sinks, _ = listRes["sinks"].([]any)
+	if len(sinks) != 0 {
+		t.Fatalf("list sinks after delete = %v, want empty", sinks)
+	}
+}

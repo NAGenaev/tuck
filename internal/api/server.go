@@ -27,14 +27,14 @@ const (
 // Server adapts a core.Core to HTTP.
 type Server struct {
 	core  *core.Core
-	audit *audit.Logger
+	audit audit.Loggable
 }
 
-// New returns an HTTP server over the given core with a no-op audit logger.
-func New(c *core.Core) *Server { return NewWithAudit(c, audit.Nop()) }
+// New returns an HTTP server wired to the core's audit Dispatcher.
+func New(c *core.Core) *Server { return &Server{core: c, audit: c.Dispatcher()} }
 
-// NewWithAudit returns an HTTP server with the given audit logger.
-func NewWithAudit(c *core.Core, l *audit.Logger) *Server {
+// NewWithAudit returns an HTTP server with a custom audit sink (used in tests).
+func NewWithAudit(c *core.Core, l audit.Loggable) *Server {
 	return &Server{core: c, audit: l}
 }
 
@@ -48,6 +48,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/health", s.health)
 
 	// Sys endpoints: seal-status and unseal are unauthenticated; seal requires root.
+	// Audit sink management
+	mux.HandleFunc("PUT /v1/sys/audit/webhook/{name}", s.requireToken(s.putAuditWebhook))
+	mux.HandleFunc("DELETE /v1/sys/audit/{name}", s.requireToken(s.deleteAuditSink))
+	mux.HandleFunc("LIST /v1/sys/audit/", s.requireToken(s.listAuditSinks))
+
 	// Namespace management
 	mux.HandleFunc("POST /v1/sys/namespaces", s.requireToken(s.createNamespace))
 	mux.HandleFunc("GET /v1/sys/namespaces/{name}", s.requireToken(s.getNamespace))

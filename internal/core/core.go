@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/NAGenaev/tuck/internal/audit"
 	"github.com/NAGenaev/tuck/internal/auth/approle"
 	"github.com/NAGenaev/tuck/internal/auth/jwt"
 	authlda "github.com/NAGenaev/tuck/internal/auth/ldap"
@@ -76,14 +77,16 @@ type ClusterBackender interface {
 
 // Core is Tuck's runtime: storage + crypto + seal, plus the logical KV and identity APIs.
 type Core struct {
-	backend    physical.Backend
-	barrier    *barrier.Barrier
-	seal       seal.Seal
-	tokens     *token.Store
-	tokenRoles *token.RoleStore
-	policies   *policy.Store
-	kv2        *kvv2.Store
-	namespaces *namespace.Store
+	backend     physical.Backend
+	barrier     *barrier.Barrier
+	seal        seal.Seal
+	tokens      *token.Store
+	tokenRoles  *token.RoleStore
+	policies    *policy.Store
+	kv2         *kvv2.Store
+	namespaces  *namespace.Store
+	auditStore  *audit.Store
+	dispatcher  *audit.Dispatcher
 	jwtStore     *jwt.Store
 	approleStore *approle.Store
 	ldapStore    *authlda.Store
@@ -130,6 +133,8 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		policies:    policy.NewStore(b),
 		kv2:         kvv2.New(b),
 		namespaces:  namespace.NewStore(b),
+		auditStore:  audit.NewStore(b),
+		dispatcher:  audit.NewDispatcher(audit.Nop()),
 		jwtStore:     jwt.NewStore(b),
 		approleStore: approle.NewStore(b),
 		ldapStore:    authlda.NewStore(b),
@@ -185,6 +190,7 @@ func (c *Core) Start(ctx context.Context) (*StartResult, error) {
 			return nil, fmt.Errorf("barrier unseal: %w", err)
 		}
 		clear(result.RootKey)
+		_ = c.LoadAuditSinks(ctx)
 		rootTok, err := token.Generate(token.RootTokenDisplayName, []string{token.RootPolicyName}, 0)
 		if err != nil {
 			return nil, fmt.Errorf("generate root token: %w", err)
@@ -209,6 +215,7 @@ func (c *Core) Start(ctx context.Context) (*StartResult, error) {
 		return nil, fmt.Errorf("barrier unseal: %w", err)
 	}
 	clear(rootKey)
+	_ = c.LoadAuditSinks(ctx)
 	return nil, nil
 }
 
@@ -248,6 +255,7 @@ func (c *Core) UnsealShard(ctx context.Context, share string) (bool, error) {
 		return false, fmt.Errorf("barrier unseal after shards: %w", err)
 	}
 	clear(rootKey)
+	_ = c.LoadAuditSinks(unsealCtx)
 	c.unsealCtx = nil // release the stored context
 	return true, nil
 }
@@ -1324,6 +1332,84 @@ func (c *Core) IdentityDeleteGroupAlias(ctx context.Context, id string) error {
 }
 func (c *Core) IdentityListGroupAliasIDs(ctx context.Context) ([]string, error) {
 	return c.identity.ListGroupAliasIDs(ctx)
+}
+
+// --- Audit sink management ---
+
+// Dispatcher returns the audit dispatcher so the API server can use it for Middleware.
+func (c *Core) Dispatcher() *audit.Dispatcher { return c.dispatcher }
+
+// SetDispatcher replaces the dispatcher (called after the server sets up the file logger).
+func (c *Core) SetDispatcher(d *audit.Dispatcher) { c.dispatcher = d }
+
+// RegisterAuditWebhook creates or replaces a webhook audit sink.
+func (c *Core) RegisterAuditWebhook(ctx context.Context, name, url string, timeoutSec int) error {
+	if url == "" {
+		return fmt.Errorf("url is required")
+	}
+	to := time.Duration(timeoutSec) * time.Second
+	sink := audit.NewWebhookSink(url, to)
+	c.dispatcher.Register(name, sink)
+	cfg := &audit.SinkConfig{
+		Name: name,
+		Type: "webhook",
+		Options: map[string]string{
+			"url":         url,
+			"timeout_sec": fmt.Sprintf("%d", timeoutSec),
+		},
+	}
+	return c.auditStore.Put(ctx, cfg)
+}
+
+// DeregisterAuditSink removes a named audit sink.
+func (c *Core) DeregisterAuditSink(ctx context.Context, name string) error {
+	_ = c.dispatcher.Deregister(name) // best-effort; ignore "not found" in dispatcher
+	return c.auditStore.Delete(ctx, name)
+}
+
+// ListAuditSinks returns names and error counts of all registered sinks.
+func (c *Core) ListAuditSinks(ctx context.Context) ([]audit.SinkConfig, map[string]int, error) {
+	names, err := c.auditStore.List(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	cfgs := make([]audit.SinkConfig, 0, len(names))
+	for _, n := range names {
+		cfg, err := c.auditStore.Get(ctx, n)
+		if err != nil {
+			continue
+		}
+		cfgs = append(cfgs, *cfg)
+	}
+	errors := c.dispatcher.List()
+	return cfgs, errors, nil
+}
+
+// LoadAuditSinks reads persisted sink configs from the barrier and registers them
+// in the dispatcher. Called once after unseal.
+func (c *Core) LoadAuditSinks(ctx context.Context) error {
+	names, err := c.auditStore.List(ctx)
+	if err != nil {
+		return err
+	}
+	for _, name := range names {
+		cfg, err := c.auditStore.Get(ctx, name)
+		if err != nil {
+			continue
+		}
+		switch cfg.Type {
+		case "webhook":
+			url := cfg.Options["url"]
+			var to time.Duration
+			if s := cfg.Options["timeout_sec"]; s != "" {
+				var sec int
+				fmt.Sscanf(s, "%d", &sec)
+				to = time.Duration(sec) * time.Second
+			}
+			c.dispatcher.Register(name, audit.NewWebhookSink(url, to))
+		}
+	}
+	return nil
 }
 
 // --- Namespace management ---

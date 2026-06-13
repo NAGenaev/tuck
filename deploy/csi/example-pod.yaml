@@ -1,0 +1,36 @@
+# Example: mount Tuck secrets into a pod via CSI.
+#
+# Before applying:
+#   1. Deploy the CSI driver: kubectl apply -f deploy/csi/driver.yaml
+#   2. Create a Tuck token secret:
+#        kubectl create secret generic tuck-token \
+#          --from-literal=token=<your-tuck-token> \
+#          -n default
+#   3. Apply this manifest: kubectl apply -f deploy/csi/example-pod.yaml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tuck-csi-demo
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: busybox
+    command: [sh, -c, "cat /secrets/password && sleep 3600"]
+    volumeMounts:
+    - name: tuck-secrets
+      mountPath: /secrets
+      readOnly: true
+  volumes:
+  - name: tuck-secrets
+    csi:
+      driver: secrets.tuck.io
+      readOnly: true
+      nodePublishSecretRef:
+        name: tuck-token        # Kubernetes Secret with key "token"
+      volumeAttributes:
+        tuck.io/addr: "https://tuck.tuck-system:8200"
+        tuck.io/paths: "db/password,api/key"
+        # tuck.io/namespace: "team-alpha"   # optional Tuck namespace
+        # tuck.io/kv-version: "2"           # use KV v2 (versioned secrets)

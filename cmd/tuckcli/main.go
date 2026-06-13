@@ -1223,6 +1223,12 @@ Namespaces (use --namespace=<ns> or TUCK_NAMESPACE to operate inside a namespace
   namespace delete <name>
   namespace list
 
+Audit sinks:
+  audit enable-webhook --name=<n> --url=<url> [--timeout=5]
+  audit enable-file    --name=<n> --path=<file> [--max-size-mb=100] [--max-backups=3]
+  audit disable <name>
+  audit list
+
 Migration (Vault → Tuck):
   migrate kv      --vault-addr=... --vault-token=... [--vault-insecure] [--mount=secret] [--kv-version=2] [--prefix=] [--dest-prefix=] [--dry-run]
   migrate policies --vault-addr=... --vault-token=... [--vault-insecure] [--dry-run]
@@ -1275,6 +1281,23 @@ func cmdNamespaceList(c *client) {
 }
 
 // ---- audit sink subcommands ----
+
+func cmdAuditEnableFile(c *client, name, path string, maxSizeMB int64, maxBackups int) {
+	resp, err := c.do("PUT", "/v1/sys/audit/file/"+name, map[string]any{
+		"path":        path,
+		"max_size_mb": maxSizeMB,
+		"max_backups": maxBackups,
+	})
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 204 {
+		body, _ := io.ReadAll(resp.Body)
+		fatalf("HTTP %d: %s", resp.StatusCode, body)
+	}
+	fmt.Printf("audit file sink %q registered\n", name)
+}
 
 func cmdAuditEnableWebhook(c *client, name, url string, timeoutSec int) {
 	resp, err := c.do("PUT", "/v1/sys/audit/webhook/"+name, map[string]any{
@@ -1983,7 +2006,7 @@ func main() {
 
 	case "audit":
 		if len(args) < 2 {
-			fatalf("audit requires a subcommand: enable-webhook, disable, list")
+			fatalf("audit requires a subcommand: enable-webhook, enable-file, disable, list")
 		}
 		switch args[1] {
 		case "enable-webhook":
@@ -1996,6 +2019,17 @@ func main() {
 				fatalf("audit enable-webhook requires --name and --url")
 			}
 			cmdAuditEnableWebhook(c, *name, *url, *timeout)
+		case "enable-file":
+			fs := flag.NewFlagSet("audit enable-file", flag.ExitOnError)
+			name := fs.String("name", "", "sink name (required)")
+			path := fs.String("path", "", "log file path (required)")
+			maxSizeMB := fs.Int64("max-size-mb", 100, "maximum log file size in MiB before rotation")
+			maxBackups := fs.Int("max-backups", 3, "number of rotated log files to retain")
+			_ = fs.Parse(args[2:])
+			if *name == "" || *path == "" {
+				fatalf("audit enable-file requires --name and --path")
+			}
+			cmdAuditEnableFile(c, *name, *path, *maxSizeMB, *maxBackups)
 		case "disable":
 			if len(args) < 3 {
 				fatalf("audit disable requires a name")

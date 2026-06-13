@@ -11,6 +11,18 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [1.6.0] — 2026-06-13
+
+### Added
+
+- **CSI Provider** (`secrets.tuck.io`): DaemonSet на каждой ноде монтирует секреты Tuck как файлы в tmpfs Pod без изменений в коде приложения и без попадания данных в etcd.
+- **`build/Dockerfile.csi`**: образ для `tuckcsi` бинаря (distroless/static, CGO_ENABLED=0, linux/amd64 + arm64).
+- **Helm chart — CSI DaemonSet** (`csi.enabled`): опциональный CSI DaemonSet с RBAC (`ServiceAccount`, `ClusterRole`, `ClusterRoleBinding`) и `CSIDriver` объектом; конфигурируется через `values.yaml`.
+- **goreleaser — `tuckcsi`**: бинарь и Docker-образ (`ghcr.io/nagenaev/tuck-csi`) добавлены в release pipeline (linux/amd64 + arm64, cosign, SBOM).
+- **Docs — CSI Provider guide** (`docs2/guides/24-csi-provider.md`): подробное руководство на русском: зачем нужен CSI, установка через Helm, пример Pod, все параметры `volumeAttributes`, отладка, сравнение с Webhook Injector.
+
+---
+
 ## [1.5.0] — 2026-06-13
 
 ### Added

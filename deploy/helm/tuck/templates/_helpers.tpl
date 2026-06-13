@@ -94,6 +94,20 @@ Agent image reference (used as default by the injector).
 {{- end }}
 
 {{/*
+CSI image reference.
+*/}}
+{{- define "tuck.csiImage" -}}
+{{- $reg := .Values.global.imageRegistry -}}
+{{- $repo := .Values.csi.image.repository -}}
+{{- $tag := .Values.csi.image.tag | default .Chart.AppVersion -}}
+{{- if $reg -}}
+{{- printf "%s/%s:%s" $reg $repo $tag }}
+{{- else -}}
+{{- printf "%s:%s" $repo $tag }}
+{{- end -}}
+{{- end }}
+
+{{/*
 Tuck server address for operator/injector.
 */}}
 {{- define "tuck.serverAddr" -}}

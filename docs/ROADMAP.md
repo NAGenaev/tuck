@@ -141,7 +141,7 @@ Tuck — встроенный менеджер секретов для Kubernete
 | UX improvements (UI auto-load, hints, templates, copy) | Высокий | ✅ v1.5.0 |
 | Integration test suite (32 сценария, minikube lab) | Высокий | ✅ v1.5.0 |
 | Russian setup guide | Средний | ✅ v1.5.0 |
-| CSI Provider | Средний | Планируется v1.6.0 |
+| CSI Provider | Средний | ✅ v1.6.0 |
 | GitHub Auth | Низкий | Планируется |
 | Rate limiting на KV/token endpoints | Низкий | Планируется |
 

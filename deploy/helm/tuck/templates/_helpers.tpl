@@ -49,7 +49,11 @@ Server image reference.
 {{- $reg := .Values.global.imageRegistry -}}
 {{- $repo := .Values.server.image.repository -}}
 {{- $tag := .Values.server.image.tag | default .Chart.AppVersion -}}
+{{- if $reg -}}
 {{- printf "%s/%s:%s" $reg $repo $tag }}
+{{- else -}}
+{{- printf "%s:%s" $repo $tag }}
+{{- end -}}
 {{- end }}
 
 {{/*
@@ -59,7 +63,11 @@ Operator image reference.
 {{- $reg := .Values.global.imageRegistry -}}
 {{- $repo := .Values.operator.image.repository -}}
 {{- $tag := .Values.operator.image.tag | default .Chart.AppVersion -}}
+{{- if $reg -}}
 {{- printf "%s/%s:%s" $reg $repo $tag }}
+{{- else -}}
+{{- printf "%s:%s" $repo $tag }}
+{{- end -}}
 {{- end }}
 
 {{/*

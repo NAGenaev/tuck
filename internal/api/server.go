@@ -81,6 +81,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("LIST /v1/sys/plugins/catalog/{type}/", s.requireToken(s.listPlugins))
 	mux.HandleFunc("LIST /v1/sys/plugins/catalog/", s.requireToken(s.listPlugins))
 
+	// Replication — WAL and mode management
+	mux.HandleFunc("GET /v1/sys/replication/status", s.requireToken(s.replicationStatus))
+	mux.HandleFunc("POST /v1/sys/replication/primary/enable", s.requireToken(s.enablePrimary))
+	mux.HandleFunc("POST /v1/sys/replication/secondary/enable", s.requireToken(s.enableSecondary))
+	mux.HandleFunc("POST /v1/sys/replication/disable", s.requireToken(s.disableReplication))
+	mux.HandleFunc("GET /v1/sys/replication/wal", s.requireToken(s.walEntries))
+	mux.HandleFunc("POST /v1/sys/replication/wal/trim", s.requireToken(s.trimWAL))
+
 	mux.HandleFunc("GET /v1/sys/seal-status", s.getSealStatus)
 	mux.HandleFunc("GET /v1/sys/ready", s.getReady)
 	mux.HandleFunc("POST /v1/sys/unseal", s.postUnseal)

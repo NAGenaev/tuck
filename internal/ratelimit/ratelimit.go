@@ -30,10 +30,29 @@ func New(rate float64, burst int) *Limiter {
 	}
 }
 
+// Reconfigure updates the rate and burst. rate≤0 or burst≤0 disables the limiter.
+func (l *Limiter) Reconfigure(rate float64, burst int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.rate = rate
+	l.burst = burst
+}
+
+// Enabled reports whether the limiter is currently active.
+func (l *Limiter) Enabled() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.rate > 0 && l.burst > 0
+}
+
 // Allow reports whether a request from the given IP should be allowed.
+// Returns true unconditionally when the limiter is disabled (rate≤0 or burst≤0).
 func (l *Limiter) Allow(ip string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.rate <= 0 || l.burst <= 0 {
+		return true // disabled
+	}
 	b, ok := l.buckets[ip]
 	if !ok {
 		b = &bucket{tokens: float64(l.burst), lastRefil: time.Now()}

@@ -11,6 +11,65 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [1.26.0] — 2026-06-13
+
+### Added
+
+- **Soak & chaos tests** (`internal/api/soak_test.go`, `chaos_test.go`): `TestSoak` runs N concurrent KV workers for a configurable duration; `TestChaosTransientErrors` injects 30% random backend failures; `TestChaosSealUnsealCycle` verifies data integrity across seal/unseal cycles.
+- **Nightly CI workflow** (`.github/workflows/soak.yml`): runs soak (60s, 8 workers), chaos, fuzz seed corpus, and a security-critical coverage gate (≥80% on barrier/seal/shamir/policy/token/approle) every night at 02:00 UTC.
+
+---
+
+## [1.25.0] — 2026-06-13
+
+### Added
+
+- **Vault → Tuck migration CLI** (`tuckcli migrate`): `migrate kv` recursively walks Vault KV v1/v2 and writes JSON-encoded secret maps to Tuck; `migrate policies` converts Vault HCL path blocks (best-effort regex parser) to Tuck JSON rules; `migrate all` runs both. Supports `--dry-run`, `--prefix`/`--dest-prefix`, `--mount`, `--kv-version`, `--vault-insecure`; reads `VAULT_ADDR` / `VAULT_TOKEN`.
+
+---
+
+## [1.24.0] — 2026-06-13
+
+### Added
+
+- **Fuzz tests for security-critical parsers**: `FuzzCombine` + `FuzzSplitCombineRoundtrip` (Shamir), `FuzzGlobMatch` + `FuzzAllowed` (policy ACLs), `FuzzUnmarshal` (kvsecret), `FuzzUnmarshalToken` + `FuzzTokenMarshalRoundtrip` (token store). All seed corpora pass as regular tests; mutation mode enabled with `-fuzz=`.
+
+---
+
+## [1.23.0] — 2026-06-13
+
+### Added
+
+- **File audit sink** (`internal/audit/sink.go`): `FileSink` wraps `RotatingFileLogger`; registered via `PUT /v1/sys/audit/file/{name}`; persisted in barrier as `type: "file"` `SinkConfig`; reloaded on unseal by `Core.LoadAuditSinks`.
+
+---
+
+## [1.22.0] — 2026-06-13
+
+### Added
+
+- **Dynamic rate limiter** (`internal/ratelimit`): `Reconfigure(rate, burst)` and `Enabled()` methods; `Allow()` returns `true` when rate≤0 (disabled state); hot-reloaded from `sysconfig` on every `PUT /v1/sys/config`; `StartLimiterCleanup` goroutine purges stale per-IP entries.
+- **Rate-limit middleware** applied in `Handler()`: per-IP token-bucket (configurable via sysconfig) + per-token limiter chain.
+
+---
+
+## [1.21.0] — 2026-06-13
+
+### Added
+
+- **Lease renewal** (`internal/lease`): `RenewableBackend` interface; `Manager.Renew()` routes to backends that implement it; `RenewLease` added to all four dynamic engine adapters (database, AWS, GCP, Azure); `MaxTTL` cap computed as `CreatedAt + role.MaxTTL`.
+- **`POST /v1/sys/leases/renew`** HTTP endpoint: body `{"lease_id":"...", "increment":"1h"}`; response `{"lease_id":"...", "expires_at":"..."}`.
+
+---
+
+## [1.20.0] — 2026-06-13
+
+### Added
+
+- **Sentinel policy fields** (`internal/policy`): `Rule` struct extended with `MinWrappingTTL`, `MaxWrappingTTL`, `RequiredParameters`, `AllowedParameters`, `DeniedParameters`, `MFAMethods`; helper functions `MatchingRules`, `CheckRequiredParameters`, `CheckDeniedParameters`, `FilterParameters`, `RequiredMFAMethods`, `WrappingBounds`.
+
+---
+
 ## [0.33.0] — 2026-06-12
 
 ### Added

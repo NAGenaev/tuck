@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -50,16 +51,22 @@ type Role struct {
 	SecretIDNumUses int `json:"secret_id_num_uses,omitempty"`
 	// TokenTTL is the lifetime of tokens issued via this role.
 	TokenTTL time.Duration `json:"token_ttl,omitempty"`
+	// BoundCIDRs restricts login to the listed CIDRs. Empty = no restriction.
+	BoundCIDRs []string `json:"bound_cidrs,omitempty"`
 }
 
 // SecretID is a single-use (or limited-use) credential attached to a Role.
 type SecretID struct {
-	ID        string    `json:"id"`
-	RoleName  string    `json:"role_name"`
-	CreatedAt time.Time `json:"created_at"`
-	ExpiresAt time.Time `json:"expires_at,omitempty"` // zero = never
-	NumUses   int       `json:"num_uses,omitempty"`   // 0 = unlimited
-	UsesLeft  int       `json:"uses_left,omitempty"`  // 0 = unlimited
+	ID        string            `json:"id"`
+	RoleName  string            `json:"role_name"`
+	CreatedAt time.Time         `json:"created_at"`
+	ExpiresAt time.Time         `json:"expires_at,omitempty"` // zero = never
+	NumUses   int               `json:"num_uses,omitempty"`   // 0 = unlimited
+	UsesLeft  int               `json:"uses_left,omitempty"`  // 0 = unlimited
+	// BoundCIDRs overrides the role-level CIDRs for this specific secret-id.
+	BoundCIDRs []string         `json:"bound_cidrs,omitempty"`
+	// Metadata is caller-supplied key/value annotations stored with the secret-id.
+	Metadata   map[string]string `json:"metadata,omitempty"`
 }
 
 // LoginResult is returned by Store.Login on success.
@@ -67,6 +74,12 @@ type LoginResult struct {
 	Subject  string
 	Policies []string
 	TTL      time.Duration
+}
+
+// SecretIDOptions holds optional parameters for GenerateSecretIDWithOptions.
+type SecretIDOptions struct {
+	BoundCIDRs []string
+	Metadata   map[string]string
 }
 
 type barrier interface {
@@ -122,20 +135,31 @@ func (s *Store) ListRoles(ctx context.Context) ([]string, error) {
 
 // GenerateSecretID creates a new SecretID for the named role.
 func (s *Store) GenerateSecretID(ctx context.Context, roleName string) (*SecretID, error) {
+	return s.GenerateSecretIDWithOptions(ctx, roleName, SecretIDOptions{})
+}
+
+// GenerateSecretIDWithOptions creates a SecretID with optional CIDR restrictions
+// and caller-supplied metadata.
+func (s *Store) GenerateSecretIDWithOptions(ctx context.Context, roleName string, opts SecretIDOptions) (*SecretID, error) {
 	role, err := s.GetRole(ctx, roleName)
 	if err != nil {
 		return nil, err
+	}
+	if err := validateCIDRs(opts.BoundCIDRs); err != nil {
+		return nil, fmt.Errorf("approle: bound_cidrs: %w", err)
 	}
 	id, err := generateID()
 	if err != nil {
 		return nil, fmt.Errorf("approle: generate secret-id: %w", err)
 	}
 	sid := &SecretID{
-		ID:        id,
-		RoleName:  roleName,
-		CreatedAt: time.Now().UTC(),
-		NumUses:   role.SecretIDNumUses,
-		UsesLeft:  role.SecretIDNumUses,
+		ID:         id,
+		RoleName:   roleName,
+		CreatedAt:  time.Now().UTC(),
+		NumUses:    role.SecretIDNumUses,
+		UsesLeft:   role.SecretIDNumUses,
+		BoundCIDRs: opts.BoundCIDRs,
+		Metadata:   opts.Metadata,
 	}
 	if role.SecretIDTTL > 0 {
 		sid.ExpiresAt = sid.CreatedAt.Add(role.SecretIDTTL)
@@ -143,9 +167,10 @@ func (s *Store) GenerateSecretID(ctx context.Context, roleName string) (*SecretI
 	return sid, s.put(ctx, secretIDsPrefix+id, sid)
 }
 
-// Login validates roleID + secretID and returns the login result.
+// Login validates roleID + secretID from the given remoteIP and returns the login result.
+// remoteIP may be empty to skip CIDR validation (e.g. in tests).
 // It increments the use-count and marks exhausted SecretIDs for deletion.
-func (s *Store) Login(ctx context.Context, roleID, secretIDVal string) (*LoginResult, error) {
+func (s *Store) Login(ctx context.Context, roleID, secretIDVal, remoteIP string) (*LoginResult, error) {
 	// Find the role whose RoleID matches.
 	names, err := s.b.List(ctx, rolesPrefix)
 	if err != nil {
@@ -177,6 +202,17 @@ func (s *Store) Login(ctx context.Context, roleID, secretIDVal string) (*LoginRe
 	if !sid.ExpiresAt.IsZero() && time.Now().After(sid.ExpiresAt) {
 		_ = s.b.Delete(ctx, secretIDsPrefix+secretIDVal)
 		return nil, ErrInvalidCredentials
+	}
+
+	// CIDR check: secret-id-level overrides role-level.
+	cidrs := sid.BoundCIDRs
+	if len(cidrs) == 0 {
+		cidrs = role.BoundCIDRs
+	}
+	if len(cidrs) > 0 && remoteIP != "" {
+		if !cidrContains(cidrs, remoteIP) {
+			return nil, ErrInvalidCredentials
+		}
 	}
 
 	// Decrement use count.
@@ -241,4 +277,32 @@ func generateID() (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// validateCIDRs returns an error if any of the CIDR strings is not valid.
+func validateCIDRs(cidrs []string) error {
+	for _, c := range cidrs {
+		if _, _, err := net.ParseCIDR(c); err != nil {
+			return fmt.Errorf("invalid CIDR %q: %w", c, err)
+		}
+	}
+	return nil
+}
+
+// cidrContains reports whether ip falls inside any of the given CIDRs.
+func cidrContains(cidrs []string, ip string) bool {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	for _, c := range cidrs {
+		_, ipNet, err := net.ParseCIDR(c)
+		if err != nil {
+			continue
+		}
+		if ipNet.Contains(parsed) {
+			return true
+		}
+	}
+	return false
 }

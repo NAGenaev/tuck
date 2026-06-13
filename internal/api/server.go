@@ -102,13 +102,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /v1/sys/audit/webhook/{name}", s.requireToken(s.putAuditWebhook))
 	mux.HandleFunc("PUT /v1/sys/audit/file/{name}", s.requireToken(s.putAuditFile))
 	mux.HandleFunc("DELETE /v1/sys/audit/{name}", s.requireToken(s.deleteAuditSink))
-	mux.HandleFunc("LIST /v1/sys/audit/", s.requireToken(s.listAuditSinks))
+	s.registerListCompat(mux, "/v1/sys/audit/", s.listAuditSinks)
 
 	// Namespace management
 	mux.HandleFunc("POST /v1/sys/namespaces", s.requireToken(s.createNamespace))
 	mux.HandleFunc("GET /v1/sys/namespaces/{name}", s.requireToken(s.getNamespace))
 	mux.HandleFunc("DELETE /v1/sys/namespaces/{name}", s.requireToken(s.deleteNamespace))
-	mux.HandleFunc("LIST /v1/sys/namespaces/", s.requireToken(s.listNamespaces))
+	s.registerListCompat(mux, "/v1/sys/namespaces/", s.listNamespaces)
 
 	// Runtime configuration
 	mux.HandleFunc("GET /v1/sys/config", s.requireToken(s.getSysConfig))
@@ -133,8 +133,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/sys/plugins/catalog/{type}/{name}", s.requireToken(s.getPlugin))
 	mux.HandleFunc("POST /v1/sys/plugins/catalog/{type}/{name}", s.requireToken(s.registerPlugin))
 	mux.HandleFunc("DELETE /v1/sys/plugins/catalog/{type}/{name}", s.requireToken(s.deletePlugin))
-	mux.HandleFunc("LIST /v1/sys/plugins/catalog/{type}/", s.requireToken(s.listPlugins))
-	mux.HandleFunc("LIST /v1/sys/plugins/catalog/", s.requireToken(s.listPlugins))
+	s.registerListCompat(mux, "/v1/sys/plugins/catalog/{type}/", s.listPlugins)
+	s.registerListCompat(mux, "/v1/sys/plugins/catalog/", s.listPlugins)
 
 	// Replication — WAL and mode management
 	mux.HandleFunc("GET /v1/sys/replication/status", s.requireToken(s.replicationStatus))
@@ -174,14 +174,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /v1/auth/token/roles/{name}", s.requireToken(s.putTokenRole))
 	mux.HandleFunc("GET /v1/auth/token/roles/{name}", s.requireToken(s.getTokenRole))
 	mux.HandleFunc("DELETE /v1/auth/token/roles/{name}", s.requireToken(s.deleteTokenRole))
-	mux.HandleFunc("LIST /v1/auth/token/roles/", s.requireToken(s.listTokenRoles))
+	s.registerListCompat(mux, "/v1/auth/token/roles/", s.listTokenRoles)
 	mux.HandleFunc("POST /v1/auth/token/roles/{role}/create", s.requireToken(s.createTokenFromRole))
 
 	mux.HandleFunc("POST /v1/auth/token", s.requireToken(s.createToken))
 	mux.HandleFunc("GET /v1/auth/token/{id}", s.requireToken(s.lookupToken))
 	mux.HandleFunc("DELETE /v1/auth/token/{id}", s.requireToken(s.revokeToken))
 	mux.HandleFunc("POST /v1/auth/token/{id}/renew", s.requireToken(s.renewToken))
-	mux.HandleFunc("LIST /v1/auth/token/", s.requireToken(s.listTokens))
+	s.registerListCompat(mux, "/v1/auth/token/", s.listTokens)
 	mux.HandleFunc("POST /v1/auth/token/lookup-accessor", s.requireToken(s.lookupByAccessor))
 	mux.HandleFunc("DELETE /v1/auth/token/revoke-accessor", s.requireToken(s.revokeByAccessor))
 	mux.HandleFunc("GET /v1/auth/token/lookup-self", s.requireToken(s.lookupSelf))
@@ -190,7 +190,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /v1/policy/{name}", s.requireToken(s.putPolicy))
 	mux.HandleFunc("GET /v1/policy/{name}", s.requireToken(s.getPolicy))
 	mux.HandleFunc("DELETE /v1/policy/{name}", s.requireToken(s.deletePolicy))
-	mux.HandleFunc("LIST /v1/policy/", s.requireToken(s.listPolicies))
+	s.registerListCompat(mux, "/v1/policy/", s.listPolicies)
 
 	mux.HandleFunc("POST /v1/auth/kubernetes/login", s.loginK8s)
 	mux.HandleFunc("PUT /v1/auth/kubernetes/role/{namespace}/{sa}", s.requireToken(s.putK8sRole))
@@ -204,20 +204,20 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /v1/auth/jwt/role/{name}", s.requireToken(s.putJWTRole))
 	mux.HandleFunc("GET /v1/auth/jwt/role/{name}", s.requireToken(s.getJWTRole))
 	mux.HandleFunc("DELETE /v1/auth/jwt/role/{name}", s.requireToken(s.deleteJWTRole))
-	mux.HandleFunc("LIST /v1/auth/jwt/role/", s.requireToken(s.listJWTRoles))
+	s.registerListCompat(mux, "/v1/auth/jwt/role/", s.listJWTRoles)
 
 	// GitHub Actions OIDC auth — login is unauthenticated; role management requires a token
 	mux.HandleFunc("POST /v1/auth/github/login", s.loginGitHub)
 	mux.HandleFunc("PUT /v1/auth/github/role/{name}", s.requireToken(s.putGitHubRole))
 	mux.HandleFunc("GET /v1/auth/github/role/{name}", s.requireToken(s.getGitHubRole))
 	mux.HandleFunc("DELETE /v1/auth/github/role/{name}", s.requireToken(s.deleteGitHubRole))
-	mux.HandleFunc("LIST /v1/auth/github/role/", s.requireToken(s.listGitHubRoles))
+	s.registerListCompat(mux, "/v1/auth/github/role/", s.listGitHubRoles)
 
 	// TOTP secrets engine — store and validate time-based OTP codes
 	mux.HandleFunc("POST /v1/totp/keys/{name}", s.requireToken(s.totpCreateKey))
 	mux.HandleFunc("GET /v1/totp/keys/{name}", s.requireToken(s.totpGetKey))
 	mux.HandleFunc("DELETE /v1/totp/keys/{name}", s.requireToken(s.totpDeleteKey))
-	mux.HandleFunc("LIST /v1/totp/keys/", s.requireToken(s.totpListKeys))
+	s.registerListCompat(mux, "/v1/totp/keys/", s.totpListKeys)
 	mux.HandleFunc("GET /v1/totp/code/{name}", s.requireToken(s.totpGenerateCode))
 	mux.HandleFunc("POST /v1/totp/code/{name}", s.requireToken(s.totpValidateCode))
 
@@ -229,14 +229,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /v1/ssh/roles/{name}", s.requireToken(s.sshPutRole))
 	mux.HandleFunc("GET /v1/ssh/roles/{name}", s.requireToken(s.sshGetRole))
 	mux.HandleFunc("DELETE /v1/ssh/roles/{name}", s.requireToken(s.sshDeleteRole))
-	mux.HandleFunc("LIST /v1/ssh/roles/", s.requireToken(s.sshListRoles))
+	s.registerListCompat(mux, "/v1/ssh/roles/", s.sshListRoles)
 	mux.HandleFunc("POST /v1/ssh/sign/{role}", s.requireToken(s.sshSign))
 
 	// Transit secrets engine — encryption-as-a-service
 	mux.HandleFunc("POST /v1/transit/keys/{name}", s.requireToken(s.transitCreateKey))
 	mux.HandleFunc("GET /v1/transit/keys/{name}", s.requireToken(s.transitGetKey))
 	mux.HandleFunc("DELETE /v1/transit/keys/{name}", s.requireToken(s.transitDeleteKey))
-	mux.HandleFunc("LIST /v1/transit/keys/", s.requireToken(s.transitListKeys))
+	s.registerListCompat(mux, "/v1/transit/keys/", s.transitListKeys)
 	mux.HandleFunc("POST /v1/transit/keys/{name}/rotate", s.requireToken(s.transitRotate))
 	mux.HandleFunc("POST /v1/transit/keys/{name}/config", s.requireToken(s.transitUpdateKey))
 	mux.HandleFunc("POST /v1/transit/encrypt/{name}", s.requireToken(s.transitEncrypt))
@@ -253,11 +253,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /v1/azure/roles/{name}", s.requireToken(s.putAzureRole))
 	mux.HandleFunc("GET /v1/azure/roles/{name}", s.requireToken(s.getAzureRole))
 	mux.HandleFunc("DELETE /v1/azure/roles/{name}", s.requireToken(s.deleteAzureRole))
-	mux.HandleFunc("LIST /v1/azure/roles/", s.requireToken(s.listAzureRoles))
+	s.registerListCompat(mux, "/v1/azure/roles/", s.listAzureRoles)
 	mux.HandleFunc("POST /v1/azure/creds/{role}", s.requireToken(s.generateAzureCreds))
 	mux.HandleFunc("GET /v1/azure/lease/{id}", s.requireToken(s.getAzureLease))
 	mux.HandleFunc("DELETE /v1/azure/lease/{id}", s.requireToken(s.revokeAzureLease))
-	mux.HandleFunc("LIST /v1/azure/lease/", s.requireToken(s.listAzureLeases))
+	s.registerListCompat(mux, "/v1/azure/lease/", s.listAzureLeases)
 
 	// GCP dynamic secrets engine — generate service account keys or OAuth2 access tokens
 	mux.HandleFunc("PUT /v1/gcp/config", s.requireToken(s.putGCPConfig))
@@ -266,11 +266,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /v1/gcp/roles/{name}", s.requireToken(s.putGCPRole))
 	mux.HandleFunc("GET /v1/gcp/roles/{name}", s.requireToken(s.getGCPRole))
 	mux.HandleFunc("DELETE /v1/gcp/roles/{name}", s.requireToken(s.deleteGCPRole))
-	mux.HandleFunc("LIST /v1/gcp/roles/", s.requireToken(s.listGCPRoles))
+	s.registerListCompat(mux, "/v1/gcp/roles/", s.listGCPRoles)
 	mux.HandleFunc("POST /v1/gcp/creds/{role}", s.requireToken(s.generateGCPCreds))
 	mux.HandleFunc("GET /v1/gcp/lease/{id}", s.requireToken(s.getGCPLease))
 	mux.HandleFunc("DELETE /v1/gcp/lease/{id}", s.requireToken(s.revokeGCPLease))
-	mux.HandleFunc("LIST /v1/gcp/lease/", s.requireToken(s.listGCPLeases))
+	s.registerListCompat(mux, "/v1/gcp/lease/", s.listGCPLeases)
 
 	// AWS dynamic secrets engine — generate IAM user credentials or STS assumed-role sessions
 	mux.HandleFunc("PUT /v1/aws/config", s.requireToken(s.putAWSConfig))
@@ -279,11 +279,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /v1/aws/roles/{name}", s.requireToken(s.putAWSRole))
 	mux.HandleFunc("GET /v1/aws/roles/{name}", s.requireToken(s.getAWSRole))
 	mux.HandleFunc("DELETE /v1/aws/roles/{name}", s.requireToken(s.deleteAWSRole))
-	mux.HandleFunc("LIST /v1/aws/roles/", s.requireToken(s.listAWSRoles))
+	s.registerListCompat(mux, "/v1/aws/roles/", s.listAWSRoles)
 	mux.HandleFunc("POST /v1/aws/creds/{role}", s.requireToken(s.generateAWSCreds))
 	mux.HandleFunc("GET /v1/aws/lease/{id}", s.requireToken(s.getAWSLease))
 	mux.HandleFunc("DELETE /v1/aws/lease/{id}", s.requireToken(s.revokeAWSLease))
-	mux.HandleFunc("LIST /v1/aws/lease/", s.requireToken(s.listAWSLeases))
+	s.registerListCompat(mux, "/v1/aws/lease/", s.listAWSLeases)
 
 	// LDAP / Active Directory auth — login is unauthenticated; config and role management require a token
 	mux.HandleFunc("POST /v1/auth/ldap/login", s.loginLDAP)
@@ -292,14 +292,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /v1/auth/ldap/role/{name}", s.requireToken(s.putLDAPRole))
 	mux.HandleFunc("GET /v1/auth/ldap/role/{name}", s.requireToken(s.getLDAPRole))
 	mux.HandleFunc("DELETE /v1/auth/ldap/role/{name}", s.requireToken(s.deleteLDAPRole))
-	mux.HandleFunc("LIST /v1/auth/ldap/role/", s.requireToken(s.listLDAPRoles))
+	s.registerListCompat(mux, "/v1/auth/ldap/role/", s.listLDAPRoles)
 
 	// AppRole auth — login is unauthenticated; role/secret-id management requires a token
 	mux.HandleFunc("POST /v1/auth/approle/login", s.loginAppRole)
 	mux.HandleFunc("PUT /v1/auth/approle/role/{name}", s.requireToken(s.putAppRole))
 	mux.HandleFunc("GET /v1/auth/approle/role/{name}", s.requireToken(s.getAppRole))
 	mux.HandleFunc("DELETE /v1/auth/approle/role/{name}", s.requireToken(s.deleteAppRole))
-	mux.HandleFunc("LIST /v1/auth/approle/role/", s.requireToken(s.listAppRoles))
+	s.registerListCompat(mux, "/v1/auth/approle/role/", s.listAppRoles)
 	mux.HandleFunc("POST /v1/auth/approle/role/{name}/secret-id", s.requireToken(s.generateSecretID))
 	mux.HandleFunc("GET /v1/auth/approle/role/{name}/secret-id/{id}", s.requireToken(s.lookupSecretID))
 	mux.HandleFunc("DELETE /v1/auth/approle/role/{name}/secret-id/{id}", s.requireToken(s.destroySecretID))
@@ -308,15 +308,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /v1/database/config/{name}", s.requireToken(s.putDBConfig))
 	mux.HandleFunc("GET /v1/database/config/{name}", s.requireToken(s.getDBConfig))
 	mux.HandleFunc("DELETE /v1/database/config/{name}", s.requireToken(s.deleteDBConfig))
-	mux.HandleFunc("LIST /v1/database/config/", s.requireToken(s.listDBConfigs))
+	s.registerListCompat(mux, "/v1/database/config/", s.listDBConfigs)
 	mux.HandleFunc("PUT /v1/database/role/{name}", s.requireToken(s.putDBRole))
 	mux.HandleFunc("GET /v1/database/role/{name}", s.requireToken(s.getDBRole))
 	mux.HandleFunc("DELETE /v1/database/role/{name}", s.requireToken(s.deleteDBRole))
-	mux.HandleFunc("LIST /v1/database/role/", s.requireToken(s.listDBRoles))
+	s.registerListCompat(mux, "/v1/database/role/", s.listDBRoles)
 	mux.HandleFunc("POST /v1/database/creds/{role}", s.requireToken(s.generateDBCreds))
 	mux.HandleFunc("GET /v1/database/lease/{id}", s.requireToken(s.getDBLease))
 	mux.HandleFunc("DELETE /v1/database/lease/{id}", s.requireToken(s.revokeDBLease))
-	mux.HandleFunc("LIST /v1/database/lease/", s.requireToken(s.listDBLeases))
+	s.registerListCompat(mux, "/v1/database/lease/", s.listDBLeases)
 
 	// PKI secrets engine
 	// CA setup and CRL are unauthenticated so clients can verify certs without a token.
@@ -327,11 +327,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /v1/pki/roles/{name}", s.requireToken(s.pkiPutRole))
 	mux.HandleFunc("GET /v1/pki/roles/{name}", s.requireToken(s.pkiGetRole))
 	mux.HandleFunc("DELETE /v1/pki/roles/{name}", s.requireToken(s.pkiDeleteRole))
-	mux.HandleFunc("LIST /v1/pki/roles/", s.requireToken(s.pkiListRoles))
+	s.registerListCompat(mux, "/v1/pki/roles/", s.pkiListRoles)
 	mux.HandleFunc("POST /v1/pki/issue/{role}", s.requireToken(s.pkiIssueCert))
 	mux.HandleFunc("POST /v1/pki/revoke/{serial}", s.requireToken(s.pkiRevokeCert))
 	mux.HandleFunc("GET /v1/pki/certs/{serial}", s.requireToken(s.pkiGetCert))
-	mux.HandleFunc("LIST /v1/pki/certs/", s.requireToken(s.pkiListCerts))
+	s.registerListCompat(mux, "/v1/pki/certs/", s.pkiListCerts)
 
 	// KV v2 — versioned secrets
 	mux.HandleFunc("PUT /v2/secret/{path...}", s.requireToken(s.v2WriteSecret))
@@ -353,13 +353,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/identity/entity/name/{name}", s.requireToken(s.identityGetEntityByName))
 	mux.HandleFunc("POST /v1/identity/entity/name/{name}", s.requireToken(s.identityUpsertEntityByName))
 	mux.HandleFunc("DELETE /v1/identity/entity/name/{name}", s.requireToken(s.identityDeleteEntityByName))
-	mux.HandleFunc("LIST /v1/identity/entity/", s.requireToken(s.identityListEntities))
+	s.registerListCompat(mux, "/v1/identity/entity/", s.identityListEntities)
 
 	mux.HandleFunc("POST /v1/identity/entity-alias", s.requireToken(s.identityCreateAlias))
 	mux.HandleFunc("GET /v1/identity/entity-alias/id/{id}", s.requireToken(s.identityGetAlias))
 	mux.HandleFunc("POST /v1/identity/entity-alias/id/{id}", s.requireToken(s.identityUpdateAlias))
 	mux.HandleFunc("DELETE /v1/identity/entity-alias/id/{id}", s.requireToken(s.identityDeleteAlias))
-	mux.HandleFunc("LIST /v1/identity/entity-alias/id/", s.requireToken(s.identityListAliases))
+	s.registerListCompat(mux, "/v1/identity/entity-alias/id/", s.identityListAliases)
 
 	mux.HandleFunc("POST /v1/identity/group", s.requireToken(s.identityCreateGroup))
 	mux.HandleFunc("GET /v1/identity/group/id/{id}", s.requireToken(s.identityGetGroupByID))
@@ -368,12 +368,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/identity/group/name/{name}", s.requireToken(s.identityGetGroupByName))
 	mux.HandleFunc("POST /v1/identity/group/name/{name}", s.requireToken(s.identityUpsertGroupByName))
 	mux.HandleFunc("DELETE /v1/identity/group/name/{name}", s.requireToken(s.identityDeleteGroupByName))
-	mux.HandleFunc("LIST /v1/identity/group/", s.requireToken(s.identityListGroups))
+	s.registerListCompat(mux, "/v1/identity/group/", s.identityListGroups)
 
 	mux.HandleFunc("POST /v1/identity/group-alias", s.requireToken(s.identityCreateGroupAlias))
 	mux.HandleFunc("GET /v1/identity/group-alias/id/{id}", s.requireToken(s.identityGetGroupAliasByID))
 	mux.HandleFunc("DELETE /v1/identity/group-alias/id/{id}", s.requireToken(s.identityDeleteGroupAlias))
-	mux.HandleFunc("LIST /v1/identity/group-alias/", s.requireToken(s.identityListGroupAliases))
+	s.registerListCompat(mux, "/v1/identity/group-alias/", s.identityListGroupAliases)
 
 	mux.HandleFunc("POST /v1/identity/lookup/entity", s.requireToken(s.identityLookupEntity))
 	mux.HandleFunc("POST /v1/identity/lookup/group", s.requireToken(s.identityLookupGroup))

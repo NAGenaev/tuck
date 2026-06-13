@@ -1,0 +1,37 @@
+# Minikube / local lab overrides.
+# Usage:
+#   helm install tuck deploy/helm/tuck -n tuck --create-namespace \
+#     -f deploy/helm/tuck/values-minikube.yaml
+
+global:
+  imageRegistry: ""   # local images loaded via minikube image load
+
+server:
+  image:
+    repository: tuck-server
+    tag: local
+    pullPolicy: Never
+  sealType: dev
+  replicaCount: 1
+  persistence:
+    enabled: true
+    storageClass: standard
+    size: 1Gi
+  tls:
+    enabled: false
+
+operator:
+  enabled: true
+  image:
+    repository: tuck-operator
+    tag: local
+    pullPolicy: Never
+  replicaCount: 1
+  leaderElect: false
+  tuckAddr: "http://tuck-server.tuck.svc:8200"
+
+injector:
+  enabled: false
+
+crds:
+  install: true

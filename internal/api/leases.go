@@ -11,8 +11,12 @@ import (
 	"github.com/NAGenaev/tuck/internal/policy"
 )
 
-// GET /v1/sys/leases/{id...}
+// GET /v1/sys/leases/{id...}  (or ?list=true on /v1/sys/leases/ to list all)
 func (s *Server) getLease(w http.ResponseWriter, r *http.Request) {
+	if wantsList(r) {
+		s.listLeases(w, r)
+		return
+	}
 	id := r.PathValue("id")
 	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "sys/leases/"+id, policy.CapRead); err != nil {
 		writeErr(w, err)

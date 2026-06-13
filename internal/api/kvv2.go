@@ -46,8 +46,12 @@ func (s *Server) v2WriteSecret(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"version": ver, "path": p})
 }
 
-// GET /v2/secret/{path...}?version=N
+// GET /v2/secret/{path...}?version=N  (or ?list=true to list keys)
 func (s *Server) v2ReadSecret(w http.ResponseWriter, r *http.Request) {
+	if wantsList(r) {
+		s.v2ListSecrets(w, r)
+		return
+	}
 	p := r.PathValue("path")
 	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), v2EnforcePath(p), policy.CapRead); err != nil {
 		writeErr(w, err)
@@ -151,8 +155,12 @@ func (s *Server) v2Destroy(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// GET /v2/secret/metadata/{path...}
+// GET /v2/secret/metadata/{path...}  (or ?list=true to list keys)
 func (s *Server) v2GetMeta(w http.ResponseWriter, r *http.Request) {
+	if wantsList(r) {
+		s.v2ListMeta(w, r)
+		return
+	}
 	p := r.PathValue("path")
 	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), v2EnforcePath(p), policy.CapRead); err != nil {
 		writeErr(w, err)

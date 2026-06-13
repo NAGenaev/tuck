@@ -121,6 +121,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/auth/jwt/role/{name}", s.requireToken(s.deleteJWTRole))
 	mux.HandleFunc("LIST /v1/auth/jwt/role/", s.requireToken(s.listJWTRoles))
 
+	// GitHub Actions OIDC auth — login is unauthenticated; role management requires a token
+	mux.HandleFunc("POST /v1/auth/github/login", s.loginGitHub)
+	mux.HandleFunc("PUT /v1/auth/github/role/{name}", s.requireToken(s.putGitHubRole))
+	mux.HandleFunc("GET /v1/auth/github/role/{name}", s.requireToken(s.getGitHubRole))
+	mux.HandleFunc("DELETE /v1/auth/github/role/{name}", s.requireToken(s.deleteGitHubRole))
+	mux.HandleFunc("LIST /v1/auth/github/role/", s.requireToken(s.listGitHubRoles))
+
 	// TOTP secrets engine — store and validate time-based OTP codes
 	mux.HandleFunc("POST /v1/totp/keys/{name}", s.requireToken(s.totpCreateKey))
 	mux.HandleFunc("GET /v1/totp/keys/{name}", s.requireToken(s.totpGetKey))

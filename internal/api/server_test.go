@@ -517,3 +517,62 @@ func TestAuditSinkManagement(t *testing.T) {
 		t.Fatalf("list sinks after delete = %v, want empty", sinks)
 	}
 }
+
+func TestGitHubRoleCRUD(t *testing.T) {
+	ts, _, rootTok := newTestServer(t)
+
+	roleBody := `{"repository":"myorg/myrepo","ref":"refs/heads/main","policies":["default"],"ttl":3600000000000}`
+
+	// Create role
+	resp, err := http.DefaultClient.Do(authedReq(t, http.MethodPut, ts.URL+"/v1/auth/github/role/ci", roleBody, rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("put github role status = %d, want 204", resp.StatusCode)
+	}
+
+	// Get role
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/auth/github/role/ci", "", rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get github role status = %d, body = %s", resp.StatusCode, raw)
+	}
+	var got map[string]any
+	_ = json.Unmarshal(raw, &got)
+	if got["repository"] != "myorg/myrepo" {
+		t.Errorf("repository = %v, want myorg/myrepo", got["repository"])
+	}
+
+	// List roles
+	resp, err = http.DefaultClient.Do(authedReq(t, "LIST", ts.URL+"/v1/auth/github/role/", "", rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list github roles status = %d", resp.StatusCode)
+	}
+	var listRes map[string]any
+	_ = json.Unmarshal(raw, &listRes)
+	keys, _ := listRes["keys"].([]any)
+	if len(keys) != 1 || keys[0] != "ci" {
+		t.Errorf("list github roles = %v, want [ci]", keys)
+	}
+
+	// Delete role
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodDelete, ts.URL+"/v1/auth/github/role/ci", "", rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete github role status = %d, want 204", resp.StatusCode)
+	}
+}

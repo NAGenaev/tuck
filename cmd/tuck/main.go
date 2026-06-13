@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/NAGenaev/tuck/internal/api"
+	"github.com/NAGenaev/tuck/internal/audit"
 	"github.com/NAGenaev/tuck/internal/config"
 	"github.com/NAGenaev/tuck/internal/core"
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
@@ -85,6 +86,11 @@ func main() {
 	clusterJoin      := flag.String("cluster-join", "", "leader HTTP address to join an existing cluster (e.g. https://leader:8200)")
 	clusterPeers     := flag.String("cluster-peers", "", "comma-separated bootstrap peers: id=raftAddr,... (used with --cluster-bootstrap)")
 
+	// Audit log
+	auditLog        := flag.String("audit-log", "", "path for the file audit log (empty = discard); rotated at --audit-max-size bytes")
+	auditMaxSize    := flag.Int64("audit-max-size", audit.DefaultMaxSize, "max audit log file size in bytes before rotation")
+	auditMaxBackups := flag.Int("audit-max-backups", audit.DefaultMaxBackups, "number of rotated audit log files to keep")
+
 	// Observability
 	otelEndpoint := flag.String("otel-endpoint", "", "OpenTelemetry OTLP HTTP endpoint (e.g. http://otel-collector:4318); empty = disabled")
 
@@ -99,6 +105,8 @@ func main() {
 		fmt.Fprintf(os.Stdout, "tuck %s\n", Version)
 		os.Exit(0)
 	}
+
+	lockMemory()
 
 	// Load config file and apply values for flags that were NOT set on the CLI.
 	// Priority: CLI flag > env var > config file > built-in default.
@@ -317,6 +325,16 @@ func main() {
 
 	// --- Core ---
 	c := core.NewWithK8s(backend, s, reviewer)
+
+	// --- Audit log ---
+	if *auditLog != "" {
+		rl, auditErr := audit.NewRotatingFileLogger(*auditLog, *auditMaxSize, *auditMaxBackups)
+		if auditErr != nil {
+			log.Fatalf("audit log: %v", auditErr)
+		}
+		c.SetDispatcher(audit.NewDispatcher(rl))
+		log.Printf("tuck: audit log → %s (max %d MiB, keep %d)", *auditLog, *auditMaxSize>>20, *auditMaxBackups)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 

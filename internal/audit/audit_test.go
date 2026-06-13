@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -98,5 +99,31 @@ func TestFingerprint(t *testing.T) {
 	}
 	if audit.Fingerprint("") != "" {
 		t.Error("Fingerprint(\"\") should return \"\"")
+	}
+}
+
+func TestRotatingFileLogger(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/audit.log"
+
+	// Set maxSize to 1 byte so every write triggers rotation.
+	rl, err := audit.NewRotatingFileLogger(path, 1, 3)
+	if err != nil {
+		t.Fatalf("NewRotatingFileLogger: %v", err)
+	}
+
+	t.Cleanup(func() { _ = rl.Close() })
+
+	for i := 0; i < 5; i++ {
+		rl.Log(audit.Entry{
+			Method: "GET",
+			Path:   "/v1/health",
+			Status: 200,
+		})
+	}
+
+	// Active file must exist.
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("active log file missing: %v", err)
 	}
 }

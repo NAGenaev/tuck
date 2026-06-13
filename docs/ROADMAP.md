@@ -101,9 +101,12 @@ Tuck — встроенный менеджер секретов для Kubernete
 | SSH CA + sign | ✅ |
 | Transit (encrypt/decrypt/sign/verify) | ✅ |
 | TOTP (create, code, validate) | ✅ |
-| KV v2 (версии, CAS, metadata) | ❌ v1.x |
-| Response Wrapping | ❌ v1.x |
-| Cluster management (Raft status, join/remove) | ❌ v1.x |
+| KV v2 (версии, CAS, metadata) | ✅ v1.4.0 |
+| Response Wrapping | ✅ v1.4.0 |
+| Namespaces management | ✅ v1.4.0 |
+| Token Roles management | ✅ v1.4.0 |
+| Audit Sinks management | ✅ v1.4.0 |
+| Cluster management (Raft status, join/remove) | ✅ v1.4.0 |
 
 ## CLI — полный охват API в v1.0
 
@@ -125,17 +128,19 @@ Tuck — встроенный менеджер секретов для Kubernete
 
 ## Планы v1.x
 
-| Что | Приоритет |
-|---|---|
-| KV v2 + Response Wrapping в UI | Средний |
-| Cluster management в UI | Средний |
-| GitHub Auth | Низкий |
-| Entity & Identity system | Высокий |
-| Namespace isolation / multi-tenancy | Высокий |
-| CSI Provider | Средний |
-| `mlockall` (защита root key от свопа) | Средний |
-| Audit log rotation | Низкий |
-| Rate limiting на KV/token endpoints | Низкий |
+| Что | Приоритет | Статус |
+|---|---|---|
+| Entity & Identity system | Высокий | ✅ v1.1.0 |
+| Namespace isolation / multi-tenancy | Высокий | ✅ v1.2.0 |
+| Audit log streaming (webhook/syslog sinks) | Высокий | ✅ v1.3.0 |
+| KV v2 + Response Wrapping в UI | Средний | ✅ v1.4.0 |
+| Cluster management в UI | Средний | ✅ v1.4.0 |
+| Namespaces / Token Roles / Audit Sinks в UI | Средний | ✅ v1.4.0 |
+| `mlockall` (защита root key от свопа) | Средний | ✅ v1.4.0 |
+| Audit log rotation (size-based) | Низкий | ✅ v1.4.0 |
+| CSI Provider | Средний | Планируется v1.5.0 |
+| GitHub Auth | Низкий | Планируется |
+| Rate limiting на KV/token endpoints | Низкий | Планируется |
 
 ---
 

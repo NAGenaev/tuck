@@ -11,6 +11,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [1.32.0] — 2026-06-13
+
+### Changed
+
+- **Web UI — persistent login**: token now stored in `localStorage` instead of `sessionStorage`; session survives browser restarts, not just page refreshes.
+- **Web UI — KV v1 path explorer**: secrets page replaced with a folder-browsing explorer. Folder keys (ending in `/`) render as clickable `📁` entries that navigate into the subfolder; secret keys show View / Edit / Delete inline buttons. Breadcrumb navigation bar shows the current path and is clickable for one-click ascent.
+- **Web UI — KV v2 path explorer**: same folder-navigation and breadcrumb treatment for the versioned KV engine; version history readable from the metadata panel with per-version read buttons.
+- **Web UI — value masking**: secret values are hidden behind `••••••••` by default; a `👁 Reveal` toggle and `📋 Copy` (clipboard) button appear for each secret without exposing the value in DOM history until explicitly revealed.
+
+---
+
 ## [1.31.0] — 2026-06-13
 
 ### Added

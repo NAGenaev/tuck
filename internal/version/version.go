@@ -1,7 +1,7 @@
 // Package version holds build-time version metadata for the Tuck binary.
 // The variables are populated via -ldflags at build time:
 //
-//	-X github.com/NAGenaev/tuck/internal/version.Version=1.31.0
+//	-X github.com/NAGenaev/tuck/internal/version.Version=1.32.0
 //	-X github.com/NAGenaev/tuck/internal/version.Commit=abc1234
 //	-X github.com/NAGenaev/tuck/internal/version.BuildDate=2026-06-13T00:00:00Z
 package version

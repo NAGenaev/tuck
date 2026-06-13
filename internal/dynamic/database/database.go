@@ -273,6 +273,29 @@ func (m *Manager) RevokeLease(ctx context.Context, leaseID string) error {
 	return m.revokeLease(ctx, &lease)
 }
 
+// RenewLease extends the lease TTL by increment.
+// The new ExpiresAt is capped at CreatedAt + role.MaxTTL when MaxTTL > 0.
+func (m *Manager) RenewLease(ctx context.Context, leaseID string, increment time.Duration) (time.Time, error) {
+	var l Lease
+	if err := m.get(ctx, leasesKey+leaseID, &l); err != nil {
+		return time.Time{}, err
+	}
+	if l.IsExpired() {
+		return time.Time{}, ErrLeaseExpired
+	}
+	newExpiry := time.Now().Add(increment)
+	if role, err := m.GetRole(ctx, l.RoleName); err == nil && role.MaxTTL > 0 {
+		if cap := l.CreatedAt.Add(role.MaxTTL); newExpiry.After(cap) {
+			newExpiry = cap
+		}
+	}
+	l.ExpiresAt = newExpiry
+	if err := m.put(ctx, leasesKey+leaseID, &l); err != nil {
+		return time.Time{}, err
+	}
+	return l.ExpiresAt, nil
+}
+
 // RevokeExpired revokes all leases whose ExpiresAt is before now.
 // Call this from the background GC loop.
 func (m *Manager) RevokeExpired(ctx context.Context) error {

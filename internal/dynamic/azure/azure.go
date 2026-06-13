@@ -32,6 +32,7 @@ import (
 
 var (
 	ErrNotFound      = errors.New("azure: not found")
+	ErrLeaseExpired  = errors.New("azure: lease expired")
 	ErrNotConfigured = errors.New("azure: engine not configured — PUT /v1/azure/config first")
 )
 
@@ -72,6 +73,7 @@ type Lease struct {
 	Role                string    `json:"role"`
 	ApplicationObjectID string    `json:"application_object_id"`
 	KeyID               string    `json:"key_id"` // Azure AD password credential keyId
+	CreatedAt           time.Time `json:"created_at"`
 	ExpiresAt           time.Time `json:"expires_at"`
 	Revoked             bool      `json:"revoked"`
 }
@@ -215,6 +217,7 @@ func (e *Engine) GenerateCreds(ctx context.Context, roleName string) (*GenerateR
 		Role:                roleName,
 		ApplicationObjectID: role.ApplicationObjectID,
 		KeyID:               keyID,
+		CreatedAt:           time.Now(),
 		ExpiresAt:           expiresAt,
 	}); err != nil {
 		_ = graphClient.RemovePassword(ctx, role.ApplicationObjectID, keyID)
@@ -262,6 +265,28 @@ func (e *Engine) RevokeLease(ctx context.Context, id string) error {
 
 func (e *Engine) ListLeases(ctx context.Context) ([]string, error) {
 	return e.listTrimmed(ctx, leasesKey)
+}
+
+// RenewLease extends the lease TTL by increment, capped at CreatedAt + role.MaxTTL.
+func (e *Engine) RenewLease(ctx context.Context, id string, increment time.Duration) (time.Time, error) {
+	lease, err := e.GetLease(ctx, id)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if time.Now().After(lease.ExpiresAt) {
+		return time.Time{}, ErrLeaseExpired
+	}
+	newExpiry := time.Now().Add(increment)
+	if role, rerr := e.GetRole(ctx, lease.Role); rerr == nil && role.MaxTTL > 0 {
+		if cap := lease.CreatedAt.Add(role.MaxTTL); newExpiry.After(cap) {
+			newExpiry = cap
+		}
+	}
+	lease.ExpiresAt = newExpiry
+	if err := e.put(ctx, leasesKey+id, lease); err != nil {
+		return time.Time{}, err
+	}
+	return lease.ExpiresAt, nil
 }
 
 // RevokeExpired revokes all leases that have passed their ExpiresAt time.

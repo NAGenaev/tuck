@@ -71,6 +71,7 @@ type Lease struct {
 	CredentialType string    `json:"credential_type"`
 	Username       string    `json:"username,omitempty"`      // iam_user only
 	AccessKeyID    string    `json:"access_key_id,omitempty"` // iam_user: key to delete on revoke
+	CreatedAt      time.Time `json:"created_at"`
 	ExpiresAt      time.Time `json:"expires_at"`
 	Revoked        bool      `json:"revoked"`
 }
@@ -245,6 +246,7 @@ func (e *Engine) generateAssumedRole(ctx context.Context, cfg *Config, role *Rol
 		Role:           role.Name,
 		CredentialType: CredTypeAssumedRole,
 		AccessKeyID:    keyID,
+		CreatedAt:      time.Now(),
 		ExpiresAt:      expiresAt,
 	}); err != nil {
 		return nil, err
@@ -307,6 +309,7 @@ func (e *Engine) generateIAMUser(ctx context.Context, cfg *Config, role *Role, t
 		CredentialType: CredTypeIAMUser,
 		Username:       username,
 		AccessKeyID:    keyID,
+		CreatedAt:      time.Now(),
 		ExpiresAt:      expiresAt,
 	}); err != nil {
 		return nil, err
@@ -381,6 +384,28 @@ func (e *Engine) RevokeExpired(ctx context.Context) error {
 		_ = e.RevokeLease(ctx, id)
 	}
 	return nil
+}
+
+// RenewLease extends the lease TTL by increment, capped at CreatedAt + role.MaxTTL.
+func (e *Engine) RenewLease(ctx context.Context, id string, increment time.Duration) (time.Time, error) {
+	lease, err := e.GetLease(ctx, id)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if time.Now().After(lease.ExpiresAt) {
+		return time.Time{}, ErrLeaseExpired
+	}
+	newExpiry := time.Now().Add(increment)
+	if role, rerr := e.GetRole(ctx, lease.Role); rerr == nil && role.MaxTTL > 0 {
+		if cap := lease.CreatedAt.Add(role.MaxTTL); newExpiry.After(cap) {
+			newExpiry = cap
+		}
+	}
+	lease.ExpiresAt = newExpiry
+	if err := e.put(ctx, leasesKey+id, lease); err != nil {
+		return time.Time{}, err
+	}
+	return lease.ExpiresAt, nil
 }
 
 // --- barrier helpers ---

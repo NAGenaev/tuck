@@ -29,6 +29,7 @@ import (
 
 var (
 	ErrNotFound      = errors.New("gcp: not found")
+	ErrLeaseExpired  = errors.New("gcp: lease expired")
 	ErrNotConfigured = errors.New("gcp: engine not configured — PUT /v1/gcp/config first")
 )
 
@@ -71,6 +72,7 @@ type Lease struct {
 	Role           string    `json:"role"`
 	CredentialType string    `json:"credential_type"`
 	GCPKeyName     string    `json:"gcp_key_name,omitempty"` // service_account_key: resource name for deletion
+	CreatedAt      time.Time `json:"created_at"`
 	ExpiresAt      time.Time `json:"expires_at"`
 	Revoked        bool      `json:"revoked"`
 }
@@ -235,6 +237,7 @@ func (e *Engine) generateServiceAccountKey(ctx context.Context, cfg *Config, rol
 		Role:           role.Name,
 		CredentialType: CredTypeServiceAccountKey,
 		GCPKeyName:     gcpKeyName,
+		CreatedAt:      time.Now(),
 		ExpiresAt:      expiresAt,
 	}); err != nil {
 		// Best-effort: delete the key we just created since we can't track it.
@@ -276,6 +279,7 @@ func (e *Engine) generateAccessToken(ctx context.Context, cfg *Config, role *Rol
 		ID:             leaseID,
 		Role:           role.Name,
 		CredentialType: CredTypeAccessToken,
+		CreatedAt:      time.Now(),
 		ExpiresAt:      expiresAt,
 	}); err != nil {
 		return nil, err
@@ -320,6 +324,28 @@ func (e *Engine) RevokeLease(ctx context.Context, id string) error {
 
 func (e *Engine) ListLeases(ctx context.Context) ([]string, error) {
 	return e.listTrimmed(ctx, leasesKey)
+}
+
+// RenewLease extends the lease TTL by increment, capped at CreatedAt + role.MaxTTL.
+func (e *Engine) RenewLease(ctx context.Context, id string, increment time.Duration) (time.Time, error) {
+	lease, err := e.GetLease(ctx, id)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if time.Now().After(lease.ExpiresAt) {
+		return time.Time{}, ErrLeaseExpired
+	}
+	newExpiry := time.Now().Add(increment)
+	if role, rerr := e.GetRole(ctx, lease.Role); rerr == nil && role.MaxTTL > 0 {
+		if cap := lease.CreatedAt.Add(role.MaxTTL); newExpiry.After(cap) {
+			newExpiry = cap
+		}
+	}
+	lease.ExpiresAt = newExpiry
+	if err := e.put(ctx, leasesKey+id, lease); err != nil {
+		return time.Time{}, err
+	}
+	return lease.ExpiresAt, nil
 }
 
 // RevokeExpired revokes all leases that have passed their ExpiresAt time.

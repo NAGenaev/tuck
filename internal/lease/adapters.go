@@ -32,6 +32,9 @@ func (a *dbAdapter) RevokeLease(ctx context.Context, id string) error {
 	return err
 }
 func (a *dbAdapter) ListLeases(ctx context.Context) ([]string, error) { return a.m.ListLeases(ctx) }
+func (a *dbAdapter) RenewLease(ctx context.Context, id string, increment time.Duration) (time.Time, error) {
+	return a.m.RenewLease(ctx, id, increment)
+}
 
 // awsAdapter wraps *aws.Engine to implement Backend.
 type awsAdapter struct{ e *aws.Engine }
@@ -47,6 +50,9 @@ func (a *awsAdapter) RevokeLease(ctx context.Context, id string) error {
 	return a.e.RevokeLease(ctx, id)
 }
 func (a *awsAdapter) ListLeases(ctx context.Context) ([]string, error) { return a.e.ListLeases(ctx) }
+func (a *awsAdapter) RenewLease(ctx context.Context, id string, increment time.Duration) (time.Time, error) {
+	return a.e.RenewLease(ctx, id, increment)
+}
 
 // gcpAdapter wraps *gcp.Engine to implement Backend.
 type gcpAdapter struct{ e *gcp.Engine }
@@ -62,6 +68,9 @@ func (a *gcpAdapter) RevokeLease(ctx context.Context, id string) error {
 	return a.e.RevokeLease(ctx, id)
 }
 func (a *gcpAdapter) ListLeases(ctx context.Context) ([]string, error) { return a.e.ListLeases(ctx) }
+func (a *gcpAdapter) RenewLease(ctx context.Context, id string, increment time.Duration) (time.Time, error) {
+	return a.e.RenewLease(ctx, id, increment)
+}
 
 // azureAdapter wraps *azure.Engine to implement Backend.
 type azureAdapter struct{ e *azure.Engine }
@@ -78,6 +87,9 @@ func (a *azureAdapter) RevokeLease(ctx context.Context, id string) error {
 }
 func (a *azureAdapter) ListLeases(ctx context.Context) ([]string, error) {
 	return a.e.ListLeases(ctx)
+}
+func (a *azureAdapter) RenewLease(ctx context.Context, id string, increment time.Duration) (time.Time, error) {
+	return a.e.RenewLease(ctx, id, increment)
 }
 
 // NewWithEngines creates a Manager wired to all four dynamic backend engines.

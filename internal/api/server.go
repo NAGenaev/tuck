@@ -64,7 +64,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/sys/config", s.requireToken(s.getSysConfig))
 	mux.HandleFunc("PUT /v1/sys/config", s.requireToken(s.putSysConfig))
 
-	// Unified lease management — GET/DELETE /v1/sys/leases/<backend>/<id>
+	// Unified lease management — GET/DELETE/LIST/renew
+	mux.HandleFunc("POST /v1/sys/leases/renew", s.requireToken(s.renewLease))
 	mux.HandleFunc("GET /v1/sys/leases/{id...}", s.requireToken(s.getLease))
 	mux.HandleFunc("DELETE /v1/sys/leases/{id...}", s.requireToken(s.revokeLease))
 	mux.HandleFunc("LIST /v1/sys/leases/", s.requireToken(s.listLeases))

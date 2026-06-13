@@ -1535,100 +1535,6 @@ function bind() {
     } catch (e) { flash('error', e.message); }
   });
 
-  // Secrets — KV v1 explorer
-  async function kvListAt(prefix) {
-    S.kvPrefix = prefix;
-    const bcBar = document.getElementById('kv-breadcrumb-bar');
-    if (bcBar) bcBar.innerHTML = kvBreadcrumb(prefix);
-    const manInput = document.getElementById('kv-manual-prefix');
-    if (manInput) manInput.value = prefix;
-    const el = document.getElementById('secret-list');
-    if (!el) return;
-    el.innerHTML = '<div style="color:var(--muted);font-size:12px">Loading…</div>';
-    try {
-      const d = await apiList(`/v1/secret/${prefix}`);
-      if (!d) return;
-      if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">Empty folder.</em>'; return; }
-      const rows = d.keys.map(k => {
-        const fullPath = prefix + k;
-        const isFolder = k.endsWith('/');
-        if (isFolder) {
-          return `<tr class="kv-folder-row" data-nav="${esc(fullPath)}">
-            <td class="mono">📁 ${esc(k)}</td>
-            <td style="width:80px;color:var(--muted);font-size:11px">folder</td>
-          </tr>`;
-        }
-        return `<tr>
-          <td class="mono">🔑 ${esc(k)}</td>
-          <td style="width:130px">
-            <button class="btn btn-ghost btn-sm" data-kv-get="${esc(fullPath)}">View</button>
-            <button class="btn btn-ghost btn-sm" data-kv-edit="${esc(fullPath)}" style="margin-left:4px">Edit</button>
-            <button class="btn btn-danger btn-sm" data-del="${esc(fullPath)}" style="margin-left:4px">Del</button>
-          </td>
-        </tr>`;
-      }).join('');
-      el.innerHTML = `<table class="table"><thead><tr><th>Name</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
-      el.querySelectorAll('[data-nav]').forEach(r => r.onclick = () => kvListAt(r.dataset.nav));
-      el.querySelectorAll('[data-kv-get]').forEach(b => b.onclick = () => kvShowSecret(b.dataset.kvGet));
-      el.querySelectorAll('[data-kv-edit]').forEach(b => b.onclick = () => {
-        document.getElementById('kv-put-path').value = b.dataset.kvEdit;
-        document.getElementById('kv-put-path').scrollIntoView({behavior:'smooth'});
-      });
-      el.querySelectorAll('[data-del]').forEach(b => b.onclick = () => deleteSecret(b.dataset.del));
-      // breadcrumb clicks
-      document.querySelectorAll('.kv-bc-item').forEach(item => {
-        item.onclick = () => {
-          const idx = parseInt(item.dataset.bcIdx, 10);
-          if (idx < 0) { kvListAt(''); return; }
-          const parts = prefix.split('/').filter(Boolean);
-          kvListAt(parts.slice(0, idx + 1).join('/') + '/');
-        };
-      });
-    } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
-  }
-
-  async function kvShowSecret(path) {
-    const card = document.getElementById('kv-detail-card');
-    const header = document.getElementById('kv-detail-header');
-    const body = document.getElementById('kv-detail-body');
-    if (!card) return;
-    card.style.display = '';
-    header.textContent = path;
-    body.innerHTML = '<div style="color:var(--muted)">Loading…</div>';
-    card.scrollIntoView({behavior:'smooth'});
-    try {
-      const d = await api('GET', `/v1/secret/${path}`);
-      const rawVal = d.encoding === 'base64' ? atob(d.value) : (d.value || '');
-      const meta = d.metadata && Object.keys(d.metadata).length
-        ? Object.entries(d.metadata).map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(String(v))}</dd>`).join('')
-        : '<dd style="color:var(--muted)">none</dd>';
-      body.innerHTML = `<dl class="kv-grid">
-        <dt>Value</dt>
-        <dd>
-          <span class="secret-value-masked" id="kv-val-display">••••••••••••</span>
-          <span class="secret-value-reveal" id="kv-val-text" style="display:none">${esc(rawVal)}</span>
-          <button class="btn btn-ghost btn-sm" id="kv-reveal-btn" style="margin-left:8px">👁 Reveal</button>
-          <button class="btn btn-ghost btn-sm" id="kv-copy-btn" style="margin-left:4px">📋 Copy</button>
-        </dd>
-        <dt>Created</dt><dd>${d.created_at ? new Date(d.created_at).toLocaleString() : '–'}</dd>
-        <dt>Expires</dt><dd>${d.expires_at ? new Date(d.expires_at).toLocaleString() : '–'}</dd>
-        <dt>Metadata</dt>${meta}
-      </dl>`;
-      document.getElementById('kv-reveal-btn').onclick = () => {
-        const masked = document.getElementById('kv-val-display');
-        const clear  = document.getElementById('kv-val-text');
-        const btn    = document.getElementById('kv-reveal-btn');
-        const shown  = clear.style.display !== 'none';
-        masked.style.display = shown ? '' : 'none';
-        clear.style.display  = shown ? 'none' : '';
-        btn.textContent      = shown ? '👁 Reveal' : '🙈 Hide';
-      };
-      document.getElementById('kv-copy-btn').onclick = () => copyText(rawVal);
-    } catch (e) {
-      body.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
-    }
-  }
-
   on('click', '#kv-refresh-btn', () => kvListAt(S.kvPrefix));
   on('click', '#kv-goto-btn', () => {
     const v = (document.getElementById('kv-manual-prefix')?.value || '').trim();
@@ -1700,6 +1606,99 @@ function bind() {
       flash('success', `Policy "${name}" saved.`); render();
     } catch (e) { flash('error', e.message); }
   });
+}
+
+// ─────────── KV v1 explorer helpers (global — called from bind() and deleteSecret) ───────────
+async function kvListAt(prefix) {
+  S.kvPrefix = prefix;
+  const bcBar = document.getElementById('kv-breadcrumb-bar');
+  if (bcBar) bcBar.innerHTML = kvBreadcrumb(prefix);
+  const manInput = document.getElementById('kv-manual-prefix');
+  if (manInput) manInput.value = prefix;
+  const el = document.getElementById('secret-list');
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--muted);font-size:12px">Loading…</div>';
+  try {
+    const d = await apiList(`/v1/secret/${prefix}`);
+    if (!d) return;
+    if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">Empty folder.</em>'; return; }
+    const rows = d.keys.map(k => {
+      const fullPath = prefix + k;
+      const isFolder = k.endsWith('/');
+      if (isFolder) {
+        return `<tr class="kv-folder-row" data-nav="${esc(fullPath)}">
+          <td class="mono">📁 ${esc(k)}</td>
+          <td style="width:80px;color:var(--muted);font-size:11px">folder</td>
+        </tr>`;
+      }
+      return `<tr>
+        <td class="mono">🔑 ${esc(k)}</td>
+        <td style="width:130px">
+          <button class="btn btn-ghost btn-sm" data-kv-get="${esc(fullPath)}">View</button>
+          <button class="btn btn-ghost btn-sm" data-kv-edit="${esc(fullPath)}" style="margin-left:4px">Edit</button>
+          <button class="btn btn-danger btn-sm" data-del="${esc(fullPath)}" style="margin-left:4px">Del</button>
+        </td>
+      </tr>`;
+    }).join('');
+    el.innerHTML = `<table class="table"><thead><tr><th>Name</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+    el.querySelectorAll('[data-nav]').forEach(r => r.onclick = () => kvListAt(r.dataset.nav));
+    el.querySelectorAll('[data-kv-get]').forEach(b => b.onclick = () => kvShowSecret(b.dataset.kvGet));
+    el.querySelectorAll('[data-kv-edit]').forEach(b => b.onclick = () => {
+      document.getElementById('kv-put-path').value = b.dataset.kvEdit;
+      document.getElementById('kv-put-path').scrollIntoView({behavior:'smooth'});
+    });
+    el.querySelectorAll('[data-del]').forEach(b => b.onclick = () => deleteSecret(b.dataset.del));
+    document.querySelectorAll('.kv-bc-item').forEach(item => {
+      item.onclick = () => {
+        const idx = parseInt(item.dataset.bcIdx, 10);
+        if (idx < 0) { kvListAt(''); return; }
+        const parts = prefix.split('/').filter(Boolean);
+        kvListAt(parts.slice(0, idx + 1).join('/') + '/');
+      };
+    });
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+async function kvShowSecret(path) {
+  const card = document.getElementById('kv-detail-card');
+  const header = document.getElementById('kv-detail-header');
+  const body = document.getElementById('kv-detail-body');
+  if (!card) return;
+  card.style.display = '';
+  header.textContent = path;
+  body.innerHTML = '<div style="color:var(--muted)">Loading…</div>';
+  card.scrollIntoView({behavior:'smooth'});
+  try {
+    const d = await api('GET', `/v1/secret/${path}`);
+    const rawVal = d.encoding === 'base64' ? atob(d.value) : (d.value || '');
+    const meta = d.metadata && Object.keys(d.metadata).length
+      ? Object.entries(d.metadata).map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(String(v))}</dd>`).join('')
+      : '<dd style="color:var(--muted)">none</dd>';
+    body.innerHTML = `<dl class="kv-grid">
+      <dt>Value</dt>
+      <dd>
+        <span class="secret-value-masked" id="kv-val-display">••••••••••••</span>
+        <span class="secret-value-reveal" id="kv-val-text" style="display:none">${esc(rawVal)}</span>
+        <button class="btn btn-ghost btn-sm" id="kv-reveal-btn" style="margin-left:8px">👁 Reveal</button>
+        <button class="btn btn-ghost btn-sm" id="kv-copy-btn" style="margin-left:4px">📋 Copy</button>
+      </dd>
+      <dt>Created</dt><dd>${d.created_at ? new Date(d.created_at).toLocaleString() : '–'}</dd>
+      <dt>Expires</dt><dd>${d.expires_at ? new Date(d.expires_at).toLocaleString() : '–'}</dd>
+      <dt>Metadata</dt>${meta}
+    </dl>`;
+    document.getElementById('kv-reveal-btn').onclick = () => {
+      const masked = document.getElementById('kv-val-display');
+      const clear  = document.getElementById('kv-val-text');
+      const btn    = document.getElementById('kv-reveal-btn');
+      const shown  = clear.style.display !== 'none';
+      masked.style.display = shown ? '' : 'none';
+      clear.style.display  = shown ? 'none' : '';
+      btn.textContent      = shown ? '👁 Reveal' : '🙈 Hide';
+    };
+    document.getElementById('kv-copy-btn').onclick = () => copyText(rawVal);
+  } catch (e) {
+    body.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
+  }
 }
 
 async function deleteSecret(path) {

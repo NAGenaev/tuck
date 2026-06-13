@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -710,22 +711,47 @@ func (c *Core) DeleteK8sRole(ctx context.Context, namespace, sa string) error {
 func (c *Core) ListSecrets(ctx context.Context, ns, prefix string) ([]string, error) {
 	nsPrefix := namespace.StoragePrefix(ns)
 	storagePrefix := nsPrefix + secretPrefix
+	queryPrefix := ""
 	if prefix != "" {
 		p := nsPrefix + secretKey(prefix)
 		if !strings.HasSuffix(p, "/") {
 			p += "/"
 		}
 		storagePrefix = p
+		qp := prefix
+		if !strings.HasSuffix(qp, "/") {
+			qp += "/"
+		}
+		queryPrefix = qp
 	}
 	keys, err := c.barrier.List(ctx, storagePrefix)
 	if err != nil {
 		return nil, err
 	}
 	trim := nsPrefix + secretPrefix
-	result := make([]string, len(keys))
-	for i, k := range keys {
-		result[i] = strings.TrimPrefix(k, trim)
+	seen := make(map[string]struct{})
+	var result []string
+	for _, k := range keys {
+		rel := strings.TrimPrefix(k, trim)
+		rel = strings.TrimPrefix(rel, queryPrefix)
+		if rel == "" {
+			continue
+		}
+		// Return only the immediate child: folder or file.
+		if idx := strings.Index(rel, "/"); idx >= 0 {
+			folder := rel[:idx+1]
+			if _, dup := seen[folder]; !dup {
+				seen[folder] = struct{}{}
+				result = append(result, folder)
+			}
+		} else {
+			if _, dup := seen[rel]; !dup {
+				seen[rel] = struct{}{}
+				result = append(result, rel)
+			}
+		}
 	}
+	sort.Strings(result)
 	return result, nil
 }
 

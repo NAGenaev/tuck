@@ -19,6 +19,7 @@ var ErrNotFound = errors.New("token not found")
 const (
 	tokenPrefix    = "auth/token/"    // #nosec G101 — storage path prefix, not a credential
 	accessorPrefix = "auth/accessor/" // #nosec G101 — storage path prefix, not a credential
+	childrenPrefix = "auth/children/" // #nosec G101 — storage path prefix, not a credential
 )
 
 // accessorRecord is stored at auth/accessor/<accessor>.
@@ -46,7 +47,32 @@ func (s *Store) Put(ctx context.Context, t *Token) error {
 		rec, _ := json.Marshal(accessorRecord{TokenID: t.ID})
 		_ = s.barrier.Put(ctx, &physical.Entry{Key: accessorKey(t.Accessor), Value: rec})
 	}
+	// Maintain children index: record this token as a child of its parent.
+	if t.ParentID != "" && !t.Orphan {
+		_ = s.barrier.Put(ctx, &physical.Entry{
+			Key:   childKey(t.ParentID, t.ID),
+			Value: []byte(t.ID),
+		})
+	}
 	return nil
+}
+
+// Children returns the IDs of all non-orphan tokens created by parentID.
+func (s *Store) Children(ctx context.Context, parentID string) ([]string, error) {
+	prefix := childrenPrefix + tokenKeyHash(parentID) + "/"
+	keys, err := s.barrier.List(ctx, prefix)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(keys))
+	for _, k := range keys {
+		e, err := s.barrier.Get(ctx, k)
+		if err != nil || e == nil {
+			continue
+		}
+		ids = append(ids, string(e.Value))
+	}
+	return ids, nil
 }
 
 func (s *Store) Get(ctx context.Context, id string) (*Token, error) {
@@ -77,10 +103,16 @@ func (s *Store) GetByAccessor(ctx context.Context, accessor string) (*Token, err
 }
 
 func (s *Store) Delete(ctx context.Context, id string) error {
-	// Remove accessor index first (best-effort).
 	tok, err := s.Get(ctx, id)
-	if err == nil && tok.Accessor != "" {
-		_ = s.barrier.Delete(ctx, accessorKey(tok.Accessor))
+	if err == nil {
+		// Remove accessor index (best-effort).
+		if tok.Accessor != "" {
+			_ = s.barrier.Delete(ctx, accessorKey(tok.Accessor))
+		}
+		// Remove this token from its parent's children index.
+		if tok.ParentID != "" {
+			_ = s.barrier.Delete(ctx, childKey(tok.ParentID, id))
+		}
 	}
 	return s.barrier.Delete(ctx, tokenKey(id))
 }
@@ -160,6 +192,17 @@ func (s *Store) getByStorageKey(ctx context.Context, storageKey string) (*Token,
 func tokenKey(id string) string {
 	h := sha256.Sum256([]byte(id))
 	return tokenPrefix + hex.EncodeToString(h[:])
+}
+
+// tokenKeyHash returns just the hex-encoded SHA-256 of id (no prefix).
+func tokenKeyHash(id string) string {
+	h := sha256.Sum256([]byte(id))
+	return hex.EncodeToString(h[:])
+}
+
+// childKey returns the barrier key that records childID as a child of parentID.
+func childKey(parentID, childID string) string {
+	return childrenPrefix + tokenKeyHash(parentID) + "/" + tokenKeyHash(childID)
 }
 
 func accessorKey(acc string) string { return accessorPrefix + acc }

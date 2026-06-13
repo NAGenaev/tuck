@@ -160,6 +160,18 @@ nav { padding: 8px 0; flex: 1; }
 
 /* Tag */
 .tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; background: #eee; color: var(--muted); margin: 1px; }
+
+/* KV breadcrumb */
+.kv-breadcrumb { display:flex; align-items:center; gap:4px; font-size:12px; padding:6px 0 10px; flex-wrap:wrap; }
+.kv-bc-item { cursor:pointer; color:var(--primary); padding:2px 6px; border-radius:4px; transition:background .1s; }
+.kv-bc-item:hover { background:rgba(99,91,255,.1); }
+.kv-bc-item:last-child { color:var(--text); font-weight:600; cursor:default; }
+.kv-bc-item:last-child:hover { background:none; }
+.kv-bc-sep { color:var(--muted); }
+.kv-folder-row td:first-child { color:var(--primary); cursor:pointer; font-weight:500; }
+.kv-folder-row:hover { background:rgba(99,91,255,.04); }
+.secret-value-masked { font-family:monospace; letter-spacing:2px; color:var(--muted); }
+.secret-value-reveal { font-family:monospace; word-break:break-all; }
 </style>
 </head>
 <body>
@@ -167,7 +179,7 @@ nav { padding: 8px 0; flex: 1; }
 <script>
 // ─────────── State ───────────
 const S = {
-  token:     sessionStorage.getItem('tuck_token') || '',
+  token:     localStorage.getItem('tuck_token') || '',
   page:      'status',
   sealed:    null,   // null = unknown
   sealType:  '',
@@ -176,6 +188,8 @@ const S = {
   authTab:   'approle',
   dynamicTab: 'db',
   cryptoTab:  'pki',
+  kvPrefix:  '',     // current KV v1 folder path
+  kvPrefixV2: '',    // current KV v2 folder path
 };
 
 // ─────────── API ───────────
@@ -207,15 +221,32 @@ async function apiRaw(method, path, body) {
 
 // ─────────── Helpers ───────────
 function logout() {
-  sessionStorage.removeItem('tuck_token');
+  localStorage.removeItem('tuck_token');
   S.token = ''; S.sealed = null;
   stopPoll(); render();
 }
 
-function setPage(p) { S.page = p; S.msg = null; render(); }
+function setPage(p) {
+  if (p !== S.page) { S.kvPrefix = ''; S.kvPrefixV2 = ''; }
+  S.page = p; S.msg = null; render();
+}
 function flash(type, text) { S.msg = {type, text}; render(); }
 
 function stopPoll() { if (S.pollTimer) { clearInterval(S.pollTimer); S.pollTimer = null; } }
+
+function copyText(text) {
+  navigator.clipboard?.writeText(text).then(() => flash('success', 'Copied to clipboard.')).catch(() => flash('error', 'Copy failed.'));
+}
+
+function kvBreadcrumb(prefix, onNav) {
+  const parts = prefix ? prefix.split('/').filter(Boolean) : [];
+  let html = `<nav class="kv-breadcrumb"><span class="kv-bc-item" data-bc-idx="-1">🏠 root</span>`;
+  parts.forEach((p, i) => {
+    html += `<span class="kv-bc-sep">›</span><span class="kv-bc-item" data-bc-idx="${i}">${esc(p)}</span>`;
+  });
+  html += '</nav>';
+  return html;
+}
 
 async function refreshSeal() {
   try {
@@ -396,37 +427,33 @@ function pageSecrets() {
 </div>
 <div class="page-body">
   <div class="card">
-    <div class="card-header">List</div>
+    <div class="card-header">
+      Explorer
+      <button class="btn btn-ghost btn-sm" id="kv-refresh-btn">↻ Refresh</button>
+    </div>
     <div class="card-body">
-      <form id="list-form" style="display:flex;gap:8px;margin-bottom:14px">
-        <input name="prefix" placeholder="Prefix (leave blank for all)" style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius)">
-        <button class="btn btn-primary" type="submit">List</button>
-      </form>
-      <div id="secret-list"></div>
+      <div id="kv-breadcrumb-bar">${kvBreadcrumb(S.kvPrefix)}</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <input id="kv-manual-prefix" value="${esc(S.kvPrefix)}" placeholder="Type a path prefix and press Enter" style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius)">
+        <button class="btn btn-primary btn-sm" id="kv-goto-btn">Go</button>
+      </div>
+      <div id="secret-list"><div style="color:var(--muted);font-size:12px">Loading…</div></div>
     </div>
   </div>
-  <div class="card-grid">
-    <div class="card">
-      <div class="card-header">Get Secret</div>
-      <div class="card-body">
-        <form id="get-form">
-          <div class="form-row"><label>Path</label><input name="path" placeholder="db/password"></div>
-          <button class="btn btn-primary" type="submit">Get</button>
-        </form>
-        <div id="get-result" style="margin-top:12px"></div>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-header">Put Secret</div>
-      <div class="card-body">
-        <form id="put-form">
-          <div class="form-row"><label>Path</label><input name="path" placeholder="db/password"></div>
-          <div class="form-row"><label>Value</label><textarea name="value" placeholder="secret value"></textarea></div>
-          <div class="form-row"><label>TTL (optional, e.g. 24h)</label><input name="ttl" placeholder=""></div>
-          <div class="form-row"><label>Metadata JSON (optional, e.g. {"env":"prod"})</label><input name="metadata" placeholder=""></div>
-          <button class="btn btn-primary" type="submit">Save</button>
-        </form>
-      </div>
+  <div class="card" id="kv-detail-card" style="display:none">
+    <div class="card-header" id="kv-detail-header">Secret</div>
+    <div id="kv-detail-body" class="card-body"></div>
+  </div>
+  <div class="card">
+    <div class="card-header">Write Secret</div>
+    <div class="card-body">
+      <form id="put-form">
+        <div class="form-row"><label>Path</label><input name="path" placeholder="db/password" id="kv-put-path"></div>
+        <div class="form-row"><label>Value</label><textarea name="value" placeholder="secret value"></textarea></div>
+        <div class="form-row"><label>TTL (optional, e.g. 24h)</label><input name="ttl" placeholder=""></div>
+        <div class="form-row"><label>Metadata JSON (optional)</label><input name="metadata" placeholder='{"env":"prod"}'></div>
+        <div class="form-actions"><button class="btn btn-primary" type="submit">Save</button></div>
+      </form>
     </div>
   </div>
 </div>`;
@@ -437,68 +464,51 @@ function pageKVv2() {
   return `
 <div class="page-header">
   <h1>KV v2 — Versioned Secrets</h1>
-  <p>Write, read, and manage versioned key-value secrets</p>
+  <p>Browse, read, and manage versioned key-value secrets</p>
 </div>
 <div class="page-body">
   <div class="card">
-    <div class="card-header">List</div>
+    <div class="card-header">
+      Explorer
+      <button class="btn btn-ghost btn-sm" id="v2-refresh-btn">↻ Refresh</button>
+    </div>
     <div class="card-body">
-      <form id="v2-list-form" style="display:flex;gap:8px;margin-bottom:14px">
-        <input name="prefix" placeholder="Prefix (leave blank for all)" style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius)">
-        <button class="btn btn-primary" type="submit">List</button>
+      <div id="v2-breadcrumb-bar">${kvBreadcrumb(S.kvPrefixV2)}</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <input id="v2-manual-prefix" value="${esc(S.kvPrefixV2)}" placeholder="Type a path prefix" style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius)">
+        <button class="btn btn-primary btn-sm" id="v2-goto-btn">Go</button>
+      </div>
+      <div id="v2-list-result"><div style="color:var(--muted);font-size:12px">Loading…</div></div>
+    </div>
+  </div>
+  <div class="card" id="v2-detail-card" style="display:none">
+    <div id="v2-detail-header" class="card-header">Secret</div>
+    <div id="v2-detail-body" class="card-body"></div>
+  </div>
+  <div class="card">
+    <div class="card-header">Write Secret</div>
+    <div class="card-body">
+      <form id="v2-write-form">
+        <div class="form-row"><label>Path</label><input name="path" placeholder="db/password" id="v2-write-path"></div>
+        <div class="form-row"><label>Value</label><textarea name="value" placeholder="secret value"></textarea></div>
+        <div class="form-row"><label>CAS (optional)</label><input name="cas" placeholder="expected version, e.g. 0"></div>
+        <div class="form-actions"><button class="btn btn-primary" type="submit">Write</button></div>
       </form>
-      <div id="v2-list-result"></div>
+      <div id="v2-write-result" style="margin-top:10px"></div>
     </div>
   </div>
-  <div class="card-grid">
-    <div class="card">
-      <div class="card-header">Write Secret</div>
-      <div class="card-body">
-        <form id="v2-write-form">
-          <div class="form-row"><label>Path</label><input name="path" placeholder="db/password"></div>
-          <div class="form-row"><label>Value</label><textarea name="value" placeholder="secret value"></textarea></div>
-          <div class="form-row"><label>CAS (optional)</label><input name="cas" placeholder="expected version, e.g. 0"></div>
-          <button class="btn btn-primary" type="submit">Write</button>
-        </form>
-        <div id="v2-write-result" style="margin-top:10px"></div>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-header">Read Secret</div>
-      <div class="card-body">
-        <form id="v2-read-form">
-          <div class="form-row"><label>Path</label><input name="path" placeholder="db/password"></div>
-          <div class="form-row"><label>Version (0 = current)</label><input name="version" placeholder="0" value="0"></div>
-          <button class="btn btn-primary" type="submit">Read</button>
-        </form>
-        <div id="v2-read-result" style="margin-top:10px"></div>
-      </div>
-    </div>
-  </div>
-  <div class="card-grid">
-    <div class="card">
-      <div class="card-header">Metadata</div>
-      <div class="card-body">
-        <form id="v2-meta-form">
-          <div class="form-row"><label>Path</label><input name="path" placeholder="db/password"></div>
-          <button class="btn btn-primary" type="submit">Get Metadata</button>
-        </form>
-        <div id="v2-meta-result" style="margin-top:10px"></div>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-header">Delete / Destroy</div>
-      <div class="card-body">
-        <form id="v2-delete-form">
-          <div class="form-row"><label>Path</label><input name="path" placeholder="db/password"></div>
-          <div class="form-row"><label>Versions (comma-separated, blank = current)</label><input name="versions" placeholder="1,2,3"></div>
-          <div style="display:flex;gap:8px;margin-top:8px">
-            <button class="btn btn-ghost" type="submit" name="action" value="soft">Soft Delete</button>
-            <button class="btn btn-ghost" type="submit" name="action" value="undelete">Undelete</button>
-            <button class="btn btn-danger" type="submit" name="action" value="destroy">Destroy</button>
-          </div>
-        </form>
-      </div>
+  <div class="card">
+    <div class="card-header">Delete / Destroy</div>
+    <div class="card-body">
+      <form id="v2-delete-form">
+        <div class="form-row"><label>Path</label><input name="path" placeholder="db/password"></div>
+        <div class="form-row"><label>Versions (comma-separated, blank = current)</label><input name="versions" placeholder="1,2,3"></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn btn-ghost" type="submit" name="action" value="soft">Soft Delete</button>
+          <button class="btn btn-ghost" type="submit" name="action" value="undelete">Undelete</button>
+          <button class="btn btn-danger" type="submit" name="action" value="destroy">Destroy</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>`;
@@ -1477,7 +1487,7 @@ function bind() {
       const r = await fetch('/v1/sys/seal-status', { headers: { 'X-Tuck-Token': t } });
       if (!r.ok && r.status === 401) { flash('error', 'Invalid token'); return; }
       S.token = t.trim();
-      sessionStorage.setItem('tuck_token', S.token);
+      localStorage.setItem('tuck_token', S.token);
       S.msg = null;
       render();
       startPoll();
@@ -1513,58 +1523,112 @@ function bind() {
     } catch (e) { flash('error', e.message); }
   });
 
-  // Secrets
-  onSubmit('#list-form', async fd => {
-    const prefix = fd.get('prefix').trim();
+  // Secrets — KV v1 explorer
+  async function kvListAt(prefix) {
+    S.kvPrefix = prefix;
+    const bcBar = document.getElementById('kv-breadcrumb-bar');
+    if (bcBar) bcBar.innerHTML = kvBreadcrumb(prefix);
+    const manInput = document.getElementById('kv-manual-prefix');
+    if (manInput) manInput.value = prefix;
+    const el = document.getElementById('secret-list');
+    if (!el) return;
+    el.innerHTML = '<div style="color:var(--muted);font-size:12px">Loading…</div>';
     try {
       const r = await fetch(`/v1/secret/${prefix}`, {
         method: 'LIST',
         headers: S.token ? { 'X-Tuck-Token': S.token } : {},
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || r.status);
-      const el = document.getElementById('secret-list');
-      if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No secrets found.</em>'; return; }
-      el.innerHTML = `<table class="table">
-        <thead><tr><th>Path</th><th></th></tr></thead>
-        <tbody>${d.keys.map(k => `<tr>
-          <td class="mono">${esc(k)}</td>
-          <td style="width:80px">
-            <button class="btn btn-ghost btn-sm" data-get="${esc(k)}">Get</button>
-            <button class="btn btn-danger btn-sm" data-del="${esc(k)}" style="margin-left:4px">Del</button>
+      if (!r.ok) { el.innerHTML = `<div class="alert alert-error">${esc(d.error || r.status)}</div>`; return; }
+      if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">Empty folder.</em>'; return; }
+      const rows = d.keys.map(k => {
+        const fullPath = prefix + k;
+        const isFolder = k.endsWith('/');
+        if (isFolder) {
+          return `<tr class="kv-folder-row" data-nav="${esc(fullPath)}">
+            <td class="mono">📁 ${esc(k)}</td>
+            <td style="width:80px;color:var(--muted);font-size:11px">folder</td>
+          </tr>`;
+        }
+        return `<tr>
+          <td class="mono">🔑 ${esc(k)}</td>
+          <td style="width:130px">
+            <button class="btn btn-ghost btn-sm" data-kv-get="${esc(fullPath)}">View</button>
+            <button class="btn btn-ghost btn-sm" data-kv-edit="${esc(fullPath)}" style="margin-left:4px">Edit</button>
+            <button class="btn btn-danger btn-sm" data-del="${esc(fullPath)}" style="margin-left:4px">Del</button>
           </td>
-        </tr>`).join('')}</tbody>
-      </table>`;
-      el.querySelectorAll('[data-get]').forEach(b => b.onclick = () => {
-        document.querySelector('#get-form input[name=path]').value = b.dataset.get;
-        document.getElementById('get-form').dispatchEvent(new Event('submit'));
+        </tr>`;
+      }).join('');
+      el.innerHTML = `<table class="table"><thead><tr><th>Name</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+      el.querySelectorAll('[data-nav]').forEach(r => r.onclick = () => kvListAt(r.dataset.nav));
+      el.querySelectorAll('[data-kv-get]').forEach(b => b.onclick = () => kvShowSecret(b.dataset.kvGet));
+      el.querySelectorAll('[data-kv-edit]').forEach(b => b.onclick = () => {
+        document.getElementById('kv-put-path').value = b.dataset.kvEdit;
+        document.getElementById('kv-put-path').scrollIntoView({behavior:'smooth'});
       });
       el.querySelectorAll('[data-del]').forEach(b => b.onclick = () => deleteSecret(b.dataset.del));
-    } catch (e) { flash('error', e.message); }
-  });
+      // breadcrumb clicks
+      document.querySelectorAll('.kv-bc-item').forEach(item => {
+        item.onclick = () => {
+          const idx = parseInt(item.dataset.bcIdx, 10);
+          if (idx < 0) { kvListAt(''); return; }
+          const parts = prefix.split('/').filter(Boolean);
+          kvListAt(parts.slice(0, idx + 1).join('/') + '/');
+        };
+      });
+    } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  }
 
-  onSubmit('#get-form', async fd => {
-    const path = fd.get('path').trim();
-    if (!path) return;
+  async function kvShowSecret(path) {
+    const card = document.getElementById('kv-detail-card');
+    const header = document.getElementById('kv-detail-header');
+    const body = document.getElementById('kv-detail-body');
+    if (!card) return;
+    card.style.display = '';
+    header.textContent = path;
+    body.innerHTML = '<div style="color:var(--muted)">Loading…</div>';
+    card.scrollIntoView({behavior:'smooth'});
     try {
       const d = await api('GET', `/v1/secret/${path}`);
-      const res = document.getElementById('get-result');
-      const v = d.encoding === 'base64' ? `[base64] ${d.value}` : d.value;
+      const rawVal = d.encoding === 'base64' ? atob(d.value) : (d.value || '');
       const meta = d.metadata && Object.keys(d.metadata).length
-        ? Object.entries(d.metadata).map(([k,val])=>`<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('')
+        ? Object.entries(d.metadata).map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(String(v))}</dd>`).join('')
         : '<dd style="color:var(--muted)">none</dd>';
-      res.innerHTML = `<div class="card-body">
-        <dl class="kv-grid">
-          <dt>Value</dt><dd class="mono">${esc(v)}</dd>
-          <dt>Created</dt><dd>${d.created_at ? new Date(d.created_at).toLocaleString() : '–'}</dd>
-          <dt>Expires</dt><dd>${d.expires_at ? new Date(d.expires_at).toLocaleString() : '–'}</dd>
-          <dt>Metadata</dt>${meta}
-        </dl>
-      </div>`;
+      body.innerHTML = `<dl class="kv-grid">
+        <dt>Value</dt>
+        <dd>
+          <span class="secret-value-masked" id="kv-val-display">••••••••••••</span>
+          <span class="secret-value-reveal" id="kv-val-text" style="display:none">${esc(rawVal)}</span>
+          <button class="btn btn-ghost btn-sm" id="kv-reveal-btn" style="margin-left:8px">👁 Reveal</button>
+          <button class="btn btn-ghost btn-sm" id="kv-copy-btn" style="margin-left:4px">📋 Copy</button>
+        </dd>
+        <dt>Created</dt><dd>${d.created_at ? new Date(d.created_at).toLocaleString() : '–'}</dd>
+        <dt>Expires</dt><dd>${d.expires_at ? new Date(d.expires_at).toLocaleString() : '–'}</dd>
+        <dt>Metadata</dt>${meta}
+      </dl>`;
+      document.getElementById('kv-reveal-btn').onclick = () => {
+        const masked = document.getElementById('kv-val-display');
+        const clear  = document.getElementById('kv-val-text');
+        const btn    = document.getElementById('kv-reveal-btn');
+        const shown  = clear.style.display !== 'none';
+        masked.style.display = shown ? '' : 'none';
+        clear.style.display  = shown ? 'none' : '';
+        btn.textContent      = shown ? '👁 Reveal' : '🙈 Hide';
+      };
+      document.getElementById('kv-copy-btn').onclick = () => copyText(rawVal);
     } catch (e) {
-      document.getElementById('get-result').innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
+      body.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
     }
+  }
+
+  on('click', '#kv-refresh-btn', () => kvListAt(S.kvPrefix));
+  on('click', '#kv-goto-btn', () => {
+    const v = (document.getElementById('kv-manual-prefix')?.value || '').trim();
+    kvListAt(v);
   });
+  on('keydown', '#kv-manual-prefix', e => { if (e.key === 'Enter') { e.preventDefault(); kvListAt(e.target.value.trim()); } });
+
+  if (S.page === 'secrets') kvListAt(S.kvPrefix);
 
   onSubmit('#put-form', async fd => {
     const path = fd.get('path').trim();
@@ -1579,7 +1643,8 @@ function bind() {
         try { body.metadata = JSON.parse(metaRaw); } catch { flash('error', 'Invalid metadata JSON'); return; }
       }
       await api('PUT', `/v1/secret/${path}`, body);
-      flash('success', `Secret "${path}" saved.`); render();
+      flash('success', `Secret "${path}" saved.`);
+      kvListAt(S.kvPrefix);
     } catch (e) { flash('error', e.message); }
   });
 
@@ -1637,7 +1702,8 @@ async function deleteSecret(path) {
       headers: { 'X-Tuck-Token': S.token },
     });
     if (!r.ok) { const d = await r.json(); throw new Error(d.error || r.status); }
-    flash('success', `Secret "${path}" deleted.`); render();
+    flash('success', `Secret "${path}" deleted.`);
+    kvListAt(S.kvPrefix);
   } catch (e) { flash('error', e.message); }
 }
 
@@ -2522,22 +2588,127 @@ function onSubmit(sel, fn) {
 
 // ─────────── KV v2 handlers ───────────
 function bindKVv2() {
-  onSubmit('#v2-list-form', async fd => {
-    const prefix = fd.get('prefix').trim();
+  async function v2ListAt(prefix) {
+    S.kvPrefixV2 = prefix;
+    const bcBar = document.getElementById('v2-breadcrumb-bar');
+    if (bcBar) bcBar.innerHTML = kvBreadcrumb(prefix);
+    const manInput = document.getElementById('v2-manual-prefix');
+    if (manInput) manInput.value = prefix;
     const el = document.getElementById('v2-list-result');
     if (!el) return;
+    el.innerHTML = '<div style="color:var(--muted);font-size:12px">Loading…</div>';
     try {
-      const path = prefix ? `/v2/secret/metadata/${prefix}` : '/v2/secret/metadata/';
-      const r = await fetch(path, { method: 'LIST', headers: { 'X-Tuck-Token': S.token } });
+      const apiPath = `/v2/secret/metadata/${prefix}`;
+      const r = await fetch(apiPath, { method: 'LIST', headers: { 'X-Tuck-Token': S.token } });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || r.status);
-      if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No secrets.</em>'; return; }
-      el.innerHTML = renderKeyTable(d.keys, name => [
-        `<button class="btn btn-ghost btn-sm" onclick="v2ReadQuick('${esc(name)}')">Read</button>`,
-        `<button class="btn btn-ghost btn-sm" onclick="v2Meta('${esc(name)}')" style="margin-left:4px">Meta</button>`,
-      ]);
+      if (!r.ok) { el.innerHTML = `<div class="alert alert-error">${esc(d.error || r.status)}</div>`; return; }
+      if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">Empty folder.</em>'; return; }
+      const rows = d.keys.map(k => {
+        const fullPath = prefix + k;
+        const isFolder = k.endsWith('/');
+        if (isFolder) {
+          return `<tr class="kv-folder-row" data-v2-nav="${esc(fullPath)}">
+            <td class="mono">📁 ${esc(k)}</td>
+            <td style="width:80px;color:var(--muted);font-size:11px">folder</td>
+          </tr>`;
+        }
+        return `<tr>
+          <td class="mono">🔑 ${esc(k)}</td>
+          <td style="width:160px">
+            <button class="btn btn-ghost btn-sm" data-v2-view="${esc(fullPath)}">View</button>
+            <button class="btn btn-ghost btn-sm" data-v2-meta="${esc(fullPath)}" style="margin-left:4px">Meta</button>
+            <button class="btn btn-ghost btn-sm" data-v2-edit="${esc(fullPath)}" style="margin-left:4px">Edit</button>
+          </td>
+        </tr>`;
+      }).join('');
+      el.innerHTML = `<table class="table"><thead><tr><th>Name</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+      el.querySelectorAll('[data-v2-nav]').forEach(r => r.onclick = () => v2ListAt(r.dataset.v2Nav));
+      el.querySelectorAll('[data-v2-view]').forEach(b => b.onclick = () => v2ShowSecret(b.dataset.v2View, 0));
+      el.querySelectorAll('[data-v2-meta]').forEach(b => b.onclick = () => v2ShowMeta(b.dataset.v2Meta));
+      el.querySelectorAll('[data-v2-edit]').forEach(b => b.onclick = () => {
+        document.getElementById('v2-write-path').value = b.dataset.v2Edit;
+        document.getElementById('v2-write-path').scrollIntoView({behavior:'smooth'});
+      });
+      document.querySelectorAll('#v2-breadcrumb-bar .kv-bc-item').forEach(item => {
+        item.onclick = () => {
+          const idx = parseInt(item.dataset.bcIdx, 10);
+          if (idx < 0) { v2ListAt(''); return; }
+          const parts = prefix.split('/').filter(Boolean);
+          v2ListAt(parts.slice(0, idx + 1).join('/') + '/');
+        };
+      });
     } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  }
+
+  async function v2ShowSecret(path, version) {
+    const card = document.getElementById('v2-detail-card');
+    const header = document.getElementById('v2-detail-header');
+    const body = document.getElementById('v2-detail-body');
+    if (!card) return;
+    card.style.display = '';
+    header.textContent = path;
+    body.innerHTML = '<div style="color:var(--muted)">Loading…</div>';
+    card.scrollIntoView({behavior:'smooth'});
+    try {
+      const r = await fetch(`/v2/secret/${path}?version=${version}`, { headers: { 'X-Tuck-Token': S.token } });
+      const d = await r.json();
+      if (!r.ok) { body.innerHTML = `<div class="alert alert-error">${esc(d.error || r.status)}</div>`; return; }
+      const rawVal = d.deleted ? '' : String(d.value ?? '');
+      body.innerHTML = `<dl class="kv-grid">
+        <dt>Version</dt><dd>${d.version ?? '–'}</dd>
+        <dt>Value</dt>
+        <dd>
+          ${d.deleted ? '<em style="color:var(--muted)">deleted</em>' : `
+            <span class="secret-value-masked" id="v2-val-display">••••••••••••</span>
+            <span class="secret-value-reveal" id="v2-val-text" style="display:none">${esc(rawVal)}</span>
+            <button class="btn btn-ghost btn-sm" id="v2-reveal-btn" style="margin-left:8px">👁 Reveal</button>
+            <button class="btn btn-ghost btn-sm" id="v2-copy-btn" style="margin-left:4px">📋 Copy</button>
+          `}
+        </dd>
+      </dl>`;
+      if (!d.deleted) {
+        document.getElementById('v2-reveal-btn').onclick = () => {
+          const shown = document.getElementById('v2-val-text').style.display !== 'none';
+          document.getElementById('v2-val-display').style.display = shown ? '' : 'none';
+          document.getElementById('v2-val-text').style.display = shown ? 'none' : '';
+          document.getElementById('v2-reveal-btn').textContent = shown ? '👁 Reveal' : '🙈 Hide';
+        };
+        document.getElementById('v2-copy-btn').onclick = () => copyText(rawVal);
+      }
+    } catch (e) { body.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  }
+
+  async function v2ShowMeta(path) {
+    const card = document.getElementById('v2-detail-card');
+    const header = document.getElementById('v2-detail-header');
+    const body = document.getElementById('v2-detail-body');
+    if (!card) return;
+    card.style.display = '';
+    header.textContent = path + ' — metadata';
+    body.innerHTML = '<div style="color:var(--muted)">Loading…</div>';
+    card.scrollIntoView({behavior:'smooth'});
+    try {
+      const d = await api('GET', `/v2/secret/metadata/${path}`);
+      body.innerHTML = `<dl class="kv-grid">
+        <dt>Current version</dt><dd>${d.metadata?.current_version ?? ''}</dd>
+        <dt>Max versions</dt><dd>${d.metadata?.max_versions ?? ''}</dd>
+      </dl>
+      <pre style="font-size:11px;margin-top:8px;overflow:auto;background:var(--bg);padding:10px;border-radius:var(--radius)">${esc(JSON.stringify(d.metadata?.versions,null,2))}</pre>
+      <div style="margin-top:10px">
+        <strong>Read version:</strong>
+        ${Object.keys(d.metadata?.versions||{}).map(v=>`<button class="btn btn-ghost btn-sm" style="margin:2px" onclick="(${v2ShowSecret.toString()})('${esc(path)}', ${v})">v${v}</button>`).join('')}
+      </div>`;
+    } catch (e) { body.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  }
+
+  on('click', '#v2-refresh-btn', () => v2ListAt(S.kvPrefixV2));
+  on('click', '#v2-goto-btn', () => {
+    const v = (document.getElementById('v2-manual-prefix')?.value || '').trim();
+    v2ListAt(v);
   });
+  on('keydown', '#v2-manual-prefix', e => { if (e.key === 'Enter') { e.preventDefault(); v2ListAt(e.target.value.trim()); } });
+
+  if (S.page === 'kvv2') v2ListAt(S.kvPrefixV2);
 
   onSubmit('#v2-write-form', async fd => {
     const path = fd.get('path').trim();
@@ -2556,36 +2727,7 @@ function bindKVv2() {
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || r.status);
       el.innerHTML = `<div class="alert alert-success">Written — version ${d.version}</div>`;
-    } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
-  });
-
-  onSubmit('#v2-read-form', async fd => {
-    const path = fd.get('path').trim();
-    const ver = fd.get('version').trim() || '0';
-    const el = document.getElementById('v2-read-result');
-    if (!el) return;
-    try {
-      const r = await fetch(`/v2/secret/${path}?version=${ver}`, { headers: { 'X-Tuck-Token': S.token } });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || r.status);
-      el.innerHTML = `<dl class="kv-grid">
-        <dt>Path</dt><dd>${esc(path)}</dd>
-        <dt>Version</dt><dd>${d.version ?? ''}</dd>
-        <dt>Value</dt><dd>${d.deleted ? '<em>deleted</em>' : esc(String(d.value ?? ''))}</dd>
-      </dl>`;
-    } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
-  });
-
-  onSubmit('#v2-meta-form', async fd => {
-    const path = fd.get('path').trim();
-    const el = document.getElementById('v2-meta-result');
-    if (!el) return;
-    try {
-      const d = await api('GET', `/v2/secret/metadata/${path}`);
-      el.innerHTML = `<dl class="kv-grid">
-        <dt>Current version</dt><dd>${d.metadata?.current_version ?? ''}</dd>
-        <dt>Max versions</dt><dd>${d.metadata?.max_versions ?? ''}</dd>
-      </dl><pre style="font-size:11px;margin-top:8px;overflow:auto">${esc(JSON.stringify(d.metadata?.versions,null,2))}</pre>`;
+      v2ListAt(S.kvPrefixV2);
     } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
   });
 
@@ -2607,37 +2749,9 @@ function bindKVv2() {
         await api('POST', `/v2/secret/destroy/${path}`, { versions });
         flash('success', `Destroyed "${path}" versions.`);
       }
+      v2ListAt(S.kvPrefixV2);
     } catch (e) { flash('error', e.message); }
   });
-}
-
-async function v2ReadQuick(path) {
-  try {
-    const d = await api('GET', `/v2/secret/${path}`);
-    const el = document.getElementById('v2-read-result');
-    if (el) {
-      document.querySelector('#v2-read-form input[name=path]').value = path;
-      el.innerHTML = `<dl class="kv-grid">
-        <dt>Path</dt><dd>${esc(path)}</dd>
-        <dt>Version</dt><dd>${d.version ?? ''}</dd>
-        <dt>Value</dt><dd>${d.deleted ? '<em>deleted</em>' : esc(String(d.value ?? ''))}</dd>
-      </dl>`;
-    }
-  } catch (e) { flash('error', e.message); }
-}
-
-async function v2Meta(path) {
-  try {
-    const d = await api('GET', `/v2/secret/metadata/${path}`);
-    const el = document.getElementById('v2-meta-result');
-    if (el) {
-      document.querySelector('#v2-meta-form input[name=path]').value = path;
-      el.innerHTML = `<dl class="kv-grid">
-        <dt>Current version</dt><dd>${d.metadata?.current_version ?? ''}</dd>
-        <dt>Max versions</dt><dd>${d.metadata?.max_versions ?? ''}</dd>
-      </dl><pre style="font-size:11px;margin-top:8px;overflow:auto">${esc(JSON.stringify(d.metadata?.versions,null,2))}</pre>`;
-    }
-  } catch (e) { flash('error', e.message); }
 }
 
 // ─────────── Response Wrapping handlers ───────────

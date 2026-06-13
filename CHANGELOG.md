@@ -11,6 +11,31 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [1.5.0] — 2026-06-13
+
+### Added
+
+- **Web UI — Server Info card**: Status page теперь показывает version, uptime, mode (Active/Standby/Sealed), HA-статус и git commit через `/v1/sys/health`.
+- **Web UI — Snapshot download**: кнопка «💾 Download Snapshot» на странице Status — скачивает bbolt-снапшот одним кликом без CLI.
+- **Web UI — Auto-load on navigation**: все страницы-списки (Tokens, Policies, Namespaces, Token Roles, Audit Sinks, Cluster, Mounts, Plugins, Replication) загружают данные автоматически при переходе — кнопка «Click Refresh» больше не нужна.
+- **Web UI — Policy templates**: три кнопки-шаблона в редакторе политик: 📖 Read-only / ✏️ Read-write / 👑 Admin — предзаполняют JSON одним кликом.
+- **Web UI — Policy Edit button**: кнопка «Edit» в списке политик предзаполняет форму редактирования; «View» показывает JSON инлайн вместо `alert()`.
+- **Web UI — Token Copy button**: созданный токен отображается с кнопкой 📋 Copy, показывает назначенные policies и TTL.
+- **Web UI — Wrapping Token Copy button**: сгенерированный wrapping-токен также получил кнопку Copy и инструкцию «передайте получателю».
+- **Web UI — Close button on detail cards**: карточки просмотра секретов KV v1 и KV v2 теперь имеют кнопку ✕ Close.
+- **Web UI — KV v1/v2 descriptions**: заголовки страниц объясняют разницу между KV v1 (без версий) и KV v2 (с версиями, CAS, soft-delete).
+- **Web UI — CAS field rename**: поле CAS в KV v2 переименовано в «Compare-And-Swap» с пояснением как оно работает.
+- **Login screen — token guidance**: экран входа показывает подсказку откуда взять токен (dev-режим и Kubernetes).
+- **Docs — Russian setup guide** (`docs2/guides/00-setup-guide-ru.md`): полное руководство на русском от нуля: prerequisites, сборка, локальный dev, Web UI, CLI, minikube, интеграционные тесты, troubleshooting.
+- **Integration tests**: `scripts/run-lab-results.ps1` — тест-раннер с 32 сценариями (local API + minikube); результаты в `lab-results/runs/`.
+- **Bug fix — kvListAt scope**: `kvListAt` и `kvShowSecret` перенесены из замыкания `bind()` в глобальный скоуп — устранена ошибка `ReferenceError` при удалении секрета.
+
+### Changed
+
+- **ROADMAP**: v1.5.0 зафиксирован как релиз UX / DX / Testing.
+
+---
+
 ## [1.32.0] — 2026-06-13
 
 ### Changed

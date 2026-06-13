@@ -19,6 +19,10 @@ func secretEnforcePath(p string) string {
 }
 
 func (s *Server) getSecret(w http.ResponseWriter, r *http.Request) {
+	if wantsList(r) {
+		s.listSecrets(w, r)
+		return
+	}
 	p := r.PathValue("path")
 	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), secretEnforcePath(p), policy.CapRead); err != nil {
 		writeErr(w, err)

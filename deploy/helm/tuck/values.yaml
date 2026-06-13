@@ -203,6 +203,37 @@ injector:
   affinity: {}
 
 # --------------------------------------------------------------------------- #
+# CSI Provider (secrets.tuck.io)
+# --------------------------------------------------------------------------- #
+csi:
+  # -- Deploy the CSI DaemonSet. Mounts secrets as files in pod tmpfs without
+  # modifying application code. Requires linux/amd64 or linux/arm64 nodes.
+  enabled: false
+
+  image:
+    repository: tuck-csi
+    tag: ""          # defaults to .Chart.AppVersion
+    pullPolicy: IfNotPresent
+
+  # -- Name of the K8s Secret containing the Tuck token (key: "token").
+  # Create with: kubectl create secret generic tuck-csi-token --from-literal=token=<token>
+  tokenSecretName: "tuck-csi-token"
+
+  # -- Path where kubelet stores plugins and pod mounts.
+  kubeletRootDir: /var/lib/kubelet
+
+  resources:
+    limits:
+      cpu: 200m
+      memory: 64Mi
+    requests:
+      cpu: 10m
+      memory: 16Mi
+
+  nodeSelector: {}
+  tolerations: []
+
+# --------------------------------------------------------------------------- #
 # CRD installation
 # --------------------------------------------------------------------------- #
 crds:

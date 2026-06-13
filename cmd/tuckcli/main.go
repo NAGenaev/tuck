@@ -20,6 +20,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -833,6 +834,289 @@ func cmdIdentityLookupGroup(c *client, id, name string) {
 	printJSON(mustJSON(resp, 200))
 }
 
+// ---- migrate ----
+
+// vaultClient is a thin HTTP client for reading a Vault API endpoint.
+type vaultClient struct {
+	addr  string
+	token string
+	http  *http.Client
+}
+
+func newVaultClient(addr, token string, insecure bool) *vaultClient {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	if insecure {
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // #nosec G402 — gated by explicit --vault-insecure flag
+	}
+	return &vaultClient{
+		addr:  strings.TrimRight(addr, "/"),
+		token: token,
+		http:  &http.Client{Transport: tr, Timeout: 30 * time.Second},
+	}
+}
+
+func (v *vaultClient) do(method, apiPath string) (*http.Response, error) {
+	req, err := http.NewRequest(method, v.addr+apiPath, nil) // #nosec G704
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-Vault-Token", v.token)
+	return v.http.Do(req)
+}
+
+func (v *vaultClient) listKeys(apiPath string) ([]string, error) {
+	resp, err := v.do("LIST", apiPath)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == 404 {
+		return nil, nil
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("vault LIST %s: HTTP %d: %s", apiPath, resp.StatusCode, body)
+	}
+	var result struct {
+		Data struct {
+			Keys []string `json:"keys"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("vault LIST parse: %v", err)
+	}
+	return result.Data.Keys, nil
+}
+
+func (v *vaultClient) readKV(apiPath string) (map[string]any, error) {
+	resp, err := v.do("GET", apiPath)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("vault GET %s: HTTP %d: %s", apiPath, resp.StatusCode, body)
+	}
+	var result map[string]any
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("vault GET parse: %v", err)
+	}
+	return result, nil
+}
+
+// extractKVData pulls the secret fields from a Vault KV response.
+// KV v2 nests them at data.data; KV v1 has them directly at data.
+func extractKVData(result map[string]any, kvVersion int) map[string]any {
+	dataRaw, _ := result["data"]
+	data, _ := dataRaw.(map[string]any)
+	if kvVersion == 2 {
+		innerRaw, _ := data["data"]
+		inner, _ := innerRaw.(map[string]any)
+		return inner
+	}
+	return data
+}
+
+// migrateKVPaths recursively walks Vault KV and writes each secret to Tuck.
+func migrateKVPaths(vault *vaultClient, tuck *client, listPath, dataPath, tuckPrefix string, kvVersion int, dryRun bool) (migrated, skipped int) {
+	keys, err := vault.listKeys(listPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warn: list %s: %v\n", listPath, err)
+		return
+	}
+	for _, key := range keys {
+		if strings.HasSuffix(key, "/") {
+			sub := strings.TrimSuffix(key, "/")
+			m, s := migrateKVPaths(vault, tuck,
+				listPath+key, dataPath+key, tuckPrefix+sub+"/",
+				kvVersion, dryRun)
+			migrated += m
+			skipped += s
+			continue
+		}
+		result, err := vault.readKV(dataPath + key)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warn: read %s: %v\n", dataPath+key, err)
+			skipped++
+			continue
+		}
+		data := extractKVData(result, kvVersion)
+		if len(data) == 0 {
+			fmt.Fprintf(os.Stderr, "warn: %s: empty or deleted secret, skipping\n", dataPath+key)
+			skipped++
+			continue
+		}
+		tuckPath := tuckPrefix + key
+		valueBytes, _ := json.Marshal(data)
+		if dryRun {
+			fmt.Printf("[dry-run] kv put %s  (%d fields)\n", tuckPath, len(data))
+			migrated++
+			continue
+		}
+		tResp, err := tuck.doRaw("PUT", "/v1/secret/"+tuckPath, bytes.NewReader(valueBytes))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warn: tuck put %s: %v\n", tuckPath, err)
+			skipped++
+			continue
+		}
+		tResp.Body.Close()
+		if tResp.StatusCode != 204 {
+			fmt.Fprintf(os.Stderr, "warn: tuck put %s: HTTP %d\n", tuckPath, tResp.StatusCode)
+			skipped++
+			continue
+		}
+		fmt.Printf("migrated: %s\n", tuckPath)
+		migrated++
+	}
+	return
+}
+
+func cmdMigrateKV(vault *vaultClient, tuck *client, mount, prefix, destPrefix string, kvVersion int, dryRun bool) {
+	if prefix != "" && !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+	if destPrefix != "" && !strings.HasSuffix(destPrefix, "/") {
+		destPrefix += "/"
+	}
+	var listPath, dataPath string
+	if kvVersion == 2 {
+		listPath = "/v1/" + mount + "/metadata/" + prefix
+		dataPath = "/v1/" + mount + "/data/" + prefix
+	} else {
+		listPath = "/v1/" + mount + "/" + prefix
+		dataPath = "/v1/" + mount + "/" + prefix
+	}
+	migrated, skipped := migrateKVPaths(vault, tuck, listPath, dataPath, destPrefix, kvVersion, dryRun)
+	fmt.Printf("\nkv migration: %d migrated, %d skipped\n", migrated, skipped)
+}
+
+// hclCapsToBitmask converts Vault capabilities to Tuck bitmask.
+// Vault: create, read, update, delete, list, sudo, deny
+// Tuck:  read=1, write=2, delete=4, list=8, sudo=16, deny=32
+func hclCapsToBitmask(capsStr string) int {
+	var caps int
+	if strings.Contains(capsStr, "read") {
+		caps |= 1
+	}
+	if strings.Contains(capsStr, "create") || strings.Contains(capsStr, "update") {
+		caps |= 2
+	}
+	if strings.Contains(capsStr, "delete") {
+		caps |= 4
+	}
+	if strings.Contains(capsStr, "list") {
+		caps |= 8
+	}
+	if strings.Contains(capsStr, "sudo") {
+		caps |= 16
+	}
+	if strings.Contains(capsStr, "deny") {
+		caps |= 32
+	}
+	return caps
+}
+
+var (
+	hclPathRe = regexp.MustCompile(`(?s)path\s+"([^"]+)"\s*\{([^}]+)\}`)
+	hclCapRe  = regexp.MustCompile(`capabilities\s*=\s*\[([^\]]+)\]`)
+)
+
+// hclToTuckRules parses Vault HCL path blocks into Tuck rule objects.
+// KV v2 /data/ and /metadata/ path prefixes are stripped for Tuck compatibility.
+func hclToTuckRules(hcl string) []map[string]any {
+	rules := make([]map[string]any, 0)
+	for _, match := range hclPathRe.FindAllStringSubmatch(hcl, -1) {
+		vaultPath := match[1]
+		block := match[2]
+		tuckPath := strings.ReplaceAll(vaultPath, "/data/", "/")
+		tuckPath = strings.ReplaceAll(tuckPath, "/metadata/", "/")
+		caps := 0
+		if capMatch := hclCapRe.FindStringSubmatch(block); capMatch != nil {
+			caps = hclCapsToBitmask(capMatch[1])
+		}
+		rules = append(rules, map[string]any{
+			"path":         tuckPath,
+			"capabilities": caps,
+		})
+	}
+	return rules
+}
+
+func cmdMigratePolicies(vault *vaultClient, tuck *client, dryRun bool) {
+	resp, err := vault.do("GET", "/v1/sys/policy")
+	if err != nil {
+		fatalf("vault list policies: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		fatalf("vault list policies: HTTP %d: %s", resp.StatusCode, body)
+	}
+	var plist struct {
+		Policies []string `json:"policies"`
+	}
+	if err := json.Unmarshal(body, &plist); err != nil {
+		fatalf("vault list policies parse: %v", err)
+	}
+
+	migrated, skipped := 0, 0
+	for _, name := range plist.Policies {
+		if name == "root" || name == "default" {
+			continue
+		}
+		resp2, err := vault.do("GET", "/v1/sys/policy/"+name)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warn: read policy %s: %v\n", name, err)
+			skipped++
+			continue
+		}
+		pBody, _ := io.ReadAll(resp2.Body)
+		resp2.Body.Close()
+		if resp2.StatusCode != 200 {
+			fmt.Fprintf(os.Stderr, "warn: policy %s: HTTP %d\n", name, resp2.StatusCode)
+			skipped++
+			continue
+		}
+		var pResult struct {
+			Rules string `json:"rules"`
+		}
+		if err := json.Unmarshal(pBody, &pResult); err != nil {
+			fmt.Fprintf(os.Stderr, "warn: policy %s: parse error: %v\n", name, err)
+			skipped++
+			continue
+		}
+		tuckRules := hclToTuckRules(pResult.Rules)
+		if len(tuckRules) == 0 {
+			fmt.Fprintf(os.Stderr, "warn: policy %s: no path blocks found in HCL (complex syntax?), skipping — review manually:\n%s\n\n", name, pResult.Rules)
+			skipped++
+			continue
+		}
+		tuckPolicy := map[string]any{"rules": tuckRules}
+		if dryRun {
+			tuckJSON, _ := json.MarshalIndent(tuckPolicy, "", "  ")
+			fmt.Printf("[dry-run] policy put %s:\n%s\n\n", name, tuckJSON)
+			migrated++
+			continue
+		}
+		tResp, err := tuck.do("PUT", "/v1/policy/"+name, tuckPolicy)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warn: tuck policy put %s: %v\n", name, err)
+			skipped++
+			continue
+		}
+		tResp.Body.Close()
+		if tResp.StatusCode != 204 {
+			fmt.Fprintf(os.Stderr, "warn: tuck policy put %s: HTTP %d\n", name, tResp.StatusCode)
+			skipped++
+			continue
+		}
+		fmt.Printf("migrated policy: %s\n", name)
+		migrated++
+	}
+	fmt.Printf("\npolicy migration: %d migrated, %d skipped\n", migrated, skipped)
+}
+
 // ---- main ----
 
 func usage() {
@@ -938,6 +1222,15 @@ Namespaces (use --namespace=<ns> or TUCK_NAMESPACE to operate inside a namespace
   namespace get <name>
   namespace delete <name>
   namespace list
+
+Migration (Vault → Tuck):
+  migrate kv      --vault-addr=... --vault-token=... [--vault-insecure] [--mount=secret] [--kv-version=2] [--prefix=] [--dest-prefix=] [--dry-run]
+  migrate policies --vault-addr=... --vault-token=... [--vault-insecure] [--dry-run]
+  migrate all     --vault-addr=... --vault-token=... [--vault-insecure] [--mount=secret] [--kv-version=2] [--prefix=] [--dest-prefix=] [--dry-run]
+
+  Env vars: VAULT_ADDR, VAULT_TOKEN (mirror of Vault CLI conventions)
+  Secrets are stored as JSON-encoded Vault KV data maps.
+  Policies are converted from Vault HCL path blocks (best-effort); review the output.
 `, Version)
 	os.Exit(2)
 }
@@ -1712,6 +2005,37 @@ func main() {
 			cmdAuditList(c)
 		default:
 			fatalf("unknown audit subcommand %q", args[1])
+		}
+
+	case "migrate":
+		if len(args) < 2 {
+			fatalf("migrate requires a subcommand: kv, policies, all")
+		}
+		sub := args[1]
+		fs := flag.NewFlagSet("migrate "+sub, flag.ExitOnError)
+		vaultAddr := fs.String("vault-addr", envOr("VAULT_ADDR", "http://127.0.0.1:8200"), "Vault server address")
+		vaultToken := fs.String("vault-token", os.Getenv("VAULT_TOKEN"), "Vault token")
+		vaultInsecure := fs.Bool("vault-insecure", false, "skip Vault TLS verification")
+		mount := fs.String("mount", "secret", "Vault KV mount name")
+		kvVersion := fs.Int("kv-version", 2, "Vault KV engine version (1 or 2)")
+		prefix := fs.String("prefix", "", "Vault KV path prefix to migrate (empty = all)")
+		destPrefix := fs.String("dest-prefix", "", "Tuck destination path prefix (empty = root)")
+		dryRun := fs.Bool("dry-run", false, "print what would be migrated without writing to Tuck")
+		_ = fs.Parse(args[2:])
+		if *vaultToken == "" {
+			fatalf("migrate requires --vault-token or VAULT_TOKEN env var")
+		}
+		vault := newVaultClient(*vaultAddr, *vaultToken, *vaultInsecure)
+		switch sub {
+		case "kv":
+			cmdMigrateKV(vault, c, *mount, *prefix, *destPrefix, *kvVersion, *dryRun)
+		case "policies":
+			cmdMigratePolicies(vault, c, *dryRun)
+		case "all":
+			cmdMigrateKV(vault, c, *mount, *prefix, *destPrefix, *kvVersion, *dryRun)
+			cmdMigratePolicies(vault, c, *dryRun)
+		default:
+			fatalf("unknown migrate subcommand %q", sub)
 		}
 
 	default:

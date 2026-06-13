@@ -1,0 +1,226 @@
+﻿[
+    {
+        "Id":  "UNIT",
+        "Name":  "go test ./... (skipped)",
+        "Pass":  true,
+        "Detail":  "use -SkipUnit to bypass",
+        "Environment":  "go"
+    },
+    {
+        "Id":  "BUILD",
+        "Name":  "go build tuck.exe",
+        "Pass":  true,
+        "Detail":  "",
+        "Environment":  "build"
+    },
+    {
+        "Id":  "L-SETUP",
+        "Name":  "Local server + root token",
+        "Pass":  true,
+        "Detail":  "tuck_SIx2i-eoyVTK9h6zaV0fQ-S6XiYayrshRI6csYUf-YY",
+        "Environment":  "local:8202"
+    },
+    {
+        "Id":  "L-READY",
+        "Name":  "Health endpoint",
+        "Pass":  true,
+        "Detail":  "",
+        "Environment":  "local"
+    },
+    {
+        "Id":  "1",
+        "Name":  "Health sealed=false",
+        "Pass":  true,
+        "Detail":  "{\"build_date\":\"unknown\",\"commit\":\"unknown\",\"ha_enabled\":false,\"sealed\":false,\"uptime_seconds\":2.0062733,\"version\":\"dev\"}",
+        "Environment":  "local"
+    },
+    {
+        "Id":  "2",
+        "Name":  "Seal status dev",
+        "Pass":  true,
+        "Detail":  "{\"sealed\":false,\"type\":\"dev\"}",
+        "Environment":  "local"
+    },
+    {
+        "Id":  "3a",
+        "Name":  "KV put",
+        "Pass":  true,
+        "Detail":  "status 204",
+        "Environment":  "local"
+    },
+    {
+        "Id":  "3b",
+        "Name":  "KV get",
+        "Pass":  true,
+        "Detail":  "{\"created_at\":\"2026-06-13T15:45:05Z\",\"path\":\"db/password\",\"value\":\"supersecret123\"}",
+        "Environment":  "local"
+    },
+    {
+        "Id":  "3c",
+        "Name":  "KV 404",
+        "Pass":  true,
+        "Detail":  "status 404",
+        "Environment":  "local"
+    },
+    {
+        "Id":  "3d",
+        "Name":  "KV delete",
+        "Pass":  true,
+        "Detail":  "status 204",
+        "Environment":  "local"
+    },
+    {
+        "Id":  "4a",
+        "Name":  "Auth no token",
+        "Pass":  true,
+        "Detail":  "status 401",
+        "Environment":  "local"
+    },
+    {
+        "Id":  "4b",
+        "Name":  "Auth bad token",
+        "Pass":  true,
+        "Detail":  "status 401",
+        "Environment":  "local"
+    },
+    {
+        "Id":  "5",
+        "Name":  "Policy ACL",
+        "Pass":  true,
+        "Detail":  "{\"name\":\"prod-readonly\",\"rules\":[{\"path\":\"secret/prod/*\",\"capabilities\":[\"read\"]}],\"inheritable\":false}",
+        "Environment":  "local"
+    },
+    {
+        "Id":  "6",
+        "Name":  "Token create",
+        "Pass":  true,
+        "Detail":  "tuck_dQ62CUdrOtxcbdyFYzITBTaaImrIxv4FvwvLUtMb01Y",
+        "Environment":  "local"
+    },
+    {
+        "Id":  "7a",
+        "Name":  "Manual seal",
+        "Pass":  true,
+        "Detail":  "status 200",
+        "Environment":  "local"
+    },
+    {
+        "Id":  "7b",
+        "Name":  "Sealed 503",
+        "Pass":  true,
+        "Detail":  "status 503",
+        "Environment":  "local"
+    },
+    {
+        "Id":  "10",
+        "Name":  "Persist restart",
+        "Pass":  true,
+        "Detail":  "{\"created_at\":\"2026-06-13T15:45:07Z\",\"path\":\"persist-test\",\"value\":\"persist-ok\"}",
+        "Environment":  "local"
+    },
+    {
+        "Id":  "UI-LIST",
+        "Name":  "GET ?list=true Explorer",
+        "Pass":  true,
+        "Detail":  "{\"keys\":[\"app/\",\"persist-test\"]}",
+        "Environment":  "local"
+    },
+    {
+        "Id":  "UI-KV2",
+        "Name":  "KV v2 write",
+        "Pass":  true,
+        "Detail":  "status 200",
+        "Environment":  "local"
+    },
+    {
+        "Id":  "UI-KV2-LIST",
+        "Name":  "KV v2 metadata list",
+        "Pass":  true,
+        "Detail":  "{\"keys\":[\"ui-test\"]}",
+        "Environment":  "local"
+    },
+    {
+        "Id":  "K8S-PF",
+        "Name":  "Port-forward :8201",
+        "Pass":  true,
+        "Detail":  "",
+        "Environment":  "minikube"
+    },
+    {
+        "Id":  "K8S-TOKEN",
+        "Name":  "Root token file",
+        "Pass":  true,
+        "Detail":  "tuck_wbyuM95TpPw3I10...",
+        "Environment":  "minikube"
+    },
+    {
+        "Id":  "K8S-1",
+        "Name":  "Health",
+        "Pass":  true,
+        "Detail":  "{\"build_date\":\"unknown\",\"commit\":\"unknown\",\"ha_enabled\":false,\"sealed\":false,\"uptime_seconds\":103.350107338,\"version\":\"dev\"}",
+        "Environment":  "minikube"
+    },
+    {
+        "Id":  "8",
+        "Name":  "K8s SA auth login+read",
+        "Pass":  true,
+        "Detail":  "ok",
+        "Environment":  "minikube"
+    },
+    {
+        "Id":  "9a",
+        "Name":  "PUT secret for operator",
+        "Pass":  true,
+        "Detail":  "status 204",
+        "Environment":  "minikube"
+    },
+    {
+        "Id":  "9b",
+        "Name":  "TuckSecret operator sync",
+        "Pass":  true,
+        "Detail":  "got=lab-run-2026-06-13_184502 want=lab-run-2026-06-13_184502",
+        "Environment":  "minikube"
+    },
+    {
+        "Id":  "9c",
+        "Name":  "TuckSecret CRD exists",
+        "Pass":  true,
+        "Detail":  "",
+        "Environment":  "minikube"
+    },
+    {
+        "Id":  "UI-K8S-LIST",
+        "Name":  "K8s UI list=true",
+        "Pass":  true,
+        "Detail":  "{\"keys\":[\"app/\",\"demo-app/\"]}",
+        "Environment":  "minikube"
+    },
+    {
+        "Id":  "K8S-PODS",
+        "Name":  "tuck-server pod Running",
+        "Pass":  true,
+        "Detail":  "",
+        "Environment":  "minikube"
+    },
+    {
+        "Id":  "K8S-OP",
+        "Name":  "tuck-operator Running",
+        "Pass":  true,
+        "Detail":  "",
+        "Environment":  "minikube"
+    },
+    {
+        "Id":  "CLUSTER",
+        "Name":  "minikube node Ready",
+        "Pass":  true,
+        "Detail":  "True",
+        "Environment":  "minikube"
+    },
+    {
+        "Id":  "CRD",
+        "Name":  "TuckSecret CRD installed",
+        "Pass":  true,
+        "Detail":  "",
+        "Environment":  "minikube"
+    }
+]

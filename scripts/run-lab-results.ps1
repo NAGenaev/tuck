@@ -52,12 +52,17 @@ function Wait-Healthy($url, $timeoutSec = 20) {
     return $false
 }
 
+function Stop-K8sPortForward {
+    Get-NetTCPConnection -LocalPort $K8sPort -State Listen -ErrorAction SilentlyContinue |
+        ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Milliseconds 500
+}
+
 function Ensure-K8sPortForward {
-    $conn = Get-NetTCPConnection -LocalPort $K8sPort -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($conn) { return $true }
+    if ((Curl-Status @("$K8sAddr/v1/health")) -eq 200) { return $true }
+    Stop-K8sPortForward
     Start-Process -FilePath "kubectl" -ArgumentList @("-n", "tuck", "port-forward", "svc/tuck", "${K8sPort}:8200") -WindowStyle Hidden | Out-Null
-    Start-Sleep -Seconds 3
-    return (Wait-Healthy "$K8sAddr/v1/health" 15)
+    return (Wait-Healthy "$K8sAddr/v1/health" 30)
 }
 
 # ── UNIT ──
@@ -76,10 +81,33 @@ if ($SkipUnit) {
 if ($ReloadK8sImage) {
     Write-Host "`n=== Reload K8s image ===" -ForegroundColor Cyan
     docker build -f build/Dockerfile.server -t tuck-server:local . 2>&1 | Out-Null
+    minikube ssh "docker rmi -f tuck-server:local" 2>&1 | Out-Null
     minikube image load tuck-server:local 2>&1 | Out-Null
     kubectl -n tuck rollout restart deployment/tuck-server 2>&1 | Out-Null
     kubectl -n tuck rollout status deployment/tuck-server --timeout=120s 2>&1 | Out-Null
+    Stop-K8sPortForward
     Record "K8S-IMG" "Reload tuck-server:local" ($LASTEXITCODE -eq 0) "" "minikube"
+}
+
+function Get-K8sRootToken {
+    $tokenFile = Join-Path $RepoRoot "testdata\minikube-root-token.txt"
+    $tok = ""
+    if (Test-Path $tokenFile) { $tok = (Get-Content $tokenFile -Raw).Trim() }
+    if ($tok) {
+        $code = Curl-Status @("$K8sAddr/v1/sys/seal-status", "-H", "X-Tuck-Token: $tok")
+        if ($code -eq 200) { return $tok }
+    }
+    $logs = kubectl -n tuck logs deployment/tuck-server --tail=200 2>$null
+    if ($logs -match 'ROOT TOKEN[^\r\n]*[\r\n]+\s+(tuck_[a-zA-Z0-9_-]+)') {
+        $tok = $Matches[1]
+    } elseif ($logs -match '\s+(tuck_[a-zA-Z0-9_-]{20,})') {
+        $tok = $Matches[1]
+    }
+    if ($tok) {
+        New-Item -ItemType Directory -Force -Path (Split-Path $tokenFile) | Out-Null
+        Set-Content -Path $tokenFile -Value $tok -NoNewline -Encoding ascii
+    }
+    return $tok
 }
 
 # ── BUILD ──
@@ -176,8 +204,7 @@ Record "K8S-PF" "Port-forward :$K8sPort" $k8sUp "" "minikube"
 
 if ($k8sUp) {
     $tokenFile = Join-Path $RepoRoot "testdata\minikube-root-token.txt"
-    $K8S_TOKEN = ""
-    if (Test-Path $tokenFile) { $K8S_TOKEN = (Get-Content $tokenFile -Raw).Trim() }
+    $K8S_TOKEN = Get-K8sRootToken
     Record "K8S-TOKEN" "Root token file" ([bool]$K8S_TOKEN) $(if ($K8S_TOKEN) { $K8S_TOKEN.Substring(0,20)+"..." } else { "missing" }) "minikube"
 
     $body = Curl-Body @("$K8sAddr/v1/health")
@@ -204,10 +231,16 @@ if ($k8sUp) {
         $arBody = Curl-Body @("$K8sAddr/v1/secret/app/config", "-H", "X-Tuck-Token: $appTok")
         Record "8" "K8s SA auth login+read" ($appTok -and ($arBody -match "app-config-value")) $(if ($appTok) { "ok" } else { $lrBody }) "minikube"
 
+        $opRole = Write-JsonBody '{"policies":["root"],"ttl":"24h"}'
+        Curl-Status @("-X", "PUT", "$K8sAddr/v1/auth/kubernetes/role/tuck/tuck-operator", "-H", "X-Tuck-Token: $K8S_TOKEN", "-H", "Content-Type: application/json", "-d", "@$opRole") | Out-Null
+        kubectl -n tuck rollout restart deployment/tuck-operator 2>&1 | Out-Null
+        kubectl -n tuck rollout status deployment/tuck-operator --timeout=90s 2>&1 | Out-Null
+
         $demoVal = "lab-run-$RunId"
         $code = Curl-Status @("-X", "PUT", "$K8sAddr/v1/secret/demo-app/api-key", "-H", "X-Tuck-Token: $K8S_TOKEN", "--data-raw", $demoVal)
         Record "9a" "PUT secret for operator" ($code -eq 204) "status $code" "minikube"
         kubectl delete tucksecret demo-api-key -n default --ignore-not-found 2>&1 | Out-Null
+        kubectl delete secret demo-app-credentials -n default --ignore-not-found 2>&1 | Out-Null
         Start-Sleep -Seconds 2
         kubectl apply -f deploy/examples/demo-tucksecret.yaml 2>&1 | Out-Null
         Start-Sleep -Seconds 45
@@ -237,8 +270,13 @@ if ($k8sUp) {
 
 # ── CLUSTER sanity ──
 Write-Host "`n=== Cluster sanity ===" -ForegroundColor Cyan
-$nodes = kubectl get nodes -o 'jsonpath={.items[0].status.conditions[?(@.type=="Ready")].status}' 2>$null
-Record "CLUSTER" "minikube node Ready" ($nodes -eq "True") $nodes "minikube"
+$nodes = kubectl get nodes -o json 2>$null | ConvertFrom-Json
+$nodeReady = $false
+if ($nodes -and $nodes.items) {
+    $cond = $nodes.items[0].status.conditions | Where-Object { $_.type -eq "Ready" } | Select-Object -First 1
+    if ($cond) { $nodeReady = ($cond.status -eq "True") }
+}
+Record "CLUSTER" "minikube node Ready" $nodeReady $(if ($cond) { $cond.status } else { "no data" }) "minikube"
 $crd = kubectl get crd tucksecrets.tuck.io 2>&1
 Record "CRD" "TuckSecret CRD installed" ($LASTEXITCODE -eq 0) "" "minikube"
 
@@ -316,6 +354,8 @@ $latest = @(
     "",
     "```powershell",
     ".\scripts\run-lab-results.ps1",
+    ".\scripts\run-lab-results.ps1 -SkipUnit          # быстрый прогон API",
+    ".\scripts\run-lab-results.ps1 -ReloadK8sImage    # пересобрать образ в minikube",
     "```",
     "",
     "## История",

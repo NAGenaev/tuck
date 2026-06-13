@@ -11,6 +11,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [1.7.0] — 2026-06-13
+
+### Added
+
+- **GitHub Actions OIDC Auth** (`/v1/auth/github/`): аутентификация GitHub Actions воркфлоу через короткоживущие OIDC-токены. Ролевая модель с привязкой по `repository`, `ref`, `environment`, `actor`, `workflow_ref` — все поля wildcard при пустом значении. JWKS: `token.actions.githubusercontent.com` — конфигурация не требуется.
+- **Web UI — GitHub Actions Auth tab**: вкладка «GitHub Actions» на странице Auth Methods — создание ролей с указанием claim-фильтров, список ролей с удалением.
+
+---
+
 ## [1.6.0] — 2026-06-13
 
 ### Added

@@ -34,6 +34,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/lease"
 	"github.com/NAGenaev/tuck/internal/mount"
 	"github.com/NAGenaev/tuck/internal/namespace"
+	"github.com/NAGenaev/tuck/internal/plugin"
 	"github.com/NAGenaev/tuck/internal/kvsecret"
 	"github.com/NAGenaev/tuck/internal/physical"
 	"github.com/NAGenaev/tuck/internal/policy"
@@ -111,6 +112,7 @@ type Core struct {
 	sysconfigStore *sysconfig.Store
 	leaseManager   *lease.Manager
 	mountStore     *mount.Store
+	pluginCatalog  *plugin.Catalog
 
 	// optional — nil means k8s auth is disabled
 	k8sReviewer k8sauth.Reviewer
@@ -166,6 +168,7 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 	}
 	c.leaseManager = lease.NewWithEngines(c.dbManager, c.awsEngine, c.gcpEngine, c.azureEngine)
 	c.mountStore = mount.New(b)
+	c.pluginCatalog = plugin.New(b)
 	return c
 }
 
@@ -244,6 +247,9 @@ func (c *Core) registerBuiltinMounts(ctx context.Context) {
 
 // MountStore returns the secret engine mount table.
 func (c *Core) MountStore() *mount.Store { return c.mountStore }
+
+// PluginCatalog returns the plugin registry.
+func (c *Core) PluginCatalog() *plugin.Catalog { return c.pluginCatalog }
 
 // UnsealShard accepts one base64url-encoded Shamir shard. When enough shards
 // have been collected the barrier is unsealed automatically. Returns true when

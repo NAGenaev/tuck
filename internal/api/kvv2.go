@@ -38,7 +38,7 @@ func (s *Server) v2WriteSecret(w http.ResponseWriter, r *http.Request) {
 		}
 		cas = &n
 	}
-	ver, err := s.core.KVv2().Write(r.Context(), p, body, cas)
+	ver, err := s.core.KVv2(nsFromCtx(r.Context())).Write(r.Context(), p, body, cas)
 	if err != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return
@@ -62,7 +62,7 @@ func (s *Server) v2ReadSecret(w http.ResponseWriter, r *http.Request) {
 		}
 		version = n
 	}
-	val, vm, err := s.core.KVv2().Read(r.Context(), p, version)
+	val, vm, err := s.core.KVv2(nsFromCtx(r.Context())).Read(r.Context(), p, version)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 		return
@@ -97,14 +97,14 @@ func (s *Server) v2DeleteSecret(w http.ResponseWriter, r *http.Request) {
 	versions := parseVersionList(r.URL.Query().Get("versions"))
 	if len(versions) == 0 {
 		// Default: soft-delete current version.
-		meta, err := s.core.KVv2().GetMeta(r.Context(), p)
+		meta, err := s.core.KVv2(nsFromCtx(r.Context())).GetMeta(r.Context(), p)
 		if err != nil || meta == nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 			return
 		}
 		versions = []int{meta.CurrentVersion}
 	}
-	if err := s.core.KVv2().SoftDelete(r.Context(), p, versions); err != nil {
+	if err := s.core.KVv2(nsFromCtx(r.Context())).SoftDelete(r.Context(), p, versions); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -124,7 +124,7 @@ func (s *Server) v2Undelete(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if err := s.core.KVv2().Undelete(r.Context(), p, versions); err != nil {
+	if err := s.core.KVv2(nsFromCtx(r.Context())).Undelete(r.Context(), p, versions); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -144,7 +144,7 @@ func (s *Server) v2Destroy(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if err := s.core.KVv2().Destroy(r.Context(), p, versions); err != nil {
+	if err := s.core.KVv2(nsFromCtx(r.Context())).Destroy(r.Context(), p, versions); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -158,7 +158,7 @@ func (s *Server) v2GetMeta(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	meta, err := s.core.KVv2().GetMeta(r.Context(), p)
+	meta, err := s.core.KVv2(nsFromCtx(r.Context())).GetMeta(r.Context(), p)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -185,7 +185,7 @@ func (s *Server) v2UpdateMeta(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid body"})
 		return
 	}
-	if err := s.core.KVv2().UpdateMeta(r.Context(), p, body.MaxVersions); err != nil {
+	if err := s.core.KVv2(nsFromCtx(r.Context())).UpdateMeta(r.Context(), p, body.MaxVersions); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -199,7 +199,7 @@ func (s *Server) v2DeleteMeta(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	if err := s.core.KVv2().DeleteAll(r.Context(), p); err != nil {
+	if err := s.core.KVv2(nsFromCtx(r.Context())).DeleteAll(r.Context(), p); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -217,7 +217,7 @@ func (s *Server) v2ListMeta(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	keys, err := s.core.KVv2().List(r.Context(), prefix)
+	keys, err := s.core.KVv2(nsFromCtx(r.Context())).List(r.Context(), prefix)
 	if err != nil {
 		writeErr(w, err)
 		return

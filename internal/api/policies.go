@@ -51,7 +51,7 @@ func (s *Server) putPolicy(w http.ResponseWriter, r *http.Request) {
 			Capabilities: parseCaps(rule.Capabilities),
 		})
 	}
-	if err := s.core.PutPolicy(r.Context(), p); err != nil {
+	if err := s.core.PutPolicy(r.Context(), nsFromCtx(r.Context()), p); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -64,7 +64,7 @@ func (s *Server) getPolicy(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	p, err := s.core.GetPolicy(r.Context(), name)
+	p, err := s.core.GetPolicy(r.Context(), nsFromCtx(r.Context()), name)
 	if err != nil {
 		if errors.Is(err, policy.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "policy not found"})
@@ -90,7 +90,7 @@ func (s *Server) listPolicies(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	names, err := s.core.ListPolicies(r.Context())
+	names, err := s.core.ListPolicies(r.Context(), nsFromCtx(r.Context()))
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -107,7 +107,7 @@ func (s *Server) deletePolicy(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	if err := s.core.DeletePolicy(r.Context(), name); err != nil {
+	if err := s.core.DeletePolicy(r.Context(), nsFromCtx(r.Context()), name); err != nil {
 		writeErr(w, err)
 		return
 	}

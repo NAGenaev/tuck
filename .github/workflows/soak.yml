@@ -1,0 +1,80 @@
+name: Soak & Chaos
+
+on:
+  schedule:
+    # Runs at 02:00 UTC every day.
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      soak_duration:
+        description: "Soak test duration (e.g. 60s, 5m)"
+        required: false
+        default: "60s"
+      soak_workers:
+        description: "Concurrent soak workers"
+        required: false
+        default: "8"
+
+jobs:
+  soak:
+    name: Soak & Chaos Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SOAK_DURATION: ${{ inputs.soak_duration || '60s' }}
+      SOAK_WORKERS: ${{ inputs.soak_workers || '8' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Soak test (sustained KV load)
+        run: go test -v -run TestSoak -count=1 -timeout=10m ./internal/api/...
+
+      - name: Chaos — transient backend errors
+        run: go test -v -run TestChaosTransientErrors -count=1 -timeout=5m ./internal/api/...
+
+      - name: Chaos — seal/unseal data integrity
+        run: go test -v -run TestChaosSealUnsealCycle -count=1 -timeout=2m ./internal/api/...
+
+      - name: Fuzz seed corpus (all fuzz targets)
+        run: go test -count=1 -timeout=5m
+             ./internal/shamir/...
+             ./internal/policy/...
+             ./internal/kvsecret/...
+             ./internal/token/...
+
+  coverage-gate:
+    name: Security-Critical Coverage Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Coverage for security-critical packages
+        run: |
+          PKGS=(
+            github.com/NAGenaev/tuck/internal/barrier
+            github.com/NAGenaev/tuck/internal/seal
+            github.com/NAGenaev/tuck/internal/shamir
+            github.com/NAGenaev/tuck/internal/policy
+            github.com/NAGenaev/tuck/internal/token
+            github.com/NAGenaev/tuck/internal/auth/approle
+          )
+          go test -coverprofile=sec_coverage.out -covermode=atomic \
+            "${PKGS[@]/#/-coverpkg=}" \
+            "${PKGS[@]}"
+          go tool cover -func=sec_coverage.out | tail -1
+
+      - name: Check ≥80% threshold
+        run: |
+          PCT=$(go tool cover -func=sec_coverage.out | awk '/^total:/{gsub(/%/,""); print $3}')
+          echo "Security-critical coverage: ${PCT}%"
+          awk -v pct="$PCT" 'BEGIN { if (pct+0 < 80) { print "FAIL: coverage " pct "% is below 80% threshold"; exit 1 } }'

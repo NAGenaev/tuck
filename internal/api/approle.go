@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"time"
 
@@ -27,7 +28,8 @@ func (s *Server) loginAppRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tok, err := s.core.LoginAppRole(r.Context(), req.RoleID, req.SecretID)
+	remoteIP, _, _ := net.SplitHostPort(r.RemoteAddr)
+	tok, err := s.core.LoginAppRole(r.Context(), req.RoleID, req.SecretID, remoteIP)
 	if err != nil {
 		if errors.Is(err, approle.ErrInvalidCredentials) {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid or expired credentials"})
@@ -138,9 +140,26 @@ func (s *Server) listAppRoles(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /v1/auth/approle/role/{name}/secret-id
+// Optional body: {"bound_cidrs":["10.0.0.0/8"],"metadata":{"key":"value"}}
 func (s *Server) generateSecretID(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	sid, err := s.core.GenerateSecretID(r.Context(), name)
+
+	var opts approle.SecretIDOptions
+	if r.ContentLength > 0 {
+		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+		var body struct {
+			BoundCIDRs []string          `json:"bound_cidrs"`
+			Metadata   map[string]string `json:"metadata"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
+			return
+		}
+		opts.BoundCIDRs = body.BoundCIDRs
+		opts.Metadata = body.Metadata
+	}
+
+	sid, err := s.core.GenerateSecretIDWithOptions(r.Context(), name, opts)
 	if err != nil {
 		if errors.Is(err, approle.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "role not found"})

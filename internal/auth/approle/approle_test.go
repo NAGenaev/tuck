@@ -76,7 +76,7 @@ func TestCreateAndLoginRole(t *testing.T) {
 		t.Fatalf("GenerateSecretID: %v", err)
 	}
 
-	result, err := s.Login(ctx, role.RoleID, sid.ID)
+	result, err := s.Login(ctx, role.RoleID, sid.ID, "")
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestLoginWrongRoleID(t *testing.T) {
 	s.PutRole(ctx, r)
 	sid, _ := s.GenerateSecretID(ctx, "r")
 
-	_, err := s.Login(ctx, "wrong-role-id", sid.ID)
+	_, err := s.Login(ctx, "wrong-role-id", sid.ID, "")
 	if err != ErrInvalidCredentials {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
@@ -109,7 +109,7 @@ func TestLoginWrongSecretID(t *testing.T) {
 	r := &Role{Name: "r", Policies: []string{"p"}}
 	s.PutRole(ctx, r)
 
-	_, err := s.Login(ctx, r.RoleID, "nonexistent")
+	_, err := s.Login(ctx, r.RoleID, "nonexistent", "")
 	if err != ErrInvalidCredentials {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
@@ -123,14 +123,14 @@ func TestSecretIDNumUses(t *testing.T) {
 	s.PutRole(ctx, r)
 	sid, _ := s.GenerateSecretID(ctx, "r")
 
-	if _, err := s.Login(ctx, r.RoleID, sid.ID); err != nil {
+	if _, err := s.Login(ctx, r.RoleID, sid.ID, ""); err != nil {
 		t.Fatalf("first login: %v", err)
 	}
-	if _, err := s.Login(ctx, r.RoleID, sid.ID); err != nil {
+	if _, err := s.Login(ctx, r.RoleID, sid.ID, ""); err != nil {
 		t.Fatalf("second login: %v", err)
 	}
 	// Third login must fail — secret-id exhausted.
-	if _, err := s.Login(ctx, r.RoleID, sid.ID); err != ErrInvalidCredentials {
+	if _, err := s.Login(ctx, r.RoleID, sid.ID, ""); err != ErrInvalidCredentials {
 		t.Fatalf("expected ErrInvalidCredentials after exhausted uses, got %v", err)
 	}
 }
@@ -147,7 +147,7 @@ func TestSecretIDTTL(t *testing.T) {
 	sid.ExpiresAt = time.Now().Add(-time.Second)
 	s.put(ctx, secretIDsPrefix+sid.ID, sid)
 
-	_, err := s.Login(ctx, r.RoleID, sid.ID)
+	_, err := s.Login(ctx, r.RoleID, sid.ID, "")
 	if err != ErrInvalidCredentials {
 		t.Fatalf("expected ErrInvalidCredentials for expired secret-id, got %v", err)
 	}
@@ -186,8 +186,76 @@ func TestDestroySecretID(t *testing.T) {
 	if err := s.DestroySecretID(ctx, sid.ID); err != nil {
 		t.Fatal(err)
 	}
-	_, err := s.Login(ctx, r.RoleID, sid.ID)
+	_, err := s.Login(ctx, r.RoleID, sid.ID, "")
 	if err != ErrInvalidCredentials {
 		t.Fatalf("expected ErrInvalidCredentials after destroy, got %v", err)
+	}
+}
+
+func TestBoundCIDRs_Role(t *testing.T) {
+	s := NewStore(newMem())
+	ctx := context.Background()
+
+	r := &Role{Name: "r", Policies: []string{"p"}, BoundCIDRs: []string{"10.0.0.0/8"}}
+	s.PutRole(ctx, r)
+	sid, _ := s.GenerateSecretID(ctx, "r")
+
+	// IP inside CIDR — allowed.
+	if _, err := s.Login(ctx, r.RoleID, sid.ID, "10.1.2.3"); err != nil {
+		t.Fatalf("expected success for allowed IP, got %v", err)
+	}
+}
+
+func TestBoundCIDRs_RoleDenied(t *testing.T) {
+	s := NewStore(newMem())
+	ctx := context.Background()
+
+	r := &Role{Name: "r", Policies: []string{"p"}, BoundCIDRs: []string{"10.0.0.0/8"}}
+	s.PutRole(ctx, r)
+	// NumUses=0 (unlimited), each login gets its own secret-id.
+	sid2, _ := s.GenerateSecretID(ctx, "r")
+
+	// IP outside CIDR — denied.
+	if _, err := s.Login(ctx, r.RoleID, sid2.ID, "192.168.1.1"); err != ErrInvalidCredentials {
+		t.Fatalf("expected ErrInvalidCredentials for denied IP, got %v", err)
+	}
+}
+
+func TestBoundCIDRs_SecretIDOverridesRole(t *testing.T) {
+	s := NewStore(newMem())
+	ctx := context.Background()
+
+	// Role bound to 10.0.0.0/8, but secret-id overrides to 192.168.0.0/16.
+	r := &Role{Name: "r", Policies: []string{"p"}, BoundCIDRs: []string{"10.0.0.0/8"}}
+	s.PutRole(ctx, r)
+	sid, _ := s.GenerateSecretIDWithOptions(ctx, "r", SecretIDOptions{
+		BoundCIDRs: []string{"192.168.0.0/16"},
+	})
+
+	// IP in secret-id CIDR is allowed (secret-id overrides role CIDR).
+	if _, err := s.Login(ctx, r.RoleID, sid.ID, "192.168.5.1"); err != nil {
+		t.Fatalf("expected success with secret-id CIDR override, got %v", err)
+	}
+}
+
+func TestSecretIDMetadata(t *testing.T) {
+	s := NewStore(newMem())
+	ctx := context.Background()
+
+	r := &Role{Name: "r", Policies: []string{"p"}}
+	s.PutRole(ctx, r)
+	sid, err := s.GenerateSecretIDWithOptions(ctx, "r", SecretIDOptions{
+		Metadata: map[string]string{"env": "prod", "team": "platform"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.LookupSecretID(ctx, sid.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Metadata["env"] != "prod" || got.Metadata["team"] != "platform" {
+		t.Fatalf("unexpected metadata: %v", got.Metadata)
 	}
 }

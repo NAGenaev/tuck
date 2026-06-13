@@ -971,14 +971,17 @@ func (c *Core) ListAppRoles(ctx context.Context) ([]string, error) {
 func (c *Core) GenerateSecretID(ctx context.Context, roleName string) (*approle.SecretID, error) {
 	return c.approleStore.GenerateSecretID(ctx, roleName)
 }
+func (c *Core) GenerateSecretIDWithOptions(ctx context.Context, roleName string, opts approle.SecretIDOptions) (*approle.SecretID, error) {
+	return c.approleStore.GenerateSecretIDWithOptions(ctx, roleName, opts)
+}
 func (c *Core) LookupSecretID(ctx context.Context, id string) (*approle.SecretID, error) {
 	return c.approleStore.LookupSecretID(ctx, id)
 }
 func (c *Core) DestroySecretID(ctx context.Context, id string) error {
 	return c.approleStore.DestroySecretID(ctx, id)
 }
-func (c *Core) LoginAppRole(ctx context.Context, roleID, secretID string) (*token.Token, error) {
-	result, err := c.approleStore.Login(ctx, roleID, secretID)
+func (c *Core) LoginAppRole(ctx context.Context, roleID, secretID, remoteIP string) (*token.Token, error) {
+	result, err := c.approleStore.Login(ctx, roleID, secretID, remoteIP)
 	if err != nil {
 		return nil, err
 	}

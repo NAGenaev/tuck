@@ -93,6 +93,7 @@ func (s *Server) Handler() http.Handler {
 	// Sys endpoints: seal-status and unseal are unauthenticated; seal requires root.
 	// Audit sink management
 	mux.HandleFunc("PUT /v1/sys/audit/webhook/{name}", s.requireToken(s.putAuditWebhook))
+	mux.HandleFunc("PUT /v1/sys/audit/file/{name}", s.requireToken(s.putAuditFile))
 	mux.HandleFunc("DELETE /v1/sys/audit/{name}", s.requireToken(s.deleteAuditSink))
 	mux.HandleFunc("LIST /v1/sys/audit/", s.requireToken(s.listAuditSinks))
 

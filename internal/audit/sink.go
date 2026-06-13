@@ -152,3 +152,31 @@ func (w *WebhookSink) Send(e Entry) error {
 }
 
 func (w *WebhookSink) Close() error { return nil }
+
+// ─── File sink ───────────────────────────────────────────────────────────────
+
+// FileSink writes audit entries to a rotating local file.
+type FileSink struct {
+	rfl *RotatingFileLogger
+}
+
+// NewFileSink opens path for append and wraps it in a rotating audit sink.
+// maxSizeMB ≤ 0 defaults to 100 MiB; maxBackups ≤ 0 defaults to 7.
+func NewFileSink(path string, maxSizeMB int64, maxBackups int) (*FileSink, error) {
+	var maxBytes int64
+	if maxSizeMB > 0 {
+		maxBytes = maxSizeMB << 20
+	}
+	rfl, err := NewRotatingFileLogger(path, maxBytes, maxBackups)
+	if err != nil {
+		return nil, err
+	}
+	return &FileSink{rfl: rfl}, nil
+}
+
+func (f *FileSink) Send(e Entry) error {
+	f.rfl.Log(e)
+	return nil
+}
+
+func (f *FileSink) Close() error { return f.rfl.Close() }

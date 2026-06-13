@@ -788,6 +788,13 @@ Tokens:
   token lookup-self                   Look up the current token
   token renew-self [ttl]              Renew the current token
 
+Token roles:
+  token role create --name=<n> [--policy=p ...] [--ttl=24h] [--max-ttl=168h] [--renewable] [--max-uses=N] [--period=4h]
+  token role get <name>
+  token role delete <name>
+  token role list
+  token create-role <role> [display-name]
+
 Policies:
   policy get <name>
   policy put <name> <json|-stdin>
@@ -893,6 +900,76 @@ func cmdNamespaceList(c *client) {
 		fatalf("request: %v", err)
 	}
 	printJSON(mustJSON(resp, 200))
+}
+
+// ---- token role subcommands ----
+
+func cmdTokenRoleCreate(c *client, name string, policies []string, ttl, maxTTL string, maxUses int, renewable bool, period string) {
+	body := map[string]any{
+		"policies":  policies,
+		"renewable": renewable,
+		"max_uses":  maxUses,
+	}
+	if ttl != "" {
+		body["ttl"] = ttl
+	}
+	if maxTTL != "" {
+		body["max_ttl"] = maxTTL
+	}
+	if period != "" {
+		body["period"] = period
+	}
+	resp, err := c.do("PUT", "/v1/auth/token/roles/"+name, body)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 204 {
+		body2, _ := io.ReadAll(resp.Body)
+		fatalf("HTTP %d: %s", resp.StatusCode, body2)
+	}
+	fmt.Printf("role %q created\n", name)
+}
+
+func cmdTokenRoleGet(c *client, name string) {
+	resp, err := c.do("GET", "/v1/auth/token/roles/"+name, nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
+func cmdTokenRoleDelete(c *client, name string) {
+	resp, err := c.do("DELETE", "/v1/auth/token/roles/"+name, nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 204 {
+		body, _ := io.ReadAll(resp.Body)
+		fatalf("HTTP %d: %s", resp.StatusCode, body)
+	}
+	fmt.Printf("role %q deleted\n", name)
+}
+
+func cmdTokenRoleList(c *client) {
+	resp, err := c.do("LIST", "/v1/auth/token/roles/", nil)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 200))
+}
+
+func cmdTokenCreateFromRole(c *client, role, displayName string) {
+	var body any
+	if displayName != "" {
+		body = map[string]string{"display_name": displayName}
+	}
+	resp, err := c.do("POST", "/v1/auth/token/roles/"+role+"/create", body)
+	if err != nil {
+		fatalf("request: %v", err)
+	}
+	printJSON(mustJSON(resp, 201))
 }
 
 func main() {
@@ -1002,6 +1079,52 @@ func main() {
 				ttl = args[2]
 			}
 			cmdTokenRenewSelf(c, ttl)
+		case "role":
+			if len(args) < 3 {
+				fatalf("token role requires a subcommand: create, get, delete, list")
+			}
+			switch args[2] {
+			case "create":
+				fs := flag.NewFlagSet("token role create", flag.ExitOnError)
+				name := fs.String("name", "", "role name (required)")
+				ttl := fs.String("ttl", "", "default token TTL e.g. 24h")
+				maxTTL := fs.String("max-ttl", "", "maximum token TTL e.g. 168h")
+				maxUses := fs.Int("max-uses", 0, "max uses per token (0 = unlimited)")
+				renewable := fs.Bool("renewable", false, "tokens from this role are renewable")
+				period := fs.String("period", "", "renewal period e.g. 4h")
+				var policies multiFlag
+				fs.Var(&policies, "policy", "policy (may be repeated)")
+				_ = fs.Parse(args[3:])
+				if *name == "" {
+					fatalf("token role create requires --name")
+				}
+				cmdTokenRoleCreate(c, *name, []string(policies), *ttl, *maxTTL, *maxUses, *renewable, *period)
+			case "get":
+				if len(args) < 4 {
+					fatalf("token role get requires a name")
+				}
+				cmdTokenRoleGet(c, args[3])
+			case "delete":
+				if len(args) < 4 {
+					fatalf("token role delete requires a name")
+				}
+				cmdTokenRoleDelete(c, args[3])
+			case "list":
+				cmdTokenRoleList(c)
+			default:
+				fatalf("unknown token role subcommand %q", args[2])
+			}
+
+		case "create-role":
+			if len(args) < 3 {
+				fatalf("token create-role requires a role name")
+			}
+			displayName := ""
+			if len(args) >= 4 {
+				displayName = args[3]
+			}
+			cmdTokenCreateFromRole(c, args[2], displayName)
+
 		default:
 			fatalf("unknown token subcommand %q", args[1])
 		}

@@ -80,6 +80,7 @@ type Core struct {
 	barrier    *barrier.Barrier
 	seal       seal.Seal
 	tokens     *token.Store
+	tokenRoles *token.RoleStore
 	policies   *policy.Store
 	kv2        *kvv2.Store
 	namespaces *namespace.Store
@@ -125,6 +126,7 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		barrier:     b,
 		seal:        s,
 		tokens:      token.NewStore(b),
+		tokenRoles:  token.NewRoleStore(b),
 		policies:    policy.NewStore(b),
 		kv2:         kvv2.New(b),
 		namespaces:  namespace.NewStore(b),
@@ -454,6 +456,62 @@ func (c *Core) RenewToken(ctx context.Context, tokenID string, ttl time.Duration
 		return nil, err
 	}
 	return tok, nil
+}
+
+// --- Token roles ---
+
+// PutTokenRole creates or replaces a token role.
+func (c *Core) PutTokenRole(ctx context.Context, r *token.Role) error {
+	now := time.Now().UTC()
+	if r.CreatedAt.IsZero() {
+		r.CreatedAt = now
+	}
+	r.UpdatedAt = now
+	return c.tokenRoles.Put(ctx, r)
+}
+
+// GetTokenRole returns the named token role.
+func (c *Core) GetTokenRole(ctx context.Context, name string) (*token.Role, error) {
+	return c.tokenRoles.Get(ctx, name)
+}
+
+// DeleteTokenRole removes the named token role.
+func (c *Core) DeleteTokenRole(ctx context.Context, name string) error {
+	return c.tokenRoles.Delete(ctx, name)
+}
+
+// ListTokenRoles returns all token role names.
+func (c *Core) ListTokenRoles(ctx context.Context) ([]string, error) {
+	return c.tokenRoles.List(ctx)
+}
+
+// CreateTokenFromRole generates a token using the named role as a template.
+// displayName overrides the role name as the token's display name when non-empty.
+func (c *Core) CreateTokenFromRole(ctx context.Context, roleName, displayName string) (*token.Token, error) {
+	role, err := c.tokenRoles.Get(ctx, roleName)
+	if err != nil {
+		return nil, err
+	}
+	name := displayName
+	if name == "" {
+		name = "role:" + roleName
+	}
+	ttl := role.TTL
+	var opts []TokenOpt
+	if role.Renewable {
+		opts = append(opts, WithRenewable(role.MaxTTL))
+	}
+	if role.MaxUses > 0 {
+		opts = append(opts, WithMaxUses(role.MaxUses))
+	}
+	tok, err := token.Generate(name, role.Policies, ttl)
+	if err != nil {
+		return nil, err
+	}
+	for _, o := range opts {
+		o(tok)
+	}
+	return tok, c.tokens.Put(ctx, tok)
 }
 
 // --- Policy management ---

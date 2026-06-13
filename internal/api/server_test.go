@@ -246,3 +246,123 @@ func TestACLEnforcement(t *testing.T) {
 		t.Fatalf("out-of-scope read status = %d, want 403", resp.StatusCode)
 	}
 }
+
+// authedNsReq is like authedReq but also sets X-Tuck-Namespace.
+func authedNsReq(tb testing.TB, method, url, body, tokenID, ns string) *http.Request {
+	tb.Helper()
+	req := authedReq(tb, method, url, body, tokenID)
+	if ns != "" {
+		req.Header.Set("X-Tuck-Namespace", ns)
+	}
+	return req
+}
+
+// TestNamespaceCRUD tests namespace lifecycle and secret isolation.
+func TestNamespaceCRUD(t *testing.T) {
+	ts, _, rootTok := newTestServer(t)
+
+	// Create namespace
+	b, _ := json.Marshal(map[string]string{"name": "dev"})
+	resp, err := http.DefaultClient.Do(authedReq(t, http.MethodPost, ts.URL+"/v1/sys/namespaces", string(b), rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create namespace status = %d, want 201", resp.StatusCode)
+	}
+
+	// Get namespace
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/sys/namespaces/dev", "", rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get namespace status = %d, body = %s", resp.StatusCode, body)
+	}
+
+	// Write secret in root namespace
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodPut, ts.URL+"/v1/secret/shared", "root-value", rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	// Write secret in dev namespace
+	resp, err = http.DefaultClient.Do(authedNsReq(t, http.MethodPut, ts.URL+"/v1/secret/shared", "dev-value", rootTok, "dev"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	// Read from root — should get "root-value"
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/secret/shared", "", rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("root read status = %d", resp.StatusCode)
+	}
+	var rootResult map[string]any
+	_ = json.Unmarshal(body, &rootResult)
+	if v, _ := rootResult["value"].(string); v != "root-value" {
+		t.Errorf("root secret = %q, want %q", v, "root-value")
+	}
+
+	// Read from dev namespace — should get "dev-value"
+	resp, err = http.DefaultClient.Do(authedNsReq(t, http.MethodGet, ts.URL+"/v1/secret/shared", "", rootTok, "dev"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("dev read status = %d, body = %s", resp.StatusCode, body)
+	}
+	var devResult map[string]any
+	_ = json.Unmarshal(body, &devResult)
+	if v, _ := devResult["value"].(string); v != "dev-value" {
+		t.Errorf("dev secret = %q, want %q", v, "dev-value")
+	}
+
+	// List namespaces
+	resp, err = http.DefaultClient.Do(authedReq(t, "LIST", ts.URL+"/v1/sys/namespaces/", "", rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list namespaces status = %d, body = %s", resp.StatusCode, body)
+	}
+	var listResult map[string]any
+	_ = json.Unmarshal(body, &listResult)
+	keys, _ := listResult["keys"].([]any)
+	if len(keys) != 1 || keys[0] != "dev" {
+		t.Errorf("list namespaces = %v, want [dev]", keys)
+	}
+
+	// Delete namespace
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodDelete, ts.URL+"/v1/sys/namespaces/dev", "", rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete namespace status = %d", resp.StatusCode)
+	}
+
+	// Get after delete → 404
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/sys/namespaces/dev", "", rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("get deleted namespace status = %d, want 404", resp.StatusCode)
+	}
+}

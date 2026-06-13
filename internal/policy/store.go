@@ -6,19 +6,26 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/NAGenaev/tuck/internal/barrier"
 	"github.com/NAGenaev/tuck/internal/physical"
 )
 
 // ErrNotFound is returned when a policy does not exist in the store.
 var ErrNotFound = errors.New("policy not found")
 
-// Store is a thin CRUD wrapper over a barrier for policy persistence.
-type Store struct {
-	barrier *barrier.Barrier
+// barrierer is the storage interface required by the store.
+type barrierer interface {
+	Get(ctx context.Context, key string) (*physical.Entry, error)
+	Put(ctx context.Context, entry *physical.Entry) error
+	Delete(ctx context.Context, key string) error
+	List(ctx context.Context, prefix string) ([]string, error)
 }
 
-func NewStore(b *barrier.Barrier) *Store { return &Store{barrier: b} }
+// Store is a thin CRUD wrapper over a barrier for policy persistence.
+type Store struct {
+	barrier barrierer
+}
+
+func NewStore(b barrierer) *Store { return &Store{barrier: b} }
 
 func (s *Store) Put(ctx context.Context, p *Policy) error {
 	data, err := p.marshal()

@@ -22,7 +22,7 @@ func (s *Server) getSecret(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	val, ok, err := s.core.GetSecret(r.Context(), p)
+	val, ok, err := s.core.GetSecret(r.Context(), nsFromCtx(r.Context()), p)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -54,7 +54,7 @@ func (s *Server) putSecret(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})
 		return
 	}
-	if err := s.core.PutSecret(r.Context(), p, body); err != nil {
+	if err := s.core.PutSecret(r.Context(), nsFromCtx(r.Context()), p, body); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -67,7 +67,7 @@ func (s *Server) deleteSecret(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	if err := s.core.DeleteSecret(r.Context(), p); err != nil {
+	if err := s.core.DeleteSecret(r.Context(), nsFromCtx(r.Context()), p); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -86,7 +86,7 @@ func (s *Server) listSecrets(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	keys, err := s.core.ListSecrets(r.Context(), prefix)
+	keys, err := s.core.ListSecrets(r.Context(), nsFromCtx(r.Context()), prefix)
 	if err != nil {
 		writeErr(w, err)
 		return

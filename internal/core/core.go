@@ -31,6 +31,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/identity"
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
 	"github.com/NAGenaev/tuck/internal/kvv2"
+	"github.com/NAGenaev/tuck/internal/lease"
 	"github.com/NAGenaev/tuck/internal/namespace"
 	"github.com/NAGenaev/tuck/internal/kvsecret"
 	"github.com/NAGenaev/tuck/internal/physical"
@@ -107,6 +108,7 @@ type Core struct {
 	identity *identity.Store
 
 	sysconfigStore *sysconfig.Store
+	leaseManager   *lease.Manager
 
 	// optional — nil means k8s auth is disabled
 	k8sReviewer k8sauth.Reviewer
@@ -130,7 +132,7 @@ func New(backend physical.Backend, s seal.Seal) *Core {
 // Pass nil to disable Kubernetes auth.
 func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer) *Core {
 	b := barrier.New(backend)
-	return &Core{
+	c := &Core{
 		backend:     backend,
 		barrier:     b,
 		seal:        s,
@@ -160,6 +162,8 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		k8sReviewer:    reviewer,
 		k8sRoles:       k8sauth.NewRoleStore(b),
 	}
+	c.leaseManager = lease.NewWithEngines(c.dbManager, c.awsEngine, c.gcpEngine, c.azureEngine)
+	return c
 }
 
 // StartResult is returned by Core.Start on the first initialisation.
@@ -1300,6 +1304,11 @@ func (c *Core) RevokeAWSLease(ctx context.Context, id string) error {
 func (c *Core) ListAWSLeases(ctx context.Context) ([]string, error) {
 	return c.awsEngine.ListLeases(ctx)
 }
+
+// --- Unified lease manager ---
+
+// LeaseManager returns the unified cross-backend lease manager.
+func (c *Core) LeaseManager() *lease.Manager { return c.leaseManager }
 
 // --- LDAP auth ---
 

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"sort"
 	"strings"
 	"time"
 
@@ -207,21 +208,44 @@ func (s *Store) DeleteAll(ctx context.Context, p string) error {
 // strips the internal kv2/meta/ prefix).
 func (s *Store) List(ctx context.Context, prefix string) ([]string, error) {
 	storagePrefix := metaPrefix
+	queryPrefix := ""
 	if prefix != "" {
 		clean := path.Clean("/" + prefix)[1:]
 		storagePrefix = metaPrefix + clean
 		if !strings.HasSuffix(storagePrefix, "/") {
 			storagePrefix += "/"
 		}
+		queryPrefix = clean
+		if !strings.HasSuffix(queryPrefix, "/") {
+			queryPrefix += "/"
+		}
 	}
 	keys, err := s.b.List(ctx, storagePrefix)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]string, len(keys))
-	for i, k := range keys {
-		result[i] = strings.TrimPrefix(k, metaPrefix)
+	seen := make(map[string]struct{})
+	var result []string
+	for _, k := range keys {
+		rel := strings.TrimPrefix(k, metaPrefix)
+		rel = strings.TrimPrefix(rel, queryPrefix)
+		if rel == "" {
+			continue
+		}
+		if idx := strings.Index(rel, "/"); idx >= 0 {
+			folder := rel[:idx+1]
+			if _, dup := seen[folder]; !dup {
+				seen[folder] = struct{}{}
+				result = append(result, folder)
+			}
+		} else {
+			if _, dup := seen[rel]; !dup {
+				seen[rel] = struct{}{}
+				result = append(result, rel)
+			}
+		}
 	}
+	sort.Strings(result)
 	return result, nil
 }
 

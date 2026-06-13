@@ -292,6 +292,9 @@ function renderApp() {
     ${navItem('dynamic', '⚡', 'Dynamic Secrets')}
     ${navItem('crypto', '🔐', 'Crypto Engines')}
     ${navItem('wrapping', '📦', 'Wrapping')}
+    ${navItem('namespaces', '🏢', 'Namespaces')}
+    ${navItem('token-roles', '🎭', 'Token Roles')}
+    ${navItem('audit', '📜', 'Audit Sinks')}
     ${navItem('cluster', '🖧', 'Cluster')}
   </nav>
   <div class="sidebar-footer">
@@ -320,8 +323,11 @@ function renderPage() {
     case 'auth':     return pageAuth();
     case 'dynamic':  return pageDynamic();
     case 'crypto':   return pageCrypto();
-    case 'wrapping': return pageWrapping();
-    case 'cluster':  return pageCluster();
+    case 'wrapping':    return pageWrapping();
+    case 'namespaces':  return pageNamespaces();
+    case 'token-roles': return pageTokenRoles();
+    case 'audit':       return pageAuditSinks();
+    case 'cluster':     return pageCluster();
     default: return '';
   }
 }
@@ -527,6 +533,144 @@ function pageWrapping() {
 </div>`;
 }
 
+// ─────────── Namespaces page ───────────
+function pageNamespaces() {
+  return `
+<div class="page-header">
+  <h1>Namespaces</h1>
+  <p>Multi-tenant isolation — each namespace has its own secrets, policies and tokens</p>
+</div>
+<div class="page-body">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+      Namespace List
+      <button class="btn btn-ghost btn-sm" id="ns-refresh-btn">Refresh</button>
+    </div>
+    <div class="card-body">
+      <div id="ns-list"><em style="color:var(--muted)">Click Refresh to load namespaces.</em></div>
+    </div>
+  </div>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-header">Create Namespace</div>
+      <div class="card-body">
+        <form id="ns-create-form">
+          <div class="form-row"><label>Name</label><input name="name" placeholder="team-alpha"></div>
+          <button class="btn btn-primary" type="submit">Create</button>
+        </form>
+        <div id="ns-create-result" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">Delete Namespace</div>
+      <div class="card-body">
+        <form id="ns-delete-form">
+          <div class="form-row"><label>Name</label><input name="name" placeholder="team-alpha"></div>
+          <button class="btn btn-danger" type="submit">Delete</button>
+        </form>
+        <div id="ns-delete-result" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+</div>`;
+}
+
+// ─────────── Token Roles page ───────────
+function pageTokenRoles() {
+  return `
+<div class="page-header">
+  <h1>Token Roles</h1>
+  <p>Named templates for token creation — set policies, TTL, and usage limits once, reuse many times</p>
+</div>
+<div class="page-body">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+      Role List
+      <button class="btn btn-ghost btn-sm" id="role-refresh-btn">Refresh</button>
+    </div>
+    <div class="card-body">
+      <div id="role-list"><em style="color:var(--muted)">Click Refresh to load roles.</em></div>
+    </div>
+  </div>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-header">Create / Update Role</div>
+      <div class="card-body">
+        <form id="role-upsert-form">
+          <div class="form-row"><label>Name</label><input name="name" placeholder="ci-pipeline"></div>
+          <div class="form-row"><label>Policies (comma-separated)</label><input name="policies" placeholder="read-only,db-rw"></div>
+          <div class="card-grid" style="gap:8px">
+            <div class="form-row"><label>TTL</label><input name="ttl" placeholder="24h"></div>
+            <div class="form-row"><label>Max TTL</label><input name="max_ttl" placeholder="72h"></div>
+            <div class="form-row"><label>Max Uses (0=unlimited)</label><input name="max_uses" placeholder="0" value="0"></div>
+          </div>
+          <div class="form-row" style="align-items:center;gap:8px">
+            <input type="checkbox" name="renewable" id="role-renewable">
+            <label for="role-renewable" style="margin:0">Renewable</label>
+          </div>
+          <button class="btn btn-primary" type="submit">Save Role</button>
+        </form>
+        <div id="role-upsert-result" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">Create Token from Role</div>
+      <div class="card-body">
+        <form id="role-create-token-form">
+          <div class="form-row"><label>Role Name</label><input name="role" placeholder="ci-pipeline"></div>
+          <button class="btn btn-primary" type="submit">Create Token</button>
+        </form>
+        <div id="role-token-result" style="margin-top:12px"></div>
+      </div>
+    </div>
+  </div>
+</div>`;
+}
+
+// ─────────── Audit Sinks page ───────────
+function pageAuditSinks() {
+  return `
+<div class="page-header">
+  <h1>Audit Sinks</h1>
+  <p>Fan-out audit entries to external systems — webhook and syslog targets</p>
+</div>
+<div class="page-body">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+      Registered Sinks
+      <button class="btn btn-ghost btn-sm" id="audit-refresh-btn">Refresh</button>
+    </div>
+    <div class="card-body">
+      <div id="audit-sink-list"><em style="color:var(--muted)">Click Refresh to load sinks.</em></div>
+    </div>
+  </div>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-header">Register Webhook Sink</div>
+      <div class="card-body">
+        <form id="audit-webhook-form">
+          <div class="form-row"><label>Name</label><input name="name" placeholder="splunk"></div>
+          <div class="form-row"><label>URL</label><input name="url" placeholder="https://collector.example.com/hook"></div>
+          <div class="form-row"><label>Timeout (seconds)</label><input name="timeout" placeholder="5" value="5"></div>
+          <button class="btn btn-primary" type="submit">Register</button>
+        </form>
+        <div id="audit-webhook-result" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">Remove Sink</div>
+      <div class="card-body">
+        <form id="audit-remove-form">
+          <div class="form-row"><label>Name</label><input name="name" placeholder="splunk"></div>
+          <button class="btn btn-danger" type="submit">Remove</button>
+        </form>
+        <div id="audit-remove-result" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+</div>`;
+}
+
 // ─────────── Cluster page ───────────
 function pageCluster() {
   return `
@@ -538,7 +682,7 @@ function pageCluster() {
   <div class="card" style="margin-bottom:20px">
     <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
       Cluster Status
-      <button class="btn btn-ghost btn-sm" onclick="loadClusterStatus()">Refresh</button>
+      <button class="btn btn-ghost btn-sm" id="cluster-status-btn">Refresh</button>
     </div>
     <div class="card-body">
       <div id="cluster-status-result"><em style="color:var(--muted)">Click Refresh to load status.</em></div>
@@ -1445,6 +1589,9 @@ function bind() {
   bindCrypto();
   bindKVv2();
   bindWrapping();
+  bindNamespaces();
+  bindTokenRoles();
+  bindAuditSinks();
   bindCluster();
 
   onSubmit('#create-policy-form', async fd => {
@@ -2444,14 +2591,29 @@ function bindKVv2() {
 async function v2ReadQuick(path) {
   try {
     const d = await api('GET', `/v2/secret/${path}`);
-    alert(`Path: ${path}\nVersion: ${d.version}\nValue: ${d.deleted ? '(deleted)' : d.value}`);
+    const el = document.getElementById('v2-read-result');
+    if (el) {
+      document.querySelector('#v2-read-form input[name=path]').value = path;
+      el.innerHTML = `<dl class="kv-grid">
+        <dt>Path</dt><dd>${esc(path)}</dd>
+        <dt>Version</dt><dd>${d.version ?? ''}</dd>
+        <dt>Value</dt><dd>${d.deleted ? '<em>deleted</em>' : esc(String(d.value ?? ''))}</dd>
+      </dl>`;
+    }
   } catch (e) { flash('error', e.message); }
 }
 
 async function v2Meta(path) {
   try {
     const d = await api('GET', `/v2/secret/metadata/${path}`);
-    alert(`Path: ${path}\nCurrent version: ${d.metadata?.current_version}\nVersions: ${JSON.stringify(d.metadata?.versions,null,2)}`);
+    const el = document.getElementById('v2-meta-result');
+    if (el) {
+      document.querySelector('#v2-meta-form input[name=path]').value = path;
+      el.innerHTML = `<dl class="kv-grid">
+        <dt>Current version</dt><dd>${d.metadata?.current_version ?? ''}</dd>
+        <dt>Max versions</dt><dd>${d.metadata?.max_versions ?? ''}</dd>
+      </dl><pre style="font-size:11px;margin-top:8px;overflow:auto">${esc(JSON.stringify(d.metadata?.versions,null,2))}</pre>`;
+    }
   } catch (e) { flash('error', e.message); }
 }
 
@@ -2496,6 +2658,143 @@ function bindWrapping() {
       }
     } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
   });
+}
+
+// ─────────── Namespace handlers ───────────
+function bindNamespaces() {
+  on('click', '#ns-refresh-btn', loadNamespaces);
+
+  onSubmit('#ns-create-form', async fd => {
+    const name = fd.get('name').trim();
+    const el = document.getElementById('ns-create-result');
+    if (!el || !name) return;
+    try {
+      await api('POST', '/v1/sys/namespaces', { name });
+      el.innerHTML = `<div class="alert alert-success">Namespace "${esc(name)}" created.</div>`;
+      await loadNamespaces();
+    } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+
+  onSubmit('#ns-delete-form', async fd => {
+    const name = fd.get('name').trim();
+    const el = document.getElementById('ns-delete-result');
+    if (!el || !name) return;
+    if (!confirm(`Delete namespace "${name}"? This removes all its data.`)) return;
+    try {
+      await api('DELETE', `/v1/sys/namespaces/${name}`);
+      el.innerHTML = `<div class="alert alert-success">Namespace "${esc(name)}" deleted.</div>`;
+      await loadNamespaces();
+    } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+}
+
+async function loadNamespaces() {
+  const el = document.getElementById('ns-list');
+  if (!el) return;
+  try {
+    const d = await api('LIST', '/v1/sys/namespaces/');
+    const keys = d.keys || [];
+    if (!keys.length) { el.innerHTML = '<em style="color:var(--muted)">No namespaces (root only).</em>'; return; }
+    el.innerHTML = `<table class="table"><thead><tr><th>Name</th></tr></thead>
+      <tbody>${keys.map(k=>`<tr><td class="mono">${esc(k)}</td></tr>`).join('')}</tbody></table>`;
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+// ─────────── Token Role handlers ───────────
+function bindTokenRoles() {
+  on('click', '#role-refresh-btn', loadTokenRoles);
+
+  onSubmit('#role-upsert-form', async fd => {
+    const name = fd.get('name').trim();
+    const el = document.getElementById('role-upsert-result');
+    if (!el || !name) return;
+    const policies = fd.get('policies').split(',').map(s=>s.trim()).filter(Boolean);
+    const body = {
+      policies,
+      ttl: fd.get('ttl').trim() || undefined,
+      max_ttl: fd.get('max_ttl').trim() || undefined,
+      max_uses: parseInt(fd.get('max_uses')) || 0,
+      renewable: document.getElementById('role-renewable')?.checked ?? false,
+    };
+    try {
+      await api('PUT', `/v1/auth/token/roles/${name}`, body);
+      el.innerHTML = `<div class="alert alert-success">Role "${esc(name)}" saved.</div>`;
+      await loadTokenRoles();
+    } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+
+  onSubmit('#role-create-token-form', async fd => {
+    const role = fd.get('role').trim();
+    const el = document.getElementById('role-token-result');
+    if (!el || !role) return;
+    try {
+      const d = await api('POST', `/v1/auth/token/roles/${role}/create`);
+      el.innerHTML = `<div class="alert alert-success" style="word-break:break-all">
+        <strong>Token:</strong><br><code>${esc(d.id)}</code>
+        <br><small>TTL: ${d.ttl ?? 'never'}s &nbsp;|&nbsp; MaxUses: ${d.max_uses ?? 0}</small>
+      </div>`;
+    } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+}
+
+async function loadTokenRoles() {
+  const el = document.getElementById('role-list');
+  if (!el) return;
+  try {
+    const d = await api('LIST', '/v1/auth/token/roles/');
+    const keys = d.keys || [];
+    if (!keys.length) { el.innerHTML = '<em style="color:var(--muted)">No roles defined.</em>'; return; }
+    el.innerHTML = `<table class="table"><thead><tr><th>Name</th></tr></thead>
+      <tbody>${keys.map(k=>`<tr><td class="mono">${esc(k)}</td></tr>`).join('')}</tbody></table>`;
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+// ─────────── Audit Sink handlers ───────────
+function bindAuditSinks() {
+  on('click', '#audit-refresh-btn', loadAuditSinks);
+
+  onSubmit('#audit-webhook-form', async fd => {
+    const name = fd.get('name').trim();
+    const url  = fd.get('url').trim();
+    const timeout = parseInt(fd.get('timeout')) || 5;
+    const el = document.getElementById('audit-webhook-result');
+    if (!el || !name || !url) return;
+    try {
+      await api('PUT', `/v1/sys/audit/webhook/${name}`, { url, timeout_sec: timeout });
+      el.innerHTML = `<div class="alert alert-success">Webhook "${esc(name)}" registered.</div>`;
+      await loadAuditSinks();
+    } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+
+  onSubmit('#audit-remove-form', async fd => {
+    const name = fd.get('name').trim();
+    const el = document.getElementById('audit-remove-result');
+    if (!el || !name) return;
+    if (!confirm(`Remove audit sink "${name}"?`)) return;
+    try {
+      await api('DELETE', `/v1/sys/audit/${name}`);
+      el.innerHTML = `<div class="alert alert-success">Sink "${esc(name)}" removed.</div>`;
+      await loadAuditSinks();
+    } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+}
+
+async function loadAuditSinks() {
+  const el = document.getElementById('audit-sink-list');
+  if (!el) return;
+  try {
+    const d = await api('LIST', '/v1/sys/audit/');
+    const sinks = d.sinks || [];
+    if (!sinks.length) { el.innerHTML = '<em style="color:var(--muted)">No sinks registered.</em>'; return; }
+    el.innerHTML = `<table class="table">
+      <thead><tr><th>Name</th><th>Type</th><th>Errors</th></tr></thead>
+      <tbody>${sinks.map(s=>`<tr>
+        <td class="mono">${esc(s.name)}</td>
+        <td>${esc(s.type)}</td>
+        <td>${s.errors ?? 0}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
 }
 
 // ─────────── Cluster handlers ───────────

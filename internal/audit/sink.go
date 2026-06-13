@@ -30,15 +30,16 @@ type SinkConfig struct {
 // additional Sinks. Sink failures are non-fatal: they are counted but never
 // block the request path.
 type Dispatcher struct {
-	logger *Logger
+	logger Loggable
 
 	mu     sync.RWMutex
 	sinks  map[string]Sink
 	errors map[string]int // error counts per sink name
 }
 
-// NewDispatcher creates a Dispatcher wrapping the given Logger.
-func NewDispatcher(l *Logger) *Dispatcher {
+// NewDispatcher creates a Dispatcher wrapping l.
+// l may be *Logger, *RotatingFileLogger, or any Loggable.
+func NewDispatcher(l Loggable) *Dispatcher {
 	return &Dispatcher{
 		logger: l,
 		sinks:  make(map[string]Sink),

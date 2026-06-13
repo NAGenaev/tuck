@@ -6,12 +6,15 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/NAGenaev/tuck/internal/audit"
 	"github.com/NAGenaev/tuck/internal/barrier"
 	"github.com/NAGenaev/tuck/internal/core"
 	"github.com/NAGenaev/tuck/internal/metrics"
 	physraft "github.com/NAGenaev/tuck/internal/physical/raft"
+	"github.com/NAGenaev/tuck/internal/ratelimit"
+	"github.com/NAGenaev/tuck/internal/sysconfig"
 	"github.com/NAGenaev/tuck/internal/ui"
 	"github.com/NAGenaev/tuck/internal/version"
 )
@@ -27,16 +30,55 @@ const (
 
 // Server adapts a core.Core to HTTP.
 type Server struct {
-	core  *core.Core
-	audit audit.Loggable
+	core         *core.Core
+	audit        audit.Loggable
+	ipLimiter    *ratelimit.Limiter
+	tokenLimiter *ratelimit.Limiter
 }
 
 // New returns an HTTP server wired to the core's audit Dispatcher.
-func New(c *core.Core) *Server { return &Server{core: c, audit: c.Dispatcher()} }
+// Rate limiters are disabled by default; call ApplyRateConfig to enable.
+func New(c *core.Core) *Server {
+	return &Server{
+		core:         c,
+		audit:        c.Dispatcher(),
+		ipLimiter:    ratelimit.New(0, 0),
+		tokenLimiter: ratelimit.New(0, 0),
+	}
+}
 
 // NewWithAudit returns an HTTP server with a custom audit sink (used in tests).
 func NewWithAudit(c *core.Core, l audit.Loggable) *Server {
-	return &Server{core: c, audit: l}
+	return &Server{
+		core:         c,
+		audit:        l,
+		ipLimiter:    ratelimit.New(0, 0),
+		tokenLimiter: ratelimit.New(0, 0),
+	}
+}
+
+// ApplyRateConfig updates the in-memory rate limiters from a sysconfig snapshot.
+func (s *Server) ApplyRateConfig(cfg sysconfig.Config) {
+	s.ipLimiter.Reconfigure(cfg.IPRateLimitRPS, cfg.IPRateLimitBurst)
+	s.tokenLimiter.Reconfigure(cfg.TokenRateLimitRPS, cfg.TokenRateLimitBurst)
+}
+
+// StartLimiterCleanup periodically removes stale rate-limit buckets.
+// It returns when ctx is cancelled.
+func (s *Server) StartLimiterCleanup(ctx context.Context) {
+	go func() {
+		t := time.NewTicker(5 * time.Minute)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				s.ipLimiter.Cleanup(10 * time.Minute)
+				s.tokenLimiter.Cleanup(10 * time.Minute)
+			}
+		}
+	}()
 }
 
 // Handler builds the route table.
@@ -336,7 +378,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sys/cluster/join", s.requireToken(s.postClusterJoin))
 	mux.HandleFunc("DELETE /v1/sys/cluster/node/{id}", s.requireToken(s.deleteClusterNode))
 
-	return audit.Middleware(s.audit, mux)
+	var h http.Handler = mux
+	h = s.tokenLimiter.TokenMiddleware(h)
+	h = s.ipLimiter.Middleware(h)
+	return audit.Middleware(s.audit, h)
 }
 
 // requireToken extracts and validates X-Tuck-Token, then stores the token ID

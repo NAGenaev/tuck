@@ -26,10 +26,8 @@ import (
 	"github.com/NAGenaev/tuck/internal/seal"
 	"github.com/NAGenaev/tuck/internal/telemetry"
 	"github.com/NAGenaev/tuck/internal/tlsutil"
+	"github.com/NAGenaev/tuck/internal/version"
 )
-
-// Version is set at build time via -ldflags "-X main.Version=x.y.z".
-var Version = "dev"
 
 func main() {
 	versionFlag := flag.Bool("version", false, "print version and exit")
@@ -102,7 +100,7 @@ func main() {
 	flag.Parse()
 
 	if *versionFlag {
-		fmt.Fprintf(os.Stdout, "tuck %s\n", Version)
+		fmt.Fprintf(os.Stdout, "tuck %s\n", version.String())
 		os.Exit(0)
 	}
 
@@ -421,6 +419,12 @@ func main() {
 	if tlsCfg != nil {
 		scheme = "https"
 	}
+	sealState := "unsealed"
+	if errors.Is(startErr, core.ErrNeedsUnseal) {
+		sealState = "sealed"
+	}
+	log.Printf(`{"level":"info","msg":"tuck started","version":%q,"commit":%q,"seal":%q,"addr":%q,"state":%q}`,
+		version.Version, version.Commit, *sealType, *addr, sealState)
 	if errors.Is(startErr, core.ErrNeedsUnseal) {
 		log.Printf("tuck: SEALED — provide shards via POST %s://%s/v1/sys/unseal", scheme, *addr)
 	} else if *sealType == "dev" {

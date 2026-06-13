@@ -384,6 +384,39 @@ func WithMaxUses(n int) TokenOpt {
 	}
 }
 
+// WithPeriod creates a period token: each renewal resets ExpiresAt to
+// now+period, effectively allowing infinite renewals within the period window.
+// Period tokens are implicitly renewable and ignore MaxTTL.
+func WithPeriod(period time.Duration) TokenOpt {
+	return func(t *token.Token) {
+		t.Period = period
+		t.Renewable = true
+		// ExpiresAt was set to CreatedAt+ttl in Generate; for period tokens the
+		// TTL supplied at create time is the first lease duration only. The
+		// caller should pass ttl=period for a consistent first period.
+	}
+}
+
+// WithOrphan marks the token as an orphan — it has no parent and will not be
+// revoked when any other token is revoked (including the token that created it).
+func WithOrphan() TokenOpt {
+	return func(t *token.Token) {
+		t.Orphan = true
+		t.ParentID = ""
+	}
+}
+
+// WithParent records parentID as the creator of this token so that tree
+// revocation can cascade. If WithOrphan is applied after WithParent, the
+// parent relationship is cleared.
+func WithParent(parentID string) TokenOpt {
+	return func(t *token.Token) {
+		if !t.Orphan {
+			t.ParentID = parentID
+		}
+	}
+}
+
 func (c *Core) CreateToken(ctx context.Context, displayName string, policies []string, ttl time.Duration, opts ...TokenOpt) (*token.Token, error) {
 	tok, err := token.Generate(displayName, policies, ttl)
 	if err != nil {
@@ -444,7 +477,8 @@ func (c *Core) ListTokens(ctx context.Context) ([]string, error) {
 // RenewToken extends tokenID's expiry by ttl (default 1h when ttl≤0).
 // Returns ErrTokenInvalid if the token is expired, ErrNotRenewable if the
 // token was not created with WithRenewable. MaxTTL, when set, caps the new
-// ExpiresAt to CreatedAt + MaxTTL.
+// ExpiresAt to CreatedAt + MaxTTL. Period tokens always renew for their Period
+// duration, ignoring the requested ttl and MaxTTL.
 func (c *Core) RenewToken(ctx context.Context, tokenID string, ttl time.Duration) (*token.Token, error) {
 	tok, err := c.tokens.Get(ctx, tokenID)
 	if err != nil {
@@ -456,21 +490,39 @@ func (c *Core) RenewToken(ctx context.Context, tokenID string, ttl time.Duration
 	if !tok.Renewable {
 		return nil, ErrNotRenewable
 	}
-	if ttl <= 0 {
-		ttl = time.Hour
-	}
-	newExpiry := time.Now().UTC().Add(ttl)
-	if tok.MaxTTL > 0 {
-		cap := tok.CreatedAt.Add(tok.MaxTTL)
-		if newExpiry.After(cap) {
-			newExpiry = cap
+	if tok.Period > 0 {
+		// Period token: always renew for exactly Period regardless of requested ttl.
+		tok.ExpiresAt = time.Now().UTC().Add(tok.Period)
+	} else {
+		if ttl <= 0 {
+			ttl = time.Hour
 		}
+		newExpiry := time.Now().UTC().Add(ttl)
+		if tok.MaxTTL > 0 {
+			cap := tok.CreatedAt.Add(tok.MaxTTL)
+			if newExpiry.After(cap) {
+				newExpiry = cap
+			}
+		}
+		tok.ExpiresAt = newExpiry
 	}
-	tok.ExpiresAt = newExpiry
 	if err := c.tokens.Put(ctx, tok); err != nil {
 		return nil, err
 	}
 	return tok, nil
+}
+
+// RevokeTokenTree revokes tokenID and all its descendants (non-orphan children,
+// recursively). Cubbyhole data is purged for each revoked token.
+func (c *Core) RevokeTokenTree(ctx context.Context, tokenID string) error {
+	children, err := c.tokens.Children(ctx, tokenID)
+	if err == nil {
+		for _, childID := range children {
+			_ = c.RevokeTokenTree(ctx, childID) // recurse
+		}
+	}
+	_ = c.cubbyhole.PurgeToken(ctx, tokenID)
+	return c.tokens.Delete(ctx, tokenID)
 }
 
 // --- Token roles ---

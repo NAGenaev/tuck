@@ -15,10 +15,13 @@ import (
 type createTokenReq struct {
 	DisplayName string   `json:"display_name"`
 	Policies    []string `json:"policies"`
-	TTL         string   `json:"ttl"`      // e.g. "24h", "" = never expires
+	TTL         string   `json:"ttl"`       // e.g. "24h", "" = never expires
 	Renewable   bool     `json:"renewable"`
-	MaxTTL      string   `json:"max_ttl"`  // cap on total lifetime; only meaningful when renewable=true
-	MaxUses     int      `json:"max_uses"` // 0 = unlimited; N = revoke after N authenticated API calls
+	MaxTTL      string   `json:"max_ttl"`   // cap on total lifetime; only meaningful when renewable=true
+	MaxUses     int      `json:"max_uses"`  // 0 = unlimited; N = revoke after N authenticated API calls
+	Period      string   `json:"period"`    // period duration; if set, token renews for exactly Period each time
+	Orphan      bool     `json:"orphan"`    // if true, token has no parent and survives parent revocation
+	NoParent    bool     `json:"no_parent"` // alias for orphan
 }
 
 func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
@@ -53,12 +56,29 @@ func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
 	if req.Policies == nil {
 		req.Policies = []string{}
 	}
+	var period time.Duration
+	if req.Period != "" {
+		if period, err = time.ParseDuration(req.Period); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid period: " + err.Error()})
+			return
+		}
+	}
+
 	var opts []core.TokenOpt
 	if req.Renewable {
 		opts = append(opts, core.WithRenewable(maxTTL))
 	}
 	if req.MaxUses > 0 {
 		opts = append(opts, core.WithMaxUses(req.MaxUses))
+	}
+	if period > 0 {
+		opts = append(opts, core.WithPeriod(period))
+	}
+	if req.Orphan || req.NoParent {
+		opts = append(opts, core.WithOrphan())
+	} else {
+		// Record the creating token as parent so tree revocation works.
+		opts = append(opts, core.WithParent(tokenFromCtx(r.Context())))
 	}
 	tok, err := s.core.CreateToken(r.Context(), req.DisplayName, req.Policies, ttl, opts...)
 	if err != nil {
@@ -92,7 +112,7 @@ func (s *Server) revokeToken(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	if err := s.core.RevokeToken(r.Context(), id); err != nil {
+	if err := s.core.RevokeTokenTree(r.Context(), id); err != nil {
 		writeErr(w, err)
 		return
 	}

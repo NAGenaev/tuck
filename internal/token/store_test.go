@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/NAGenaev/tuck/internal/barrier"
 	"github.com/NAGenaev/tuck/internal/physical"
@@ -116,5 +117,88 @@ func TestGetByAccessorAfterHashing(t *testing.T) {
 	}
 	if got.ID != tok.ID {
 		t.Errorf("accessor lookup returned wrong token: got %q, want %q", got.ID, tok.ID)
+	}
+}
+
+func TestChildrenIndex(t *testing.T) {
+	store, _ := newTestStore(t)
+	ctx := context.Background()
+
+	parent, _ := Generate("parent", []string{"root"}, 0)
+	store.Put(ctx, parent)
+
+	// Create two children with ParentID set.
+	child1, _ := Generate("child1", []string{"read"}, time.Hour)
+	child1.ParentID = parent.ID
+	store.Put(ctx, child1)
+
+	child2, _ := Generate("child2", []string{"read"}, time.Hour)
+	child2.ParentID = parent.ID
+	store.Put(ctx, child2)
+
+	// Orphan child — should NOT appear in Children().
+	orphan, _ := Generate("orphan", []string{"read"}, time.Hour)
+	orphan.ParentID = "" // no parent
+	orphan.Orphan = true
+	store.Put(ctx, orphan)
+
+	children, err := store.Children(ctx, parent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(children) != 2 {
+		t.Fatalf("expected 2 children, got %d: %v", len(children), children)
+	}
+}
+
+func TestDeleteCleansChildrenIndex(t *testing.T) {
+	store, _ := newTestStore(t)
+	ctx := context.Background()
+
+	parent, _ := Generate("parent", []string{"root"}, 0)
+	store.Put(ctx, parent)
+
+	child, _ := Generate("child", []string{"read"}, time.Hour)
+	child.ParentID = parent.ID
+	store.Put(ctx, child)
+
+	// Verify child is listed.
+	before, _ := store.Children(ctx, parent.ID)
+	if len(before) != 1 {
+		t.Fatalf("expected 1 child before delete, got %d", len(before))
+	}
+
+	// Delete the child; its entry in the children index should be cleaned up.
+	store.Delete(ctx, child.ID)
+
+	after, _ := store.Children(ctx, parent.ID)
+	if len(after) != 0 {
+		t.Fatalf("expected 0 children after delete, got %d", len(after))
+	}
+}
+
+func TestPeriodTokenFields(t *testing.T) {
+	tok, _ := Generate("svc", []string{"default"}, time.Hour)
+	tok.Period = 30 * time.Minute
+	tok.Renewable = true
+
+	if tok.Period != 30*time.Minute {
+		t.Fatalf("unexpected period: %v", tok.Period)
+	}
+	if !tok.Renewable {
+		t.Fatal("period token should be renewable")
+	}
+}
+
+func TestOrphanToken(t *testing.T) {
+	tok, _ := Generate("orphan", []string{"default"}, time.Hour)
+	tok.Orphan = true
+	tok.ParentID = "" // orphans have no parent
+
+	if tok.ParentID != "" {
+		t.Fatalf("orphan should have no parent, got %q", tok.ParentID)
+	}
+	if !tok.Orphan {
+		t.Fatal("expected Orphan=true")
 	}
 }

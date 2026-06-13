@@ -27,6 +27,17 @@ type Token struct {
 	MaxTTL      time.Duration `json:"max_ttl"`    // zero means no cap
 	MaxUses     int           `json:"max_uses"`   // 0 = unlimited; N = revoke after N authenticated API calls
 	UseCount    int           `json:"use_count"`  // incremented on each Authenticate call
+
+	// Period, if > 0, makes this a "period token": each renewal resets ExpiresAt
+	// to now+Period. Period tokens are always renewable and ignore MaxTTL.
+	Period time.Duration `json:"period,omitempty"`
+
+	// ParentID is the ID of the token that created this one, or empty for orphan tokens.
+	// When a parent is revoked, all non-orphan children are also revoked.
+	ParentID string `json:"parent_id,omitempty"`
+
+	// Orphan tokens have no parent and are not revoked when their creator is revoked.
+	Orphan bool `json:"orphan,omitempty"`
 }
 
 // Generate creates a new token with a cryptographically random ID and accessor.

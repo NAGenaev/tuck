@@ -41,5 +41,6 @@ func (s *Server) putSysConfig(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	s.ApplyRateConfig(cfg)
 	writeJSON(w, http.StatusOK, cfg)
 }

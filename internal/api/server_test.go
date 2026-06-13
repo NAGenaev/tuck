@@ -639,6 +639,77 @@ func TestKVInvalidTTL(t *testing.T) {
 	}
 }
 
+func TestMountTableCRUD(t *testing.T) {
+	ts, _, tok := newTestServer(t)
+
+	// GET /v1/sys/mounts — should include builtin mounts registered on startup.
+	resp, err := http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/sys/mounts", "", tok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list mounts status = %d, body = %s", resp.StatusCode, raw)
+	}
+	var listResp map[string]any
+	_ = json.Unmarshal(raw, &listResp)
+	mounts, _ := listResp["mounts"].([]any)
+	if len(mounts) == 0 {
+		t.Fatal("expected builtin mounts in mount table")
+	}
+
+	// POST /v1/sys/mounts/my-custom — create a custom mount.
+	createBody := `{"type":"transit","description":"extra transit"}`
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodPost, ts.URL+"/v1/sys/mounts/my-custom", createBody, tok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create mount status = %d, body = %s", resp.StatusCode, raw)
+	}
+	var entry map[string]any
+	_ = json.Unmarshal(raw, &entry)
+	if entry["type"] != "transit" {
+		t.Errorf("mount type = %v, want transit", entry["type"])
+	}
+	if entry["builtin"] != false {
+		t.Errorf("custom mount must have builtin=false")
+	}
+
+	// POST again — duplicate must 409.
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodPost, ts.URL+"/v1/sys/mounts/my-custom", createBody, tok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("duplicate mount status = %d, want 409", resp.StatusCode)
+	}
+
+	// DELETE /v1/sys/mounts/my-custom — should succeed.
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodDelete, ts.URL+"/v1/sys/mounts/my-custom", "", tok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete mount status = %d, want 204", resp.StatusCode)
+	}
+
+	// DELETE builtin mount — must 400.
+	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodDelete, ts.URL+"/v1/sys/mounts/secret", "", tok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("delete builtin status = %d, want 400", resp.StatusCode)
+	}
+}
+
 func TestGitHubRoleCRUD(t *testing.T) {
 	ts, _, rootTok := newTestServer(t)
 

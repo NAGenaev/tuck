@@ -74,6 +74,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sys/mounts/{path...}", s.requireToken(s.createMount))
 	mux.HandleFunc("DELETE /v1/sys/mounts/{path...}", s.requireToken(s.deleteMount))
 
+	// Per-mount tuning (GET/POST /v1/sys/mounts-tune/{path...})
+	mux.HandleFunc("GET /v1/sys/mounts-tune/{path...}", s.requireToken(s.getMountConfig))
+	mux.HandleFunc("POST /v1/sys/mounts-tune/{path...}", s.requireToken(s.putMountConfig))
+
 	// Plugin catalog — register, inspect, delete external plugins
 	mux.HandleFunc("GET /v1/sys/plugins/catalog/{type}/{name}", s.requireToken(s.getPlugin))
 	mux.HandleFunc("POST /v1/sys/plugins/catalog/{type}/{name}", s.requireToken(s.registerPlugin))

@@ -1341,6 +1341,11 @@ func (c *Core) ListAWSLeases(ctx context.Context) ([]string, error) {
 // LeaseManager returns the unified cross-backend lease manager.
 func (c *Core) LeaseManager() *lease.Manager { return c.leaseManager }
 
+// RenewLease extends the lease identified by unifiedID by increment.
+func (c *Core) RenewLease(ctx context.Context, unifiedID string, increment time.Duration) (time.Time, error) {
+	return c.leaseManager.Renew(ctx, unifiedID, increment)
+}
+
 // --- LDAP auth ---
 
 // GetLDAPConfig returns the current LDAP auth configuration (BindPassword redacted).

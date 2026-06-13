@@ -33,6 +33,12 @@ type Backend interface {
 	ListLeases(ctx context.Context) ([]string, error)
 }
 
+// RenewableBackend extends Backend with lease renewal support.
+type RenewableBackend interface {
+	Backend
+	RenewLease(ctx context.Context, id string, increment time.Duration) (time.Time, error)
+}
+
 // Manager federates lease operations across multiple named backends.
 type Manager struct {
 	backends map[string]Backend
@@ -67,6 +73,24 @@ func (m *Manager) Lookup(ctx context.Context, unifiedID string) (*Info, error) {
 		ExpiresAt:  expiresAt,
 		Revoked:    revoked,
 	}, nil
+}
+
+// Renew extends the lease identified by unifiedID by increment.
+// Returns ErrNotFound if the backend does not exist or does not support renewal.
+func (m *Manager) Renew(ctx context.Context, unifiedID string, increment time.Duration) (time.Time, error) {
+	name, internalID, err := splitID(unifiedID)
+	if err != nil {
+		return time.Time{}, ErrNotFound
+	}
+	b, ok := m.backends[name]
+	if !ok {
+		return time.Time{}, ErrNotFound
+	}
+	rb, ok := b.(RenewableBackend)
+	if !ok {
+		return time.Time{}, fmt.Errorf("backend %q does not support lease renewal", name)
+	}
+	return rb.RenewLease(ctx, internalID, increment)
 }
 
 // Revoke revokes the lease identified by unifiedID.

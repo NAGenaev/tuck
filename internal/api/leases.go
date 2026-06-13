@@ -1,8 +1,11 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"time"
 
 	"github.com/NAGenaev/tuck/internal/lease"
 	"github.com/NAGenaev/tuck/internal/policy"
@@ -43,6 +46,56 @@ func (s *Server) revokeLease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// POST /v1/sys/leases/renew
+// Body: {"lease_id": "backend/id", "increment": "1h"}
+// Response: {"lease_id": "...", "expires_at": "..."}
+func (s *Server) renewLease(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "sys/leases/renew", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})
+		return
+	}
+	var wire struct {
+		LeaseID   string `json:"lease_id"`
+		Increment string `json:"increment"`
+	}
+	if err := json.Unmarshal(body, &wire); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+	if wire.LeaseID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "lease_id is required"})
+		return
+	}
+	increment := time.Hour
+	if wire.Increment != "" {
+		d, err := time.ParseDuration(wire.Increment)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid increment"})
+			return
+		}
+		increment = d
+	}
+	expiresAt, err := s.core.RenewLease(r.Context(), wire.LeaseID, increment)
+	if err != nil {
+		switch {
+		case errors.Is(err, lease.ErrNotFound):
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "lease not found"})
+		default:
+			writeErr(w, err)
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"lease_id":   wire.LeaseID,
+		"expires_at": expiresAt,
+	})
 }
 
 // LIST /v1/sys/leases/

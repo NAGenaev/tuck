@@ -285,11 +285,14 @@ function renderApp() {
   <nav>
     ${navItem('status', '⬡', 'Status')}
     ${navItem('secrets', '🗝', 'Secrets')}
+    ${navItem('kvv2', '📚', 'KV v2')}
     ${navItem('tokens', '🎟', 'Tokens')}
     ${navItem('policies', '📋', 'Policies')}
     ${navItem('auth', '🔑', 'Auth Methods')}
     ${navItem('dynamic', '⚡', 'Dynamic Secrets')}
     ${navItem('crypto', '🔐', 'Crypto Engines')}
+    ${navItem('wrapping', '📦', 'Wrapping')}
+    ${navItem('cluster', '🖧', 'Cluster')}
   </nav>
   <div class="sidebar-footer">
     <button class="logout-btn" id="logout-btn">Sign out</button>
@@ -311,11 +314,14 @@ function renderPage() {
   switch (S.page) {
     case 'status':   return pageStatus();
     case 'secrets':  return pageSecrets();
+    case 'kvv2':     return pageKVv2();
     case 'tokens':   return pageTokens();
     case 'policies': return pagePolicies();
     case 'auth':     return pageAuth();
     case 'dynamic':  return pageDynamic();
     case 'crypto':   return pageCrypto();
+    case 'wrapping': return pageWrapping();
+    case 'cluster':  return pageCluster();
     default: return '';
   }
 }
@@ -405,6 +411,156 @@ function pageSecrets() {
           <div class="form-row"><label>Path</label><input name="path" placeholder="db/password"></div>
           <div class="form-row"><label>Value (raw bytes)</label><textarea name="value" placeholder="secret value"></textarea></div>
           <button class="btn btn-primary" type="submit">Save</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>`;
+}
+
+// ─────────── KV v2 page ───────────
+function pageKVv2() {
+  return `
+<div class="page-header">
+  <h1>KV v2 — Versioned Secrets</h1>
+  <p>Write, read, and manage versioned key-value secrets</p>
+</div>
+<div class="page-body">
+  <div class="card">
+    <div class="card-header">List</div>
+    <div class="card-body">
+      <form id="v2-list-form" style="display:flex;gap:8px;margin-bottom:14px">
+        <input name="prefix" placeholder="Prefix (leave blank for all)" style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius)">
+        <button class="btn btn-primary" type="submit">List</button>
+      </form>
+      <div id="v2-list-result"></div>
+    </div>
+  </div>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-header">Write Secret</div>
+      <div class="card-body">
+        <form id="v2-write-form">
+          <div class="form-row"><label>Path</label><input name="path" placeholder="db/password"></div>
+          <div class="form-row"><label>Value</label><textarea name="value" placeholder="secret value"></textarea></div>
+          <div class="form-row"><label>CAS (optional)</label><input name="cas" placeholder="expected version, e.g. 0"></div>
+          <button class="btn btn-primary" type="submit">Write</button>
+        </form>
+        <div id="v2-write-result" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">Read Secret</div>
+      <div class="card-body">
+        <form id="v2-read-form">
+          <div class="form-row"><label>Path</label><input name="path" placeholder="db/password"></div>
+          <div class="form-row"><label>Version (0 = current)</label><input name="version" placeholder="0" value="0"></div>
+          <button class="btn btn-primary" type="submit">Read</button>
+        </form>
+        <div id="v2-read-result" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-header">Metadata</div>
+      <div class="card-body">
+        <form id="v2-meta-form">
+          <div class="form-row"><label>Path</label><input name="path" placeholder="db/password"></div>
+          <button class="btn btn-primary" type="submit">Get Metadata</button>
+        </form>
+        <div id="v2-meta-result" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">Delete / Destroy</div>
+      <div class="card-body">
+        <form id="v2-delete-form">
+          <div class="form-row"><label>Path</label><input name="path" placeholder="db/password"></div>
+          <div class="form-row"><label>Versions (comma-separated, blank = current)</label><input name="versions" placeholder="1,2,3"></div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-ghost" type="submit" name="action" value="soft">Soft Delete</button>
+            <button class="btn btn-ghost" type="submit" name="action" value="undelete">Undelete</button>
+            <button class="btn btn-danger" type="submit" name="action" value="destroy">Destroy</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>`;
+}
+
+// ─────────── Response Wrapping page ───────────
+function pageWrapping() {
+  return `
+<div class="page-header">
+  <h1>Response Wrapping</h1>
+  <p>Wrap a secret payload into a single-use token for secure delivery</p>
+</div>
+<div class="page-body">
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-header">Wrap Payload</div>
+      <div class="card-body">
+        <form id="wrap-form">
+          <div class="form-row"><label>Payload (JSON)</label><textarea name="payload" placeholder='{"password":"s3cr3t"}'></textarea></div>
+          <button class="btn btn-primary" type="submit">Wrap</button>
+        </form>
+        <div id="wrap-result" style="margin-top:12px"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">Unwrap / Lookup</div>
+      <div class="card-body">
+        <form id="unwrap-form">
+          <div class="form-row"><label>Wrapping Token</label><input name="token" placeholder="tuck_wrap_..."></div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-primary" type="submit" name="action" value="unwrap">Unwrap</button>
+            <button class="btn btn-ghost" type="submit" name="action" value="lookup">Lookup</button>
+            <button class="btn btn-danger" type="submit" name="action" value="revoke">Revoke</button>
+          </div>
+        </form>
+        <div id="unwrap-result" style="margin-top:12px"></div>
+      </div>
+    </div>
+  </div>
+</div>`;
+}
+
+// ─────────── Cluster page ───────────
+function pageCluster() {
+  return `
+<div class="page-header">
+  <h1>Cluster</h1>
+  <p>Raft cluster status and membership management</p>
+</div>
+<div class="page-body">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+      Cluster Status
+      <button class="btn btn-ghost btn-sm" onclick="loadClusterStatus()">Refresh</button>
+    </div>
+    <div class="card-body">
+      <div id="cluster-status-result"><em style="color:var(--muted)">Click Refresh to load status.</em></div>
+    </div>
+  </div>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-header">Join Node</div>
+      <div class="card-body">
+        <form id="cluster-join-form">
+          <div class="form-row"><label>Node ID</label><input name="id" placeholder="node-2"></div>
+          <div class="form-row"><label>Address</label><input name="addr" placeholder="tuck-1:8300"></div>
+          <button class="btn btn-primary" type="submit">Join</button>
+        </form>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">Remove Node</div>
+      <div class="card-body">
+        <form id="cluster-remove-form">
+          <div class="form-row"><label>Node ID</label><input name="id" placeholder="node-3"></div>
+          <button class="btn btn-danger" type="submit">Remove</button>
         </form>
       </div>
     </div>
@@ -1287,6 +1443,9 @@ function bind() {
   on('click', '[data-crypto-tab]',  e => { S.cryptoTab  = e.currentTarget.dataset.cryptoTab; render(); });
   bindAuth();
   bindCrypto();
+  bindKVv2();
+  bindWrapping();
+  bindCluster();
 
   onSubmit('#create-policy-form', async fd => {
     const name = fd.get('name').trim();
@@ -2189,6 +2348,196 @@ function onSubmit(sel, fn) {
     e.preventDefault();
     fn(new FormData(form));
   }));
+}
+
+// ─────────── KV v2 handlers ───────────
+function bindKVv2() {
+  onSubmit('#v2-list-form', async fd => {
+    const prefix = fd.get('prefix').trim();
+    const el = document.getElementById('v2-list-result');
+    if (!el) return;
+    try {
+      const path = prefix ? `/v2/secret/metadata/${prefix}` : '/v2/secret/metadata/';
+      const r = await fetch(path, { method: 'LIST', headers: { 'X-Tuck-Token': S.token } });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || r.status);
+      if (!d.keys?.length) { el.innerHTML = '<em style="color:var(--muted)">No secrets.</em>'; return; }
+      el.innerHTML = renderKeyTable(d.keys, name => [
+        `<button class="btn btn-ghost btn-sm" onclick="v2ReadQuick('${esc(name)}')">Read</button>`,
+        `<button class="btn btn-ghost btn-sm" onclick="v2Meta('${esc(name)}')" style="margin-left:4px">Meta</button>`,
+      ]);
+    } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+
+  onSubmit('#v2-write-form', async fd => {
+    const path = fd.get('path').trim();
+    const value = fd.get('value');
+    const casStr = fd.get('cas').trim();
+    const el = document.getElementById('v2-write-result');
+    if (!el) return;
+    try {
+      let url = `/v2/secret/${path}`;
+      if (casStr !== '') url += `?cas=${casStr}`;
+      const r = await fetch(url, {
+        method: 'PUT',
+        headers: { 'X-Tuck-Token': S.token, 'Content-Type': 'text/plain' },
+        body: value,
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || r.status);
+      el.innerHTML = `<div class="alert alert-success">Written — version ${d.version}</div>`;
+    } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+
+  onSubmit('#v2-read-form', async fd => {
+    const path = fd.get('path').trim();
+    const ver = fd.get('version').trim() || '0';
+    const el = document.getElementById('v2-read-result');
+    if (!el) return;
+    try {
+      const r = await fetch(`/v2/secret/${path}?version=${ver}`, { headers: { 'X-Tuck-Token': S.token } });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || r.status);
+      el.innerHTML = `<dl class="kv-grid">
+        <dt>Path</dt><dd>${esc(path)}</dd>
+        <dt>Version</dt><dd>${d.version ?? ''}</dd>
+        <dt>Value</dt><dd>${d.deleted ? '<em>deleted</em>' : esc(String(d.value ?? ''))}</dd>
+      </dl>`;
+    } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+
+  onSubmit('#v2-meta-form', async fd => {
+    const path = fd.get('path').trim();
+    const el = document.getElementById('v2-meta-result');
+    if (!el) return;
+    try {
+      const d = await api('GET', `/v2/secret/metadata/${path}`);
+      el.innerHTML = `<dl class="kv-grid">
+        <dt>Current version</dt><dd>${d.metadata?.current_version ?? ''}</dd>
+        <dt>Max versions</dt><dd>${d.metadata?.max_versions ?? ''}</dd>
+      </dl><pre style="font-size:11px;margin-top:8px;overflow:auto">${esc(JSON.stringify(d.metadata?.versions,null,2))}</pre>`;
+    } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+
+  onSubmit('#v2-delete-form', async fd => {
+    const path = fd.get('path').trim();
+    const versionsStr = fd.get('versions').trim();
+    const action = document.activeElement?.value || 'soft';
+    const versions = versionsStr ? versionsStr.split(',').map(s=>parseInt(s.trim())).filter(n=>!isNaN(n)) : [];
+    try {
+      if (action === 'soft') {
+        const qs = versions.length ? `?versions=${versions.join(',')}` : '';
+        await api('DELETE', `/v2/secret/${path}${qs}`);
+        flash('success', `Soft-deleted "${path}".`);
+      } else if (action === 'undelete') {
+        await api('POST', `/v2/secret/undelete/${path}`, { versions });
+        flash('success', `Undeleted "${path}" versions.`);
+      } else if (action === 'destroy') {
+        if (!confirm(`Permanently destroy versions of "${path}"?`)) return;
+        await api('POST', `/v2/secret/destroy/${path}`, { versions });
+        flash('success', `Destroyed "${path}" versions.`);
+      }
+    } catch (e) { flash('error', e.message); }
+  });
+}
+
+async function v2ReadQuick(path) {
+  try {
+    const d = await api('GET', `/v2/secret/${path}`);
+    alert(`Path: ${path}\nVersion: ${d.version}\nValue: ${d.deleted ? '(deleted)' : d.value}`);
+  } catch (e) { flash('error', e.message); }
+}
+
+async function v2Meta(path) {
+  try {
+    const d = await api('GET', `/v2/secret/metadata/${path}`);
+    alert(`Path: ${path}\nCurrent version: ${d.metadata?.current_version}\nVersions: ${JSON.stringify(d.metadata?.versions,null,2)}`);
+  } catch (e) { flash('error', e.message); }
+}
+
+// ─────────── Response Wrapping handlers ───────────
+function bindWrapping() {
+  onSubmit('#wrap-form', async fd => {
+    const payloadStr = fd.get('payload').trim();
+    const el = document.getElementById('wrap-result');
+    if (!el) return;
+    let payload;
+    try { payload = JSON.parse(payloadStr); } catch { el.innerHTML = '<div class="alert alert-error">Payload must be valid JSON</div>'; return; }
+    try {
+      const d = await api('POST', '/v1/sys/wrapping/wrap', payload);
+      el.innerHTML = `<div class="alert alert-success" style="word-break:break-all">
+        <strong>Wrapping Token:</strong><br><code>${esc(d.token)}</code>
+        <br><small>TTL: ${d.ttl ?? ''}s &nbsp;|&nbsp; Expires: ${d.expires_at ?? ''}</small>
+      </div>`;
+    } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+
+  onSubmit('#unwrap-form', async fd => {
+    const token = fd.get('token').trim();
+    const action = document.activeElement?.value || 'unwrap';
+    const el = document.getElementById('unwrap-result');
+    if (!el) return;
+    try {
+      if (action === 'lookup') {
+        const d = await api('POST', '/v1/sys/wrapping/lookup', { token });
+        el.innerHTML = `<dl class="kv-grid">
+          <dt>Token</dt><dd>${esc(token)}</dd>
+          <dt>TTL</dt><dd>${d.ttl ?? ''}s</dd>
+          <dt>Expires</dt><dd>${esc(String(d.expires_at ?? ''))}</dd>
+        </dl>`;
+      } else if (action === 'unwrap') {
+        const d = await api('POST', '/v1/sys/wrapping/unwrap', { token });
+        el.innerHTML = `<div class="alert alert-success">Unwrapped payload:</div>
+          <pre style="margin-top:8px;font-size:11px">${esc(JSON.stringify(d,null,2))}</pre>`;
+      } else if (action === 'revoke') {
+        if (!confirm('Revoke this wrapping token?')) return;
+        await api('DELETE', '/v1/sys/wrapping/revoke', { token });
+        el.innerHTML = '<div class="alert alert-success">Wrapping token revoked.</div>';
+      }
+    } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  });
+}
+
+// ─────────── Cluster handlers ───────────
+function bindCluster() {
+  on('click', '#cluster-status-btn', loadClusterStatus);
+
+  onSubmit('#cluster-join-form', async fd => {
+    const id = fd.get('id').trim();
+    const addr = fd.get('addr').trim();
+    try {
+      await api('POST', '/v1/sys/cluster/join', { id, addr });
+      flash('success', `Node "${id}" added.`); await loadClusterStatus();
+    } catch (e) { flash('error', e.message); }
+  });
+
+  onSubmit('#cluster-remove-form', async fd => {
+    const id = fd.get('id').trim();
+    if (!confirm(`Remove node "${id}" from cluster?`)) return;
+    try {
+      await api('DELETE', `/v1/sys/cluster/node/${id}`);
+      flash('success', `Node "${id}" removed.`); await loadClusterStatus();
+    } catch (e) { flash('error', e.message); }
+  });
+}
+
+async function loadClusterStatus() {
+  const el = document.getElementById('cluster-status-result');
+  if (!el) return;
+  try {
+    const d = await api('GET', '/v1/sys/cluster');
+    const nodes = d.servers || [];
+    if (!nodes.length) { el.innerHTML = '<em style="color:var(--muted)">No cluster data (standalone mode).</em>'; return; }
+    el.innerHTML = `<table class="table">
+      <thead><tr><th>ID</th><th>Address</th><th>State</th><th>Leader</th></tr></thead>
+      <tbody>${nodes.map(n=>`<tr>
+        <td>${esc(n.id||'')}</td>
+        <td>${esc(n.address||'')}</td>
+        <td>${esc(n.state||'')}</td>
+        <td>${n.leader?'✓':''}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
 }
 
 // ─────────── Poll ───────────

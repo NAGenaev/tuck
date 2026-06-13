@@ -1,0 +1,95 @@
+{{- if .Values.csi.enabled }}
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: secrets.tuck.io
+spec:
+  attachRequired: false
+  podInfoOnMount: false
+  volumeLifecycleModes:
+    - Ephemeral
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "tuck.fullname" . }}-csi
+  namespace: {{ include "tuck.namespace" . }}
+  labels:
+    {{- include "tuck.labels" . | nindent 4 }}
+    app.kubernetes.io/component: csi
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "tuck.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: csi
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "tuck.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: csi
+    spec:
+      serviceAccountName: {{ include "tuck.fullname" . }}-csi
+      containers:
+        - name: tuckcsi
+          image: {{ include "tuck.csiImage" . }}
+          imagePullPolicy: {{ .Values.csi.image.pullPolicy }}
+          args:
+            - --endpoint=unix:///csi/csi.sock
+            - --node-id=$(NODE_NAME)
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: TUCK_ADDR
+              value: {{ include "tuck.serverAddr" . }}
+            - name: TUCK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.csi.tokenSecretName }}
+                  key: token
+                  optional: true
+          resources:
+            {{- toYaml .Values.csi.resources | nindent 12 }}
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: pods-mount-dir
+              mountPath: /var/lib/kubelet/pods
+              mountPropagation: Bidirectional
+        - name: node-driver-registrar
+          image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.0
+          args:
+            - --csi-address=/csi/csi.sock
+            - --kubelet-registration-path={{ .Values.csi.kubeletRootDir }}/plugins/secrets.tuck.io/csi.sock
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: registration-dir
+              mountPath: /registration
+      volumes:
+        - name: plugin-dir
+          hostPath:
+            path: {{ .Values.csi.kubeletRootDir }}/plugins/secrets.tuck.io
+            type: DirectoryOrCreate
+        - name: registration-dir
+          hostPath:
+            path: {{ .Values.csi.kubeletRootDir }}/plugins_registry
+            type: Directory
+        - name: pods-mount-dir
+          hostPath:
+            path: /var/lib/kubelet/pods
+            type: Directory
+      {{- with .Values.csi.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.csi.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

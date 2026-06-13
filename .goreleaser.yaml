@@ -58,6 +58,16 @@ builds:
     ldflags:
       - -s -w
 
+  - id: tuckcsi
+    main: ./cmd/tuckcsi
+    binary: tuckcsi
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.Version={{.Version}}
+
 archives:
   - id: tuck
     builds: [tuck, tuckcli]
@@ -193,6 +203,29 @@ dockers:
     build_flag_templates:
       - "--platform=linux/arm64"
 
+  - id: tuck-csi
+    ids: [tuckcsi]
+    image_templates:
+      - "ghcr.io/nagenaev/tuck-csi:{{ .Version }}-amd64"
+      - "ghcr.io/nagenaev/tuck-csi:latest-amd64"
+    dockerfile: build/Dockerfile.csi
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title=tuck-csi"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source=https://github.com/NAGenaev/tuck"
+
+  - id: tuck-csi-arm64
+    ids: [tuckcsi]
+    image_templates:
+      - "ghcr.io/nagenaev/tuck-csi:{{ .Version }}-arm64"
+      - "ghcr.io/nagenaev/tuck-csi:latest-arm64"
+    dockerfile: build/Dockerfile.csi
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+
 docker_manifests:
   - name_template: "ghcr.io/nagenaev/tuck:{{ .Version }}"
     image_templates:
@@ -233,6 +266,16 @@ docker_manifests:
     image_templates:
       - "ghcr.io/nagenaev/tuck-agent:latest-amd64"
       - "ghcr.io/nagenaev/tuck-agent:latest-arm64"
+
+  - name_template: "ghcr.io/nagenaev/tuck-csi:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/nagenaev/tuck-csi:{{ .Version }}-amd64"
+      - "ghcr.io/nagenaev/tuck-csi:{{ .Version }}-arm64"
+
+  - name_template: "ghcr.io/nagenaev/tuck-csi:latest"
+    image_templates:
+      - "ghcr.io/nagenaev/tuck-csi:latest-amd64"
+      - "ghcr.io/nagenaev/tuck-csi:latest-arm64"
 
 changelog:
   use: github

@@ -23,6 +23,7 @@ import (
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
 	"github.com/NAGenaev/tuck/internal/physical"
 	physraft "github.com/NAGenaev/tuck/internal/physical/raft"
+	"github.com/NAGenaev/tuck/internal/ratelimit"
 	"github.com/NAGenaev/tuck/internal/seal"
 	"github.com/NAGenaev/tuck/internal/telemetry"
 	"github.com/NAGenaev/tuck/internal/tlsutil"
@@ -88,6 +89,12 @@ func main() {
 	auditLog        := flag.String("audit-log", "", "path for the file audit log (empty = discard); rotated at --audit-max-size bytes")
 	auditMaxSize    := flag.Int64("audit-max-size", audit.DefaultMaxSize, "max audit log file size in bytes before rotation")
 	auditMaxBackups := flag.Int("audit-max-backups", audit.DefaultMaxBackups, "number of rotated audit log files to keep")
+
+	// Rate limiting
+	ipRateRPS   := flag.Float64("rate-ip-rps", 100, "per-IP request rate limit (requests/second); 0 = disabled")
+	ipRateBurst := flag.Int("rate-ip-burst", 200, "per-IP burst size for rate limiting")
+	tokRateRPS   := flag.Float64("rate-token-rps", 50, "per-token request rate limit (requests/second); 0 = disabled")
+	tokRateBurst := flag.Int("rate-token-burst", 100, "per-token burst size for rate limiting")
 
 	// Observability
 	otelEndpoint := flag.String("otel-endpoint", "", "OpenTelemetry OTLP HTTP endpoint (e.g. http://otel-collector:4318); empty = disabled")
@@ -388,9 +395,20 @@ func main() {
 		log.Fatalf("--tls-cert and --tls-key must be provided together")
 	}
 
+	// --- Rate limiters ---
+	handler := api.New(c).Handler()
+	if *ipRateRPS > 0 {
+		ipLimiter := ratelimit.New(*ipRateRPS, *ipRateBurst)
+		handler = ipLimiter.Middleware(handler)
+	}
+	if *tokRateRPS > 0 {
+		tokLimiter := ratelimit.New(*tokRateRPS, *tokRateBurst)
+		handler = tokLimiter.TokenMiddleware(handler)
+	}
+
 	// --- HTTP server with production timeouts ---
 	srv := &http.Server{
-		Handler:           telemetry.Middleware(api.New(c).Handler()),
+		Handler:           telemetry.Middleware(handler),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,

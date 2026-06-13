@@ -35,6 +35,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/physical"
 	"github.com/NAGenaev/tuck/internal/policy"
 	"github.com/NAGenaev/tuck/internal/seal"
+	"github.com/NAGenaev/tuck/internal/sysconfig"
 	"github.com/NAGenaev/tuck/internal/token"
 	"github.com/NAGenaev/tuck/internal/wrapping"
 )
@@ -104,6 +105,8 @@ type Core struct {
 	totpManager    *dynTOTP.Manager
 	identity *identity.Store
 
+	sysconfigStore *sysconfig.Store
+
 	// optional — nil means k8s auth is disabled
 	k8sReviewer k8sauth.Reviewer
 	k8sRoles    *k8sauth.RoleStore
@@ -151,9 +154,10 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		transitManager: transit.NewManager(b),
 		sshManager:     dynSSH.NewManager(b),
 		totpManager:    dynTOTP.NewManager(b),
-		identity:     identity.NewStore(b),
-		k8sReviewer:  reviewer,
-		k8sRoles:    k8sauth.NewRoleStore(b),
+		identity:       identity.NewStore(b),
+		sysconfigStore: sysconfig.New(b),
+		k8sReviewer:    reviewer,
+		k8sRoles:       k8sauth.NewRoleStore(b),
 	}
 }
 
@@ -1511,4 +1515,14 @@ func (c *Core) CubbyholeDelete(ctx context.Context, tokenID, path string) error 
 
 func (c *Core) CubbyholeList(ctx context.Context, tokenID, pathPrefix string) ([]string, error) {
 	return c.cubbyhole.List(ctx, tokenID, pathPrefix)
+}
+
+// GetSysConfig returns the current live server configuration.
+func (c *Core) GetSysConfig(ctx context.Context) (sysconfig.Config, error) {
+	return c.sysconfigStore.Get(ctx)
+}
+
+// PutSysConfig stores updated live server configuration.
+func (c *Core) PutSysConfig(ctx context.Context, cfg sysconfig.Config) error {
+	return c.sysconfigStore.Put(ctx, cfg)
 }

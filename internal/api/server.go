@@ -60,6 +60,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/sys/namespaces/{name}", s.requireToken(s.deleteNamespace))
 	mux.HandleFunc("LIST /v1/sys/namespaces/", s.requireToken(s.listNamespaces))
 
+	// Runtime configuration
+	mux.HandleFunc("GET /v1/sys/config", s.requireToken(s.getSysConfig))
+	mux.HandleFunc("PUT /v1/sys/config", s.requireToken(s.putSysConfig))
+
 	mux.HandleFunc("GET /v1/sys/seal-status", s.getSealStatus)
 	mux.HandleFunc("GET /v1/sys/ready", s.getReady)
 	mux.HandleFunc("POST /v1/sys/unseal", s.postUnseal)

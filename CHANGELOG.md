@@ -11,6 +11,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [1.30.0] — 2026-06-13
+
+### Added
+
+- **GitHub Auth tests**: store unit tests (`internal/auth/github/store_test.go`) covering Put/Get/Delete/List role CRUD with in-memory barrier; API integration tests (`internal/api/github_test.go`) for login with missing role (404), invalid JWT (401/403), missing required fields (400), and GET of non-existent role (404).
+
+---
+
 ## [1.29.0] — 2026-06-13
 
 ### Added

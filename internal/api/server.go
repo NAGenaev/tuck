@@ -85,8 +85,15 @@ func (s *Server) StartLimiterCleanup(ctx context.Context) {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
-	// Embedded web dashboard — served at /ui/
+	// Embedded web dashboard — served at /ui/, root redirects there
 	mux.Handle("/ui/", http.StripPrefix("/ui", ui.Handler()))
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			http.Redirect(w, r, "/ui/", http.StatusFound)
+			return
+		}
+		http.NotFound(w, r)
+	})
 
 	mux.HandleFunc("GET /v1/health", s.health)
 

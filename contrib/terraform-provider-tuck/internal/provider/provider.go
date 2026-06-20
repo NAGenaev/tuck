@@ -98,13 +98,18 @@ func (p *TuckProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 func (p *TuckProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewKVSecretResource,
+		NewKVSecretV2Resource,
 		NewPolicyResource,
+		NewTokenRoleResource,
+		NewAppRoleRoleResource,
+		NewNamespaceResource,
 	}
 }
 
 func (p *TuckProvider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		NewKVSecretDataSource,
+		NewKVSecretV2DataSource,
 	}
 }
 

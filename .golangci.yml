@@ -7,8 +7,8 @@ linters:
         - (*net/http.Response).Body.Close
         - (*database/sql.DB).Close
 
-issues:
-  exclude-rules:
+exclusions:
+  rules:
     - path: '_test\.go'
       linters:
         - errcheck

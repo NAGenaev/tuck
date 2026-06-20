@@ -145,7 +145,7 @@ type Conn interface {
 type realConn struct{ inner *goldap.Conn }
 
 func (r *realConn) Bind(dn, password string) error { return r.inner.Bind(dn, password) }
-func (r *realConn) Close() error                   { r.inner.Close(); return nil }
+func (r *realConn) Close() error                   { _ = r.inner.Close(); return nil }
 
 func (r *realConn) Search(baseDN, filter string, attrs []string) ([]*Entry, error) {
 	req := goldap.NewSearchRequest(
@@ -301,7 +301,7 @@ func (a *Authenticator) Login(ctx context.Context, roles []*Role, username, pass
 	if err != nil {
 		return nil, fmt.Errorf("ldap: connect: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if err := conn.Bind(a.cfg.BindDN, a.cfg.BindPassword); err != nil {
 		return nil, fmt.Errorf("ldap: service account bind: %w", err)

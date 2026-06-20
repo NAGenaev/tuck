@@ -263,7 +263,7 @@ func TestAlgorithmSHA256(t *testing.T) {
 func TestDigits8(t *testing.T) {
 	m := NewManager(newMem())
 	ctx := context.Background()
-	m.CreateKey(ctx, "k", CreateKeyRequest{Digits: 8})
+	_, _ = m.CreateKey(ctx, "k", CreateKeyRequest{Digits: 8})
 
 	res, err := m.GenerateCode(ctx, "k")
 	if err != nil {

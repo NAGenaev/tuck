@@ -130,17 +130,17 @@ func TestChildrenIndex(t *testing.T) {
 	// Create two children with ParentID set.
 	child1, _ := Generate("child1", []string{"read"}, time.Hour)
 	child1.ParentID = parent.ID
-	store.Put(ctx, child1)
+	_ = store.Put(ctx, child1)
 
 	child2, _ := Generate("child2", []string{"read"}, time.Hour)
 	child2.ParentID = parent.ID
-	store.Put(ctx, child2)
+	_ = store.Put(ctx, child2)
 
 	// Orphan child — should NOT appear in Children().
 	orphan, _ := Generate("orphan", []string{"read"}, time.Hour)
 	orphan.ParentID = "" // no parent
 	orphan.Orphan = true
-	store.Put(ctx, orphan)
+	_ = store.Put(ctx, orphan)
 
 	children, err := store.Children(ctx, parent.ID)
 	if err != nil {

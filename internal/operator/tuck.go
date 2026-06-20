@@ -54,7 +54,7 @@ func (c *TuckClient) GetSecret(ctx context.Context, path string) ([]byte, error)
 	if err != nil {
 		return nil, fmt.Errorf("get secret %q: %w", path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("get secret %q: unexpected status %d", path, resp.StatusCode)
 	}
@@ -104,7 +104,7 @@ func (c *TuckClient) login(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("tuck login: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", fmt.Errorf("tuck login: unexpected status %d", resp.StatusCode)
 	}

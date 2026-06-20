@@ -20,7 +20,7 @@ func TestGetSecret(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"path": "db/password", "value": "s3cr3t"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"path": "db/password", "value": "s3cr3t"})
 	}))
 	defer srv.Close()
 
@@ -37,7 +37,7 @@ func TestGetSecret(t *testing.T) {
 func TestGetSecretNotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "not found"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "not found"})
 	}))
 	defer srv.Close()
 
@@ -76,7 +76,7 @@ func TestPutSecret(t *testing.T) {
 
 func TestSealStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{"sealed": false, "type": "dev"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"sealed": false, "type": "dev"})
 	}))
 	defer srv.Close()
 
@@ -96,7 +96,7 @@ func TestSealStatus(t *testing.T) {
 func TestErrorTypes(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{"error": "sealed"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "sealed"})
 	}))
 	defer srv.Close()
 
@@ -116,7 +116,7 @@ func TestListSecrets(t *testing.T) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]any{"keys": []string{"db/password", "db/user"}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []string{"db/password", "db/user"}})
 	}))
 	defer srv.Close()
 
@@ -133,7 +133,7 @@ func TestListSecrets(t *testing.T) {
 func TestKVv2Write(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"version": 1, "path": "db/pass"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": 1, "path": "db/pass"})
 	}))
 	defer srv.Close()
 

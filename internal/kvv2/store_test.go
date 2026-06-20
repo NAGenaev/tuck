@@ -164,9 +164,9 @@ func TestMaxVersionsEnforced(t *testing.T) {
 	ctx := context.Background()
 
 	_ = s.UpdateMeta(ctx, "k", 2)
-	s.Write(ctx, "k", []byte("v1"), nil)
-	s.Write(ctx, "k", []byte("v2"), nil)
-	s.Write(ctx, "k", []byte("v3"), nil) // should destroy v1
+	_, _ = s.Write(ctx, "k", []byte("v1"), nil)
+	_, _ = s.Write(ctx, "k", []byte("v2"), nil)
+	_, _ = s.Write(ctx, "k", []byte("v3"), nil) // should destroy v1
 
 	_, _, err := s.Read(ctx, "k", 1)
 	if err == nil {

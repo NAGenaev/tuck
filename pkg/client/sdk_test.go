@@ -30,7 +30,7 @@ func testServer(t *testing.T, routes []route) *httptest.Server {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(rt.status)
 			if rt.body != nil {
-				json.NewEncoder(w).Encode(rt.body)
+				_ = json.NewEncoder(w).Encode(rt.body)
 			}
 		})
 	}
@@ -121,7 +121,7 @@ func TestTokenRolePutGet(t *testing.T) {
 			w.WriteHeader(http.StatusNoContent)
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/auth/token/roles/reader":
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{"name": "reader", "policies": []string{"read-only"}, "renewable": true})
+			_ = json.NewEncoder(w).Encode(map[string]any{"name": "reader", "policies": []string{"read-only"}, "renewable": true})
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -253,9 +253,9 @@ func TestWrappingWrapUnwrap(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/v1/sys/wrapping/wrap":
-			json.NewEncoder(w).Encode(map[string]any{"token": "wrap-tok", "ttl": 300})
+			_ = json.NewEncoder(w).Encode(map[string]any{"token": "wrap-tok", "ttl": 300})
 		case "/v1/sys/wrapping/unwrap":
-			json.NewEncoder(w).Encode(map[string]string{"secret": "mysecret"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"secret": "mysecret"})
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -294,7 +294,7 @@ func TestCubbyholeGetPut(t *testing.T) {
 			_, _ = w.Write(stored)
 		default:
 			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]string{"error": "not found"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "not found"})
 		}
 	}))
 	defer srv.Close()
@@ -338,7 +338,7 @@ func TestScopedNamespaceHeader(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotNS = r.Header.Get("X-Tuck-Namespace")
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"value": "v"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"value": "v"})
 	}))
 	defer srv.Close()
 

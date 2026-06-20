@@ -56,7 +56,7 @@ func TestSoak(t *testing.T) {
 					if err != nil {
 						continue
 					}
-					resp.Body.Close()
+					_ = resp.Body.Close()
 					if resp.StatusCode == http.StatusNoContent {
 						ops.Add(1)
 					} else {
@@ -67,7 +67,7 @@ func TestSoak(t *testing.T) {
 					if err != nil {
 						continue
 					}
-					resp.Body.Close()
+					_ = resp.Body.Close()
 					if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNotFound {
 						ops.Add(1)
 					} else {
@@ -78,7 +78,7 @@ func TestSoak(t *testing.T) {
 					if err != nil {
 						continue
 					}
-					resp.Body.Close()
+					_ = resp.Body.Close()
 					if resp.StatusCode == http.StatusNoContent {
 						ops.Add(1)
 					} else {
@@ -89,7 +89,7 @@ func TestSoak(t *testing.T) {
 					if err != nil {
 						continue
 					}
-					resp.Body.Close()
+					_ = resp.Body.Close()
 					if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNotFound {
 						ops.Add(1)
 					} else {

@@ -48,7 +48,7 @@ func TestKVRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("PUT status = %d, want 204", resp.StatusCode)
 	}
@@ -58,7 +58,7 @@ func TestKVRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET status = %d, want 200", resp.StatusCode)
 	}
@@ -70,7 +70,7 @@ func TestKVRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("GET missing status = %d, want 404", resp.StatusCode)
 	}
@@ -82,7 +82,7 @@ func TestUnauthorized(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("no-token status = %d, want 401", resp.StatusCode)
 	}
@@ -95,7 +95,7 @@ func TestSealedReturns503(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("sealed GET status = %d, want 503", resp.StatusCode)
 	}
@@ -107,7 +107,7 @@ func TestHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	if !strings.Contains(string(body), `"sealed":false`) {
 		t.Fatalf("health body = %s, want sealed:false", body)
@@ -123,7 +123,7 @@ func TestTokenManagement(t *testing.T) {
 		t.Fatal(err)
 	}
 	respBody, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create token status = %d, want 201; body: %s", resp.StatusCode, respBody)
 	}
@@ -138,7 +138,7 @@ func TestTokenManagement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("lookup token status = %d, want 200", resp.StatusCode)
 	}
@@ -147,7 +147,7 @@ func TestTokenManagement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("revoke token status = %d, want 204", resp.StatusCode)
 	}
@@ -161,7 +161,7 @@ func TestPolicyManagement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("put policy status = %d, want 204", resp.StatusCode)
 	}
@@ -171,7 +171,7 @@ func TestPolicyManagement(t *testing.T) {
 		t.Fatal(err)
 	}
 	respBody, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get policy status = %d, want 200; body: %s", resp.StatusCode, respBody)
 	}
@@ -183,7 +183,7 @@ func TestPolicyManagement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete policy status = %d, want 204", resp.StatusCode)
 	}
@@ -195,7 +195,7 @@ func TestACLEnforcement(t *testing.T) {
 	// create a read-only policy for secret/prod/*
 	policyBody := `{"rules":[{"path":"secret/prod/*","capabilities":["read"]}]}`
 	resp, _ := http.DefaultClient.Do(authedReq(t, http.MethodPut, ts.URL+"/v1/policy/prod-ro", policyBody, rootTok))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// create a token with that policy
 	tokenBody := `{"display_name":"prod-reader","policies":["prod-ro"]}`
@@ -204,7 +204,7 @@ func TestACLEnforcement(t *testing.T) {
 		t.Fatal(err)
 	}
 	respBody, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	var limited struct {
 		ID string `json:"id"`
 	}
@@ -214,14 +214,14 @@ func TestACLEnforcement(t *testing.T) {
 
 	// seed a secret with root token
 	resp, _ = http.DefaultClient.Do(authedReq(t, http.MethodPut, ts.URL+"/v1/secret/prod/api-key", "s3cr3t", rootTok))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// limited token can read secret/prod/*
 	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/secret/prod/api-key", "", limited.ID))
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("limited read status = %d, want 200", resp.StatusCode)
 	}
@@ -231,7 +231,7 @@ func TestACLEnforcement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("limited write status = %d, want 403", resp.StatusCode)
 	}
@@ -241,7 +241,7 @@ func TestACLEnforcement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("out-of-scope read status = %d, want 403", resp.StatusCode)
 	}
@@ -267,7 +267,7 @@ func TestNamespaceCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create namespace status = %d, want 201", resp.StatusCode)
 	}
@@ -278,7 +278,7 @@ func TestNamespaceCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get namespace status = %d, body = %s", resp.StatusCode, body)
 	}
@@ -288,14 +288,14 @@ func TestNamespaceCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Write secret in dev namespace
 	resp, err = http.DefaultClient.Do(authedNsReq(t, http.MethodPut, ts.URL+"/v1/secret/shared", "dev-value", rootTok, "dev"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Read from root — should get "root-value"
 	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/secret/shared", "", rootTok))
@@ -303,7 +303,7 @@ func TestNamespaceCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ = io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("root read status = %d", resp.StatusCode)
 	}
@@ -319,7 +319,7 @@ func TestNamespaceCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ = io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("dev read status = %d, body = %s", resp.StatusCode, body)
 	}
@@ -335,7 +335,7 @@ func TestNamespaceCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ = io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list namespaces status = %d, body = %s", resp.StatusCode, body)
 	}
@@ -351,7 +351,7 @@ func TestNamespaceCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete namespace status = %d", resp.StatusCode)
 	}
@@ -361,7 +361,7 @@ func TestNamespaceCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("get deleted namespace status = %d, want 404", resp.StatusCode)
 	}
@@ -376,7 +376,7 @@ func TestTokenRoleRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("put role status = %d, want 204", resp.StatusCode)
 	}
@@ -387,7 +387,7 @@ func TestTokenRoleRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get role status = %d, body = %s", resp.StatusCode, body)
 	}
@@ -406,7 +406,7 @@ func TestTokenRoleRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ = io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list roles status = %d", resp.StatusCode)
 	}
@@ -423,7 +423,7 @@ func TestTokenRoleRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ = io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create-from-role status = %d, body = %s", resp.StatusCode, body)
 	}
@@ -444,7 +444,7 @@ func TestTokenRoleRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete role status = %d", resp.StatusCode)
 	}
@@ -454,7 +454,7 @@ func TestTokenRoleRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("create from deleted role status = %d, want 404", resp.StatusCode)
 	}
@@ -469,7 +469,7 @@ func TestAuditSinkManagement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("register webhook status = %d, want 204", resp.StatusCode)
 	}
@@ -480,7 +480,7 @@ func TestAuditSinkManagement(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list sinks status = %d", resp.StatusCode)
 	}
@@ -496,7 +496,7 @@ func TestAuditSinkManagement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete sink status = %d, want 204", resp.StatusCode)
 	}
@@ -507,7 +507,7 @@ func TestAuditSinkManagement(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ = io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list sinks after delete status = %d", resp.StatusCode)
 	}
@@ -527,7 +527,7 @@ func TestKVSecretTTLAndMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("PUT status = %d, want 204", resp.StatusCode)
 	}
@@ -538,7 +538,7 @@ func TestKVSecretTTLAndMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET status = %d, body = %s", resp.StatusCode, raw)
 	}
@@ -572,7 +572,7 @@ func TestKVSecretNoTTL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("PUT status = %d, want 204", resp.StatusCode)
 	}
@@ -582,7 +582,7 @@ func TestKVSecretNoTTL(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET status = %d, body = %s", resp.StatusCode, raw)
 	}
@@ -604,7 +604,7 @@ func TestKVLegacyRawBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("PUT status = %d, want 204", resp.StatusCode)
 	}
@@ -614,7 +614,7 @@ func TestKVLegacyRawBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET status = %d, body = %s", resp.StatusCode, raw)
 	}
@@ -633,7 +633,7 @@ func TestKVInvalidTTL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("invalid TTL status = %d, want 400", resp.StatusCode)
 	}
@@ -648,7 +648,7 @@ func TestMountTune(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET tune status = %d, body = %s", resp.StatusCode, raw)
 	}
@@ -659,7 +659,7 @@ func TestMountTune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("POST tune status = %d, want 204", resp.StatusCode)
 	}
@@ -670,7 +670,7 @@ func TestMountTune(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ = io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET tune after set status = %d, body = %s", resp.StatusCode, raw)
 	}
@@ -686,7 +686,7 @@ func TestMountTune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("bad TTL status = %d, want 400", resp.StatusCode)
 	}
@@ -696,7 +696,7 @@ func TestMountTune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("default>max status = %d, want 400", resp.StatusCode)
 	}
@@ -711,7 +711,7 @@ func TestMountTableCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list mounts status = %d, body = %s", resp.StatusCode, raw)
 	}
@@ -729,7 +729,7 @@ func TestMountTableCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ = io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create mount status = %d, body = %s", resp.StatusCode, raw)
 	}
@@ -747,7 +747,7 @@ func TestMountTableCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("duplicate mount status = %d, want 409", resp.StatusCode)
 	}
@@ -757,7 +757,7 @@ func TestMountTableCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete mount status = %d, want 204", resp.StatusCode)
 	}
@@ -767,7 +767,7 @@ func TestMountTableCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("delete builtin status = %d, want 400", resp.StatusCode)
 	}
@@ -783,7 +783,7 @@ func TestGitHubRoleCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("put github role status = %d, want 204", resp.StatusCode)
 	}
@@ -794,7 +794,7 @@ func TestGitHubRoleCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get github role status = %d, body = %s", resp.StatusCode, raw)
 	}
@@ -810,7 +810,7 @@ func TestGitHubRoleCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ = io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list github roles status = %d", resp.StatusCode)
 	}
@@ -826,7 +826,7 @@ func TestGitHubRoleCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete github role status = %d, want 204", resp.StatusCode)
 	}

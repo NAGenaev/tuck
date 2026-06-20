@@ -33,7 +33,7 @@ func TestGitHubLoginMissingRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("login missing role: want 404, got %d", resp.StatusCode)
 	}
@@ -50,7 +50,7 @@ func TestGitHubLoginInvalidToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Submit a syntactically invalid JWT — must be rejected.
 	resp, err = http.Post(ts.URL+"/v1/auth/github/login", "application/json",
@@ -58,7 +58,7 @@ func TestGitHubLoginInvalidToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	// Either 401 (invalid token) or 403 (claims mismatch) — both indicate rejection.
 	if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("login invalid JWT: want 401 or 403, got %d", resp.StatusCode)
@@ -75,7 +75,7 @@ func TestGitHubLoginMissingFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("missing role field: want 400, got %d", resp.StatusCode)
 	}
@@ -89,7 +89,7 @@ func TestGitHubRoleGetMissing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("GET missing role: want 404, got %d", resp.StatusCode)
 	}

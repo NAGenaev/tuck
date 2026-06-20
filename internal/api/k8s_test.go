@@ -60,14 +60,14 @@ func TestK8sLoginSuccess(t *testing.T) {
 	// bind role: default/myapp → policy "read-all"
 	roleBody := `{"policies":["read-all"],"ttl":"1h"}`
 	resp, _ := http.DefaultClient.Do(authedReq(t, http.MethodPut, ts.URL+"/v1/auth/kubernetes/role/default/myapp", roleBody, rootTok))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("bind role: status=%d", resp.StatusCode)
 	}
 
 	resp = loginK8s(t, ts, "fake-sa-token")
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("login: status=%d body=%s", resp.StatusCode, body)
 	}
@@ -100,7 +100,7 @@ func TestK8sLoginTokenHasBoundPolicies(t *testing.T) {
 
 	resp := loginK8s(t, ts, "sa-jwt")
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("login: %s", body)
 	}
@@ -123,7 +123,7 @@ func TestK8sLoginNotAuthenticated(t *testing.T) {
 	ts, _, _ := newTestServerWithK8s(t, reviewer)
 
 	resp := loginK8s(t, ts, "bad-token")
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status=%d, want 401", resp.StatusCode)
 	}
@@ -138,7 +138,7 @@ func TestK8sLoginNoRole(t *testing.T) {
 	ts, _, _ := newTestServerWithK8s(t, reviewer)
 
 	resp := loginK8s(t, ts, "valid-sa-token")
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("status=%d, want 403", resp.StatusCode)
 	}
@@ -149,7 +149,7 @@ func TestK8sLoginDisabled(t *testing.T) {
 	ts, _, _ := newTestServerWithK8s(t, nil)
 
 	resp := loginK8s(t, ts, "any-token")
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotImplemented {
 		t.Fatalf("status=%d, want 501", resp.StatusCode)
 	}
@@ -161,7 +161,7 @@ func TestK8sLoginMissingToken(t *testing.T) {
 
 	resp, _ := http.Post(ts.URL+"/v1/auth/kubernetes/login", "application/json",
 		strings.NewReader(`{"not_token":"x"}`))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status=%d, want 400", resp.StatusCode)
 	}
@@ -175,7 +175,7 @@ func TestK8sRoleManagement(t *testing.T) {
 	resp, _ := http.DefaultClient.Do(authedReq(t, http.MethodPut,
 		ts.URL+"/v1/auth/kubernetes/role/staging/worker",
 		`{"policies":["worker-policy"],"ttl":"12h"}`, rootTok))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("put role: status=%d", resp.StatusCode)
 	}
@@ -187,7 +187,7 @@ func TestK8sRoleManagement(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get role: status=%d body=%s", resp.StatusCode, body)
 	}
@@ -201,7 +201,7 @@ func TestK8sRoleManagement(t *testing.T) {
 	// delete
 	resp, _ = http.DefaultClient.Do(authedReq(t, http.MethodDelete,
 		ts.URL+"/v1/auth/kubernetes/role/staging/worker", "", rootTok))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete role: status=%d", resp.StatusCode)
 	}
@@ -209,7 +209,7 @@ func TestK8sRoleManagement(t *testing.T) {
 	// get after delete → 404
 	resp, _ = http.DefaultClient.Do(authedReq(t, http.MethodGet,
 		ts.URL+"/v1/auth/kubernetes/role/staging/worker", "", rootTok))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("get deleted role: status=%d, want 404", resp.StatusCode)
 	}
@@ -220,7 +220,7 @@ func TestK8sRoleRequiresAuth(t *testing.T) {
 	ts, _, _ := newTestServerWithK8s(t, nil)
 
 	resp, _ := http.Get(ts.URL + "/v1/auth/kubernetes/role/default/myapp")
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated GET role: status=%d, want 401", resp.StatusCode)
 	}

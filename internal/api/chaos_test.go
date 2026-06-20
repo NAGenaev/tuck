@@ -167,7 +167,7 @@ func TestChaosSealUnsealCycle(t *testing.T) {
 			}
 			t.Fatalf("write key%d: err=%v status=%d", i, err, status)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}
 
 	// Seal — simulates process crash / manual seal.
@@ -179,7 +179,7 @@ func TestChaosSealUnsealCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get while sealed: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("sealed read: want 503, got %d", resp.StatusCode)
 	}
@@ -201,7 +201,7 @@ func TestChaosSealUnsealCycle(t *testing.T) {
 			t.Fatalf("read key%d after restart: %v", i, err)
 		}
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("read key%d after restart: status=%d body=%s", i, resp.StatusCode, body)
 		}

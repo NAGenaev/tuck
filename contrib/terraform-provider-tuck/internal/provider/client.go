@@ -81,7 +81,7 @@ func (c *tuckClient) exec(req *http.Request) ([]byte, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	return body, resp.StatusCode, nil
 }

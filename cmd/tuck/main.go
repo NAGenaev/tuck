@@ -483,7 +483,7 @@ func clusterJoinLeader(leaderHTTP, nodeID, raftAddr string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("leader returned %s", resp.Status)
 	}

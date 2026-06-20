@@ -14,7 +14,7 @@ func TestSecretListGETCompat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("PUT status %d", resp.StatusCode)
 	}
@@ -24,7 +24,7 @@ func TestSecretListGETCompat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("LIST status %d", resp.StatusCode)
 	}
@@ -34,7 +34,7 @@ func TestSecretListGETCompat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET list=true status %d", resp.StatusCode)
 	}
@@ -64,13 +64,13 @@ func TestSecretListGETWithoutListParam(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	resp, err = http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/secret/explorer-test/foo", "", rootTok))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET secret without list: status %d", resp.StatusCode)
 	}
@@ -83,7 +83,7 @@ func TestPolicyListGETCompat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET policy list status %d", resp.StatusCode)
 	}

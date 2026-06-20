@@ -77,7 +77,7 @@ func TestSealStatus_DevSeal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
@@ -103,7 +103,7 @@ func TestSealStatus_NoAuth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("seal-status without token: status = %d, want 200", resp.StatusCode)
 	}
@@ -116,7 +116,7 @@ func TestPostSeal_RequiresToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("POST /v1/sys/seal without token: status = %d, want 401", resp.StatusCode)
 	}
@@ -132,7 +132,7 @@ func TestPostSeal_SealsThenStatusReflects(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("POST seal: status = %d, want 200; body: %s", resp.StatusCode, body)
 	}
@@ -158,7 +158,7 @@ func TestPostUnseal_DevSealReturns400(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("POST unseal on dev seal: status = %d, want 400", resp.StatusCode)
 	}
@@ -171,7 +171,7 @@ func TestPostUnseal_MissingKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("POST unseal with no key: status = %d, want 400", resp.StatusCode)
 	}
@@ -185,7 +185,7 @@ func TestReady_Unsealed(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("ready (unsealed): status = %d, want 200; body: %s", resp.StatusCode, body)
 	}
@@ -207,7 +207,7 @@ func TestReady_Sealed(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("ready (sealed): status = %d, want 503; body: %s", resp.StatusCode, body)
 	}
@@ -222,7 +222,7 @@ func TestReady_Sealed(t *testing.T) {
 func TestReady_NoAuth(t *testing.T) {
 	ts, _, _ := newTestServer(t)
 	resp, _ := http.Get(ts.URL + "/v1/sys/ready")
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("ready without token: status = %d, want 200", resp.StatusCode)
 	}
@@ -246,7 +246,7 @@ func TestShamirUnsealFlow(t *testing.T) {
 			t.Fatalf("shard %d: %v", i, err)
 		}
 		respBody, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("shard %d: status = %d, body: %s", i, resp.StatusCode, respBody)
 		}
@@ -264,7 +264,7 @@ func TestShamirUnsealFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	respBody, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("threshold shard: status = %d, body: %s", resp.StatusCode, respBody)
 	}

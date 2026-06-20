@@ -103,6 +103,7 @@ func (p *TuckProvider) Resources(_ context.Context) []func() resource.Resource {
 		NewTokenRoleResource,
 		NewAppRoleRoleResource,
 		NewNamespaceResource,
+		NewMountResource,
 	}
 }
 

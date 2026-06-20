@@ -85,7 +85,7 @@ func (j *JWKS) refresh(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("jwt: fetch JWKS: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var raw jwksResponse
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {

@@ -404,7 +404,7 @@ func (c *realGraphClient) AddPassword(ctx context.Context, appObjectID, displayN
 	if err != nil {
 		return "", "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
@@ -442,7 +442,7 @@ func (c *realGraphClient) RemovePassword(ctx context.Context, appObjectID, keyID
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNoContent {
 		body, _ := io.ReadAll(resp.Body)

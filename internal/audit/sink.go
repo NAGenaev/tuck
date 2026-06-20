@@ -144,7 +144,7 @@ func (w *WebhookSink) Send(e Entry) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("webhook: HTTP %d", resp.StatusCode)
 	}

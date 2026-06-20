@@ -1,57 +1,52 @@
-# Contributor Covenant Code of Conduct
+# Кодекс поведения участников
 
-## Our Pledge
+## 1. Обязательства сообщества
 
-We as members, contributors, and leaders pledge to make participation in our
-community a harassment-free experience for everyone, regardless of age, body
-size, visible or invisible disability, ethnicity, sex characteristics, gender
-identity and expression, level of experience, education, socio-economic status,
-nationality, personal appearance, race, caste, colour, religion, or sexual
-identity and orientation.
+Участники, вкладчики и руководители проекта принимают на себя обязательство обеспечивать взаимодействие в рамках проекта, свободное от любых форм притеснений, независимо от возраста, физических особенностей, видимых или скрытых состояний здоровья, этнической принадлежности, половых характеристик, гендерной идентичности и самовыражения, уровня опыта, образования, социально-экономического статуса, гражданства, внешнего вида, расы, касты, цвета кожи, вероисповедания или сексуальной идентичности.
 
-We pledge to act and interact in ways that contribute to an open, welcoming,
-diverse, inclusive, and healthy community.
+Взаимодействие в рамках проекта осуществляется способами, способствующими формированию открытой, доброжелательной, разнообразной, инклюзивной и здоровой среды.
 
-## Our Standards
+---
 
-Examples of behaviour that contributes to a positive environment:
+## 2. Стандарты поведения
 
-* Demonstrating empathy and kindness toward other people
-* Being respectful of differing opinions, viewpoints, and experiences
-* Giving and gracefully accepting constructive feedback
-* Accepting responsibility and apologising to those affected by our mistakes
-* Focusing on what is best not just for us as individuals, but for the overall community
+### 2.1. Допустимое поведение
 
-Examples of unacceptable behaviour:
+- Проявление уважения к различным точкам зрения, мнениям и опыту
+- Конструктивная обратная связь и её корректное принятие
+- Принятие ответственности за допущенные ошибки и принесение извинений пострадавшим
+- Ориентация на интересы сообщества в целом, а не только на личные интересы
 
-* The use of sexualised language or imagery, and sexual attention or advances of any kind
-* Trolling, insulting or derogatory comments, and personal or political attacks
-* Public or private harassment
-* Publishing others' private information (physical or email addresses) without explicit permission
-* Other conduct which could reasonably be considered inappropriate in a professional setting
+### 2.2. Недопустимое поведение
 
-## Enforcement Responsibilities
+- Использование сексуализированных выражений, образов или нежелательного сексуального внимания
+- Троллинг, оскорбительные или уничижительные высказывания, личные и политические нападки
+- Публичное или частное преследование
+- Публикация персональных данных других лиц (физического адреса, электронной почты) без их явного согласия
+- Иное поведение, которое обоснованно может считаться неприемлемым в профессиональной среде
 
-Project maintainers are responsible for clarifying and enforcing our standards of
-acceptable behaviour and will take appropriate and fair corrective action in
-response to any behaviour that they deem inappropriate, threatening, offensive, or harmful.
+---
 
-## Scope
+## 3. Ответственность за соблюдение
 
-This Code of Conduct applies within all community spaces, and also applies when
-an individual is officially representing the community in public spaces.
+Руководители проекта несут ответственность за разъяснение и обеспечение соблюдения настоящих стандартов. При выявлении поведения, признанного неприемлемым, угрожающим, оскорбительным или причиняющим вред, принимаются соразмерные корректирующие меры.
 
-## Enforcement
+---
 
-Instances of abusive, harassing, or otherwise unacceptable behaviour may be
-reported to the project maintainer at **genaevlive@gmail.com**.
+## 4. Сфера применения
 
-All complaints will be reviewed and investigated promptly and fairly.
+Настоящий Кодекс распространяется на все пространства проекта, а также на случаи официального представления проекта участниками в публичных пространствах.
 
-All community leaders are obligated to respect the privacy and security of the
-reporter of any incident.
+---
 
-## Attribution
+## 5. Порядок рассмотрения жалоб
 
-This Code of Conduct is adapted from the [Contributor Covenant](https://www.contributor-covenant.org),
-version 2.1, available at https://www.contributor-covenant.org/version/2/1/code_of_conduct.html.
+Сообщения о случаях оскорбительного, притесняющего или иного неприемлемого поведения направляются руководителю проекта по адресу: **genaevlive@gmail.com**.
+
+Все обращения рассматриваются оперативно и беспристрастно. Конфиденциальность информации о заявителе обеспечивается в обязательном порядке.
+
+---
+
+## 6. Основание
+
+Настоящий Кодекс разработан на основе [Соглашения участников](https://www.contributor-covenant.org), версия 2.1.

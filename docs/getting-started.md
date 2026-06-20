@@ -1,19 +1,19 @@
-# Getting Started with Tuck
+# Tuck — Руководство по начальному развёртыванию
 
-This guide takes you from zero to a working Tuck installation in under 10 minutes.
-
----
-
-## Prerequisites
-
-- Go 1.21+ (to build from source) **or** a pre-built binary from [Releases](https://github.com/NAGenaev/tuck/releases)
-- For Kubernetes deployment: `kubectl` + a running cluster, `helm` 3.x
+Настоящий документ описывает порядок развёртывания и начальной настройки системы Tuck.
 
 ---
 
-## 1. Install
+## 1. Предварительные требования
 
-### Option A — Pre-built binary
+- Go 1.25+ (для сборки из исходного кода) **или** готовый исполняемый файл из раздела [Releases](https://github.com/NAGenaev/tuck/releases)
+- Для развёртывания в Kubernetes: `kubectl` + работающий кластер, `helm` 3.x
+
+---
+
+## 2. Установка
+
+### 2.1. Использование готового исполняемого файла
 
 ```sh
 # Linux / macOS (amd64)
@@ -25,7 +25,7 @@ curl -Lo tuckcli https://github.com/NAGenaev/tuck/releases/latest/download/tuckc
 chmod +x tuckcli && mv tuckcli /usr/local/bin/
 ```
 
-### Option B — Build from source
+### 2.2. Сборка из исходного кода
 
 ```sh
 git clone https://github.com/NAGenaev/tuck
@@ -35,48 +35,50 @@ go install ./cmd/tuck ./cmd/tuckcli
 
 ---
 
-## 2. Run locally (dev mode)
+## 3. Запуск в режиме разработки
 
-Dev mode auto-unseals on every start — perfect for local development and testing.
+Режим разработки обеспечивает автоматическое снятие печати при каждом запуске — предназначен для локальной разработки и тестирования.
 
 ```sh
 tuck --seal-type=dev --tls-auto
 ```
 
-Expected output:
+Ожидаемый вывод:
 
 ```
 tuck: TLS enabled (auto-generated self-signed — dev only)
 ==========================================================
-ROOT TOKEN (shown once — store it securely):
+ROOT TOKEN (отображается однократно — сохранить в защищённом хранилище):
   tuck_XXXXXXXXXXXXXXXXXXXX
 ==========================================================
 tuck: unsealed (dev seal) — https://127.0.0.1:8200
 ```
 
-Copy the root token — you'll need it for every request.
+Корневой токен необходим для всех последующих операций.
+
+> Режим разработки не предназначен для использования в производственных средах.
 
 ---
 
-## 3. Store and retrieve your first secret
+## 4. Запись и чтение первого секрета
 
 ```sh
 export TUCK_ADDR=https://127.0.0.1:8200
-export TUCK_TOKEN=tuck_XXXXXXXXXXXXXXXXXXXX   # paste your root token
+export TUCK_TOKEN=tuck_XXXXXXXXXXXXXXXXXXXX
 
-# Store a secret
+# Запись секрета
 tuckcli kv put myapp/db-password "s3cr3t"
 
-# Read it back
+# Чтение секрета
 tuckcli kv get myapp/db-password
 # {"path":"myapp/db-password","value":"s3cr3t"}
 
-# List secrets under a prefix
+# Перечисление секретов по префиксу
 tuckcli kv list myapp/
 # {"keys":["db-password"]}
 ```
 
-Or with `curl` (skip TLS verification for the self-signed cert):
+Вариант с использованием `curl` (пропуск проверки TLS для самоподписанного сертификата):
 
 ```sh
 curl -sk -X PUT https://127.0.0.1:8200/v1/secret/myapp/db-password \
@@ -86,32 +88,32 @@ curl -sk https://127.0.0.1:8200/v1/secret/myapp/db-password \
   -H "X-Tuck-Token: $TUCK_TOKEN"
 ```
 
-Open the dashboard at **https://127.0.0.1:8200/ui/** (accept the self-signed cert warning).
+Веб-интерфейс управления доступен по адресу: **https://127.0.0.1:8200/ui/**
 
 ---
 
-## 4. Create a scoped token and policy
+## 5. Создание областного токена и политики
 
-Give an application read-only access to `myapp/*`:
+Предоставление приложению доступа только для чтения к пространству `myapp/*`:
 
 ```sh
-# Create a policy
-tuckcli policy put myapp-ro '{"paths":{"myapp/*":{"capabilities":["read","list"]}}}'
+# Создание политики
+tuckcli policy put myapp-ro '[{"path":"myapp/*","capabilities":["read","list"]}]'
 
-# Create a short-lived token with that policy
+# Создание кратковременного токена с указанной политикой
 tuckcli token create --name=myapp --policy=myapp-ro --ttl=24h
 # {"id":"tuck_YYYY...","ttl":"24h","policies":["myapp-ro"]}
 
-# Use the new token
-TUCK_TOKEN=tuck_YYYY... tuckcli kv get myapp/db-password   # OK
+# Проверка разграничения доступа
+TUCK_TOKEN=tuck_YYYY... tuckcli kv get myapp/db-password   # Разрешено
 TUCK_TOKEN=tuck_YYYY... tuckcli kv put myapp/x y           # 403 Forbidden
 ```
 
 ---
 
-## 5. Use a config file (recommended for production)
+## 6. Конфигурационный файл (рекомендуется для производственной среды)
 
-Instead of long flag lists, create `tuck.yaml`:
+Вместо набора флагов командной строки создаётся файл `tuck.yaml`:
 
 ```yaml
 addr: "0.0.0.0:8200"
@@ -124,41 +126,36 @@ tls:
 seal:
   type: "shamir"
   shamir:
-    n: 5   # total shares
-    k: 3   # shares required to unseal
+    n: 5   # общее число долей
+    k: 3   # число долей, необходимых для снятия печати
 ```
 
-Then start with just:
+Запуск:
 
 ```sh
 tuck --config=/etc/tuck/tuck.yaml
 ```
 
-CLI flags override config file values. The `TUCK_CONFIG` environment variable sets the default config path.
+Флаги командной строки имеют приоритет над значениями конфигурационного файла. Путь к конфигурационному файлу по умолчанию задаётся переменной среды `TUCK_CONFIG`.
 
-### Sensitive values
-
-Never put secrets in the config file. Use environment variables instead:
+**Требования к конфиденциальным параметрам:** значения секретов не допускается помещать в конфигурационный файл. Используются переменные среды:
 
 ```sh
-# Transit seal token — never pass via --seal-transit-token (visible in ps)
 export TUCK_TRANSIT_TOKEN=hvs.XXXXXX
 tuck --config=/etc/tuck/tuck.yaml
 ```
 
 ---
 
-## 6. Production: Shamir seal
-
-Shamir splits the root key into N shares — K are needed to unseal:
+## 7. Производственная среда: схема Шамира
 
 ```sh
-tuck --config=/etc/tuck/tuck.yaml   # first start generates shares
+tuck --config=/etc/tuck/tuck.yaml   # первый запуск формирует доли
 ```
 
 ```
 ROOT TOKEN: tuck_...
-SHAMIR SHARES (distribute to operators):
+ДОЛИ ШАМИРА (распределить операторам):
   [1] a1b2c3...
   [2] d4e5f6...
   [3] ...
@@ -166,36 +163,34 @@ SHAMIR SHARES (distribute to operators):
   [5] ...
 ```
 
-Distribute shares to separate operators. After a restart:
+После перезапуска для снятия печати:
 
 ```sh
-# Each operator submits their shard via CLI or dashboard
-tuckcli unseal <shard-1>
-tuckcli unseal <shard-2>
-tuckcli unseal <shard-3>
+tuckcli unseal <доля-1>
+tuckcli unseal <доля-2>
+tuckcli unseal <доля-3>
 # tuck: unsealed
 ```
 
 ---
 
-## 7. Deploy on Kubernetes
+## 8. Развёртывание в Kubernetes
 
-### Helm (recommended)
+### 8.1. Helm (рекомендуемый способ)
 
 ```sh
-helm repo add tuck https://nagenaev.github.io/tuck
-helm install tuck tuck/tuck \
+helm install tuck deploy/helm/tuck \
   --namespace tuck-system --create-namespace \
   --set seal.type=awskms \
   --set seal.awskms.keyId=alias/tuck-seal \
   --set seal.awskms.region=us-east-1
 ```
 
-Tuck auto-unseals using IRSA (IAM Roles for Service Accounts) — no manual unseal steps.
+При использовании AWS KMS на EKS автоматическое снятие печати осуществляется через IRSA. Ручное снятие печати не требуется.
 
-### TuckSecret CRD
+### 8.2. CRD TuckSecret
 
-Sync a Tuck secret into a native Kubernetes Secret:
+Синхронизация секрета Tuck в нативный Kubernetes Secret:
 
 ```yaml
 apiVersion: tuck.io/v1alpha1
@@ -216,9 +211,9 @@ kubectl get secret db-password -n myapp -o jsonpath='{.data.password}' | base64 
 # s3cr3t
 ```
 
-### Agent injector (sidecar)
+### 8.3. Инжектор агента
 
-Annotate your Pod to inject secrets directly into a tmpfs volume (secrets never touch etcd):
+Аннотирование пода для внедрения секретов в том tmpfs (без записи в etcd):
 
 ```yaml
 metadata:
@@ -231,12 +226,12 @@ metadata:
 
 ---
 
-## 8. Dynamic credentials
+## 9. Динамические учётные данные
 
-Instead of static passwords, generate short-lived credentials on demand:
+Генерация краткосрочных учётных данных по запросу вместо статических паролей:
 
 ```sh
-# Database (PostgreSQL)
+# PostgreSQL
 tuckcli db creds my-pg-role
 # {"username":"v-myapp-abc123","password":"A1b2C3...","lease_duration":"1h"}
 
@@ -245,61 +240,57 @@ tuckcli aws creds my-s3-role
 # {"access_key":"AKIA...","secret_key":"...","session_token":"...","lease_duration":"1h"}
 ```
 
-Credentials expire automatically. No rotation scripts needed.
+Учётные данные истекают автоматически. Дополнительные скрипты ротации не требуются.
 
 ---
 
-## 9. PKI — issue a TLS certificate
+## 10. Выдача TLS-сертификатов через PKI
 
 ```sh
-# Issue a cert for a service
 tuckcli pki issue my-role --cn=api.internal --ttl=720h --alt-name=api.svc.cluster.local
-# -----BEGIN CERTIFICATE-----
-# ...
 ```
 
 ---
 
-## 10. Next steps
+## 11. Справочная информация
 
-| Goal | Where to look |
-|---|---|
-| Full CLI reference | `tuckcli --help` |
-| API reference | `https://127.0.0.1:8200/openapi.json` |
-| HA cluster setup | `docs/RUNBOOK.md` |
-| Security model | `docs/THREAT_MODEL.md` |
-| Configuration reference | `docs/config-reference.md` (all YAML fields) |
-| Contributing | `CONTRIBUTING.md` |
+| Задача | Источник |
+|--------|----------|
+| Полный справочник CLI | `tuckcli --help` |
+| Справочник API | `https://127.0.0.1:8200/openapi.json` |
+| Настройка HA-кластера | `docs/RUNBOOK.md` |
+| Модель безопасности | `docs/THREAT_MODEL.md` |
+| Участие в разработке | `CONTRIBUTING.md` |
 
 ---
 
-## Quick reference
+## 12. Краткий справочник команд
 
 ```sh
-# Server
+# Сервер
 tuck --config=tuck.yaml
-tuck --seal-type=dev --tls-auto          # dev mode
+tuck --seal-type=dev --tls-auto          # режим разработки
 
-# Secrets
-tuckcli kv put <path> <value>
-tuckcli kv get <path>
-tuckcli kv delete <path>
-tuckcli kv list [prefix]
+# Секреты
+tuckcli kv put <путь> <значение>
+tuckcli kv get <путь>
+tuckcli kv delete <путь>
+tuckcli kv list [префикс]
 
-# Tokens
-tuckcli token create --policy=<p> --ttl=24h
+# Токены
+tuckcli token create --policy=<политика> --ttl=24h
 tuckcli token lookup-self
 tuckcli token revoke <id>
 
-# Dynamic credentials
-tuckcli db creds <role>
-tuckcli aws creds <role>
+# Динамические учётные данные
+tuckcli db creds <роль>
+tuckcli aws creds <роль>
 
-# Crypto
-tuckcli transit encrypt <key> <plaintext>
-tuckcli pki issue <role> --cn=<name>
-tuckcli totp code <key>
+# Криптографические операции
+tuckcli transit encrypt <ключ> <открытый_текст>
+tuckcli pki issue <роль> --cn=<имя>
+tuckcli totp code <ключ>
 
-# Auth
+# Аутентификация
 tuckcli auth approle login --role-id=... --secret-id=...
 ```

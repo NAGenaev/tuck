@@ -1,160 +1,167 @@
-# Tuck — Threat Model
+# Tuck — Модель угроз
 
-> Version: 0.9 · Last updated: 2026-06-11
-
----
-
-## 1. Overview
-
-Tuck is a Kubernetes-native secrets manager: single binary, bbolt backend, AES-256-GCM envelope encryption.
-This document enumerates protected assets, trust boundaries, threat actors, attack scenarios, and mitigations.
+> Версия: 1.35 · Дата актуализации: 2026-06-20
 
 ---
 
-## 2. Assets
+## 1. Обзор
 
-| Asset | Sensitivity | Location |
-|---|---|---|
-| Root key | **Critical** | Memory only (cleared after unseal) |
-| Barrier DEK (data encryption key) | **Critical** | Memory only (cleared on seal) |
-| Encrypted keyring `barrier/keyring` | High | bbolt file, disk |
-| Encrypted secret values | High | bbolt file, disk |
-| Root token | **Critical** | Shown once at init; caller must protect |
-| Service tokens | High | Encrypted in bbolt; ID exposed in headers |
-| Shamir shares | **Critical** | Distributed to operators; combined reconstruct root key |
-| Audit log | High | Disk / stdout |
-| TLS private key | High | Disk (operator-provided) or ephemeral (self-signed) |
+Tuck — система управления секретами для Kubernetes: единый исполняемый файл, хранилище BoltDB, конвертное шифрование AES-256-GCM. Настоящий документ описывает защищаемые активы, границы доверия, модели нарушителей, сценарии атак и реализованные меры защиты.
 
 ---
 
-## 3. Trust Boundaries
+## 2. Защищаемые активы
+
+| Актив | Уровень критичности | Местонахождение |
+|-------|--------------------|--------------------|
+| Корневой ключ | **Критический** | Только в памяти (уничтожается после снятия печати) |
+| Ключ шифрования данных (КШД) | **Критический** | Только в памяти (уничтожается при запечатывании) |
+| Зашифрованный реестр ключей `barrier/keyring` | Высокий | Файл BoltDB, диск |
+| Зашифрованные значения секретов | Высокий | Файл BoltDB, диск |
+| Корневой токен | **Критический** | Выводится однократно при инициализации; хранение — ответственность оператора |
+| Сервисные токены | Высокий | Зашифрованы в BoltDB; идентификатор токена передаётся в заголовках |
+| Доли Шамира | **Критический** | Распределены операторам; совокупность k долей восстанавливает корневой ключ |
+| Журнал аудита | Высокий | Диск / стандартный вывод |
+| Закрытый ключ TLS | Высокий | Диск (предоставленный оператором) или эфемерный (самоподписанный) |
+
+---
+
+## 3. Границы доверия
 
 ```
-┌──────────────── Cluster boundary ──────────────────────┐
-│                                                         │
-│   Operators / CI   ──HTTPS──►  Tuck server             │
-│                               │                        │
-│   K8s workloads   ──SA JWT──► │  (k8s auth)            │
-│                               │                        │
-│   Tuck Operator   ──HTTPS──►  │  (reads secrets)       │
-│                               │                        │
-│                            [bbolt]  ← encrypted at rest│
-│                               │                        │
-│             ┌─────────────────┘                        │
-│        Transit Seal / KMS  (external, optional)        │
-└─────────────────────────────────────────────────────────┘
+┌──────────────── Граница кластера ──────────────────────────┐
+│                                                              │
+│   Операторы / CI   ──HTTPS──►  Сервер Tuck                 │
+│                               │                             │
+│   Рабочие нагрузки K8s  ──SA JWT──►│  (аутентификация K8s) │
+│                               │                             │
+│   Оператор Tuck    ──HTTPS──►  │  (чтение секретов)        │
+│                               │                             │
+│                            [BoltDB]  ← зашифровано в покое │
+│                               │                             │
+│             ┌─────────────────┘                             │
+│         Transit Seal / KMS  (внешний, опциональный)        │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-**In-scope trust boundary crossings:**
-- HTTP(S) API (bearer token + optional mTLS)
-- Kubernetes TokenReview (SA JWT → Tuck token)
-- Seal backends (dev file, Shamir memory, Transit HTTP)
-- bbolt database file (disk I/O, snapshot transfer)
+**Пересечения границ доверия, включённые в область анализа:**
+- HTTP(S) API (токен-носитель + опциональный mTLS)
+- Kubernetes TokenReview (SA JWT → токен Tuck)
+- Бэкенды снятия печати (dev-файл, память Шамира, Transit HTTP)
+- Файл базы данных BoltDB (дисковый ввод/вывод, передача снимков)
 
-**Out of scope (delegated):**
-- K8s etcd encryption at rest (operator must enable)
-- Kubernetes RBAC on the namespace where K8s Secrets land
-- Network policy between pods
-- HSM / cloud KMS internal security (Transit seal)
-
----
-
-## 4. Threat Actors
-
-| Actor | Capability | Scenario |
-|---|---|---|
-| External attacker | Network access to exposed port | Credential brute-force, DoS |
-| Compromised workload | Valid K8s SA JWT | Access to only bound paths |
-| Malicious insider (operator) | Physical access to node / bbolt file | Offline decryption attempt |
-| Compromised operator laptop | Stolen Shamir share | Partial key reconstruction |
-| Compromised CI pipeline | Valid short-lived token | Read secrets within policy |
-| Rogue Kubernetes node | Read pod memory / disk | Dump process memory, read bbolt |
+**Вне области анализа (делегировано):**
+- Шифрование etcd Kubernetes в покое (ответственность оператора кластера)
+- Kubernetes RBAC в пространстве имён, где размещаются Kubernetes Secrets
+- Сетевые политики между подами
+- Внутренняя безопасность HSM / облачного KMS (Transit seal)
 
 ---
 
-## 5. Attack Scenarios
+## 4. Модели нарушителей
 
-### 5.1 Brute-Force Token Guessing
-- **Risk:** High without mitigation; tokens are 32 random bytes → 2²⁵⁶ search space
-- **Token format:** `tuck_` + base64url(32 random bytes) — not guessable in practice
-- **Mitigation:** Per-IP token bucket rate limiter (M6, `internal/ratelimit`); 401 returns no info on whether token exists vs. expired
-- **Residual:** Tokens stored by ID in barrier; a leaked bbolt snapshot reveals encrypted token blobs but not values
-
-### 5.2 bbolt File Exfiltration (Disk Access)
-- **Risk:** Attacker with filesystem access reads `tuck.db`
-- **Data exposed:** Encrypted blobs only. AES-256-GCM with random nonce per write.
-- **Not exposed without root key:** any plaintext secret, token values, policy rules
-- **Mitigation:** AES-256-GCM; root key never persisted (dev seal is explicitly dev-only); snapshot backup endpoint requires root token
-- **Residual:** Key names (paths) are stored in plaintext as bbolt keys → reveals secret namespacing. Future: encrypt key names.
-
-### 5.3 Memory Dump (Cold-Boot / VM Snapshot)
-- **Risk:** Attacker with hypervisor or physical access dumps process memory
-- **Data exposed:** Root key and DEK are in heap between unseal and seal
-- **Mitigation (M6):** `clear()` called on root key slice immediately after `barrier.Unseal()`. DEK zeroed on `barrier.Seal()`.
-- **Residual:** Go garbage collector may copy slices before zeroing; `sync.Pool` reuse not used for key material. Go runtime doesn't `mlockall` — keys can be swapped to disk on Linux unless `--mlock` is added (future: SEC-9).
-
-### 5.4 Shamir Share Compromise
-- **Risk:** One or more Shamir shares are stolen
-- **k-of-n threshold:** Attacker needs ≥ k shares; k ≤ n/2 → majority compromise required
-- **Mitigation:** Shares are only produced once at init and at `POST /v1/sys/rotate`; rotate immediately on suspected compromise
-- **Residual:** Shares are base64url-encoded 33-byte values; protect like private keys
-
-### 5.5 Transit Seal Token Compromise
-- **Risk:** Vault/KMS token stolen → attacker can call decrypt endpoint
-- **Mitigation:** The wrapped key ciphertext is stored locally; attacker needs both the ciphertext file AND the transit token to get the root key
-- **Residual:** Rotate transit token and rekey Tuck immediately on suspected compromise
-
-### 5.6 Audit Log Tampering
-- **Risk:** Attacker deletes or edits audit entries to cover access
-- **Mitigation (M6):** SHA-256 hash chain — each entry includes `prev_hash`; offline verification detects any gap or modification
-- **Residual:** Attacker who controls the Tuck process can truncate the log file; stream to an immutable sink (S3, Loki) in production
-
-### 5.7 API Replay Attack
-- **Risk:** Attacker captures valid request and replays it
-- **Not applicable for reads:** GET /v1/secret/* is idempotent; replay returns same data
-- **Mitigation for writes:** TLS prevents capture; token revocation invalidates stolen tokens
-- **Residual:** No request signing or nonce; rely on TLS + short-lived tokens
-
-### 5.8 DoS — Slowloris / Resource Exhaustion
-- **Mitigation (M5):** `ReadHeaderTimeout: 5s`, `ReadTimeout: 30s`, `WriteTimeout: 30s`, `MaxHeaderBytes: 1MiB`
-- **Mitigation (M6):** Per-IP rate limiting (token bucket)
-- **Residual:** No global connection concurrency limit; consider `net/http` `http.Server.MaxConnsPerHost` or a reverse proxy in production
-
-### 5.9 Operator CRD Privilege Escalation
-- **Risk:** Compromised operator pod reads arbitrary secrets if RBAC is too broad
-- **Mitigation:** Operator authenticates via K8s SA JWT → bound Tuck role with minimal policies; TuckSecret spec must name exact `tuckPath`
-- **Residual:** A misconfigured role binding can grant broad read; enforce least-privilege via operator RBAC review
+| Нарушитель | Возможности | Сценарий |
+|------------|-------------|----------|
+| Внешний злоумышленник | Сетевой доступ к открытому порту | Перебор учётных данных, атака отказа в обслуживании |
+| Скомпрометированная рабочая нагрузка | Действительный JWT сервисного аккаунта K8s | Доступ только к привязанным путям |
+| Злонамеренный инсайдер (оператор) | Физический доступ к узлу / файлу BoltDB | Попытка автономной расшифровки |
+| Скомпрометированная рабочая станция оператора | Похищенная доля Шамира | Частичное восстановление ключа |
+| Скомпрометированный конвейер CI | Действительный краткосрочный токен | Чтение секретов в рамках политики |
+| Скомпрометированный узел Kubernetes | Чтение памяти пода / диска | Дамп памяти процесса, чтение BoltDB |
 
 ---
 
-## 6. In Scope / Out of Scope
+## 5. Сценарии атак и меры защиты
 
-| Scenario | In Scope |
-|---|---|
-| API endpoint authentication and authorisation | ✅ |
-| Secret data encryption at rest | ✅ |
-| Root key and DEK memory hygiene | ✅ |
-| TLS for API transport | ✅ |
-| Audit log integrity | ✅ |
-| Shamir secret sharing correctness | ✅ |
-| K8s SA JWT validation (TokenReview) | ✅ |
-| Physical node security | ❌ (host OS concern) |
-| K8s etcd encryption | ❌ (cluster operator concern) |
-| Network policy (which pods can reach Tuck) | ❌ (cluster operator concern) |
-| HSM / cloud KMS internal security | ❌ (vendor concern) |
-| Go runtime memory safety | ❌ (upstream Go concern) |
+### 5.1. Перебор токенов
+
+- **Уровень риска:** Высокий без мер защиты; токены — 32 случайных байта → пространство поиска 2²⁵⁶
+- **Формат токена:** `tuck_` + base64url(32 случайных байта) — практически не поддаётся перебору
+- **Реализованные меры:** Token bucket на IP-адрес (`internal/ratelimit`); код ответа 401 не раскрывает информацию о существовании или истечении токена
+- **Остаточный риск:** Токены хранятся по идентификатору в барьере; утечка снимка BoltDB раскрывает зашифрованные блоки токенов, но не их значения
+
+### 5.2. Утечка файла BoltDB (доступ к файловой системе)
+
+- **Уровень риска:** Злоумышленник с доступом к файловой системе читает `tuck.db`
+- **Раскрываемые данные:** Только зашифрованные блоки. AES-256-GCM со случайным nonce для каждой записи
+- **Не раскрывается без корневого ключа:** никакой открытый текст секретов, значения токенов, правила политик
+- **Реализованные меры:** AES-256-GCM; корневой ключ не сохраняется (dev seal явно предназначен только для разработки); эндпоинт резервного копирования требует корневого токена
+- **Остаточный риск:** Имена ключей (пути) хранятся в открытом виде как ключи BoltDB → раскрывает структуру пространства имён секретов
+
+### 5.3. Дамп памяти (холодная загрузка / снимок ВМ)
+
+- **Уровень риска:** Злоумышленник с доступом гипервизора или физическим доступом производит дамп памяти процесса
+- **Раскрываемые данные:** Корневой ключ и КШД находятся в куче между снятием и наложением печати
+- **Реализованные меры:** `clear()` вызывается для среза корневого ключа немедленно после `barrier.Unseal()`. КШД обнуляется при `barrier.Seal()`
+- **Остаточный риск:** Сборщик мусора Go может скопировать срезы до обнуления; `mlockall` не реализован — ключи могут быть выгружены на диск (запланировано)
+
+### 5.4. Компрометация долей Шамира
+
+- **Уровень риска:** Похищена одна или несколько долей Шамира
+- **Пороговый механизм k-of-n:** Злоумышленнику необходимо ≥ k долей; k ≤ n/2 → требуется компрометация большинства
+- **Реализованные меры:** Доли создаются однократно при инициализации и при `POST /v1/sys/rotate`; при подозрении на компрометацию необходима немедленная ротация
+- **Остаточный риск:** Доли — 33-байтные значения в кодировке base64url; требуют защиты, аналогичной закрытым ключам
+
+### 5.5. Компрометация токена Transit Seal
+
+- **Уровень риска:** Похищен токен Vault/KMS → злоумышленник может вызвать эндпоинт дешифрования
+- **Реализованные меры:** Зашифрованный ключ хранится локально; злоумышленнику необходимы и файл шифротекста, и токен transit для получения корневого ключа
+- **Остаточный риск:** При подозрении на компрометацию — немедленно выполнить ротацию токена transit и перевыпустить ключи Tuck
+
+### 5.6. Фальсификация журнала аудита
+
+- **Уровень риска:** Злоумышленник удаляет или редактирует записи аудита для сокрытия следов доступа
+- **Реализованные меры:** Цепочка хэшей SHA-256 — каждая запись содержит `prev_hash`; автономная верификация обнаруживает любой разрыв или изменение
+- **Остаточный риск:** Злоумышленник, контролирующий процесс Tuck, может усечь файл журнала; в производственной среде рекомендуется потоковая передача в неизменяемое хранилище (S3, Loki)
+
+### 5.7. Атака повторного воспроизведения API
+
+- **Уровень риска:** Злоумышленник перехватывает действительный запрос и воспроизводит его
+- **Неприменимо для операций чтения:** GET /v1/secret/* идемпотентен; повторное воспроизведение возвращает те же данные
+- **Реализованные меры для операций записи:** TLS предотвращает перехват; отзыв токена аннулирует похищенные токены
+- **Остаточный риск:** Подписание запросов и nonce не реализованы; защита обеспечивается TLS + краткосрочными токенами
+
+### 5.8. Отказ в обслуживании — Slowloris / исчерпание ресурсов
+
+- **Реализованные меры:** `ReadHeaderTimeout: 5s`, `ReadTimeout: 30s`, `WriteTimeout: 30s`, `MaxHeaderBytes: 1MiB`; ограничение частоты запросов на IP (token bucket)
+- **Остаточный риск:** Отсутствует глобальное ограничение конкурентных соединений; в производственной среде рекомендуется обратный прокси-сервер
+
+### 5.9. Эскалация привилегий через CRD оператора
+
+- **Уровень риска:** Скомпрометированный под оператора читает произвольные секреты при чрезмерно широких правах RBAC
+- **Реализованные меры:** Оператор аутентифицируется через JWT SA K8s → привязанная роль Tuck с минимальными политиками; в спецификации TuckSecret необходимо явно указывать `tuckPath`
+- **Остаточный риск:** Неправильно настроенная привязка роли может предоставить широкие права чтения; требуется проверка RBAC оператора на соответствие принципу минимальных привилегий
 
 ---
 
-## 7. Security Properties Summary
+## 6. Границы ответственности
 
-| Property | Mechanism |
-|---|---|
-| Confidentiality at rest | AES-256-GCM envelope encryption |
-| Confidentiality in transit | TLS 1.2+ ECDHE-only ciphers |
-| Authentication | Bearer token (random 32 bytes) or K8s SA JWT |
-| Authorisation | Path-glob ACL policies |
-| Key splitting | Shamir's Secret Sharing over GF(256) |
-| Audit | Tamper-evident SHA-256 hash chain |
-| Rate limiting | Per-IP token bucket |
-| Memory hygiene | `clear()` on root key after use; barrier key zeroed on seal |
+| Сценарий | Входит в область ответственности |
+|----------|----------------------------------|
+| Аутентификация и авторизация эндпоинтов API | ✅ |
+| Шифрование данных секретов в покое | ✅ |
+| Управление памятью корневого ключа и КШД | ✅ |
+| TLS для транспорта API | ✅ |
+| Целостность журнала аудита | ✅ |
+| Корректность разделения секрета по Шамиру | ✅ |
+| Валидация JWT Kubernetes SA (TokenReview) | ✅ |
+| Безопасность физического узла | ❌ (ответственность ОС хоста) |
+| Шифрование etcd Kubernetes | ❌ (ответственность оператора кластера) |
+| Сетевые политики (какие поды могут обращаться к Tuck) | ❌ (ответственность оператора кластера) |
+| Внутренняя безопасность HSM / облачного KMS | ❌ (ответственность поставщика) |
+| Безопасность памяти среды выполнения Go | ❌ (ответственность upstream Go) |
+
+---
+
+## 7. Сводка свойств безопасности
+
+| Свойство | Механизм реализации |
+|----------|---------------------|
+| Конфиденциальность в покое | Конвертное шифрование AES-256-GCM |
+| Конфиденциальность при передаче | TLS 1.2+, только шифры ECDHE |
+| Аутентификация | Токен-носитель (32 случайных байта) или JWT Kubernetes SA |
+| Авторизация | Политики ACL с glob-сопоставлением путей |
+| Разделение ключа | Разделение секрета по Шамиру над GF(256) |
+| Аудит | Цепочка хэшей SHA-256, защищённая от подделки |
+| Ограничение частоты запросов | Token bucket на IP-адрес |
+| Управление памятью | `clear()` для корневого ключа после использования; обнуление ключа барьера при запечатывании |

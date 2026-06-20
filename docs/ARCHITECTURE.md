@@ -1,272 +1,272 @@
-# Tuck — Architecture
+# Tuck — Архитектура системы
 
-## What is Tuck
+## 1. Назначение и принципы построения
 
-A minimalist secrets manager written in Go. Anti-Vault: one binary, no external DB, no Consul, no etcd. Designed to run in Kubernetes next to workloads.
+Tuck — специализированная система управления секретами, реализованная в виде единого исполняемого модуля на языке Go.
 
-**Principles:**
-- Single external runtime dependency: bbolt (embedded BoltDB). Raft mode adds Hashicorp Raft (pure Go, no external process).
-- No gRPC frameworks, no client-go in server runtime.
-- Everything stored is AES-256-GCM encrypted — physical storage never sees plaintext.
+**Ключевые принципы архитектуры:**
+
+- Единственная внешняя зависимость времени выполнения — BoltDB (bbolt, встроенная БД). Режим Raft добавляет Hashicorp Raft (чистый Go, без внешних процессов).
+- Отсутствие фреймворков gRPC и библиотеки client-go в среде выполнения сервера.
+- Все хранимые данные зашифрованы AES-256-GCM — физический уровень хранения никогда не содержит открытый текст.
 
 ---
 
-## Package map
+## 2. Карта пакетов
 
 ```
 cmd/
-  tuck/             — HTTP server (entry point)
-  tuckcli/          — CLI client
-  tuck-operator/    — Kubernetes operator (TuckSecret CRD)
-  tuck-injector/    — MutatingWebhook server
-  tuck-agent/       — init-container: fetches secrets, writes to tmpfs
+  tuck/             — HTTP-сервер (точка входа)
+  tuckcli/          — CLI-клиент
+  tuck-operator/    — Оператор Kubernetes (CRD TuckSecret)
+  tuck-injector/    — Сервер MutatingWebhook
+  tuck-agent/       — Init-контейнер: получает секреты, записывает в tmpfs
 
 deploy/
-  crd/              — TuckSecret CRD manifest
-  server/           — Tuck server in K8s (dev seal) + RBAC
-  operator/         — operator deployment
-  webhook/          — MutatingWebhookConfiguration + cert-manager cert
-  helm/tuck/        — Helm chart (server + operator + optional injector)
+  crd/              — Манифест CRD TuckSecret
+  server/           — Сервер Tuck в K8s (dev seal) + RBAC
+  operator/         — Развёртывание оператора
+  webhook/          — MutatingWebhookConfiguration + сертификат cert-manager
+  helm/tuck/        — Helm-чарт (сервер + оператор + опциональный инжектор)
 
 internal/
-  physical/         — physical layer: bbolt backend, in-memory (tests)
-  physical/raft/    — Raft-replicated backend (3–5 node HA cluster)
-  barrier/          — cryptographic barrier: AES-256-GCM, sealed/unsealed state
-  seal/             — root-key lifecycle: dev / shamir / transit / awskms / gcpkms
-  shamir/           — Shamir's Secret Sharing in GF(256): Split/Combine
-  core/             — orchestration: all engine managers, KV, identity
-  token/            — token model: generation, TTL, storage in barrier
-  wrapping/         — response wrapping: single-use tuck_wrap_ tokens; wrap/unwrap/lookup/revoke
-  cubbyhole/        — per-token private storage; auto-purged on token revoke/expiry
-  policy/           — ACL: policies, glob path matching, capability check
-  kvv2/             — KV v2: versioned secrets, CAS, soft-delete, destroy
-  api/              — HTTP layer: routing, middleware, serialization
-  audit/            — tamper-evident audit log (SHA-256 hash chain)
-  metrics/          — Prometheus metrics
-  ratelimit/        — per-IP token bucket
-  telemetry/        — OpenTelemetry tracing (OTLP)
-  tlsutil/          — TLS helpers (self-signed ECDSA, custom cert)
-  ui/               — embedded web dashboard (go:embed)
-  k8s/              — Kubernetes TokenReview client + RoleStore
-  operator/         — TuckSecret CRD controller (leader election, conditions)
-  injector/         — MutatingWebhook: pod mutation, JSON Patch builder
+  physical/         — Физический уровень: бэкенд bbolt, in-memory (тесты)
+  physical/raft/    — Бэкенд с репликацией Raft (HA-кластер 3–5 узлов)
+  barrier/          — Криптографический барьер: AES-256-GCM, состояния sealed/unsealed
+  seal/             — Жизненный цикл корневого ключа: dev / shamir / transit / awskms / gcpkms / azurekv
+  shamir/           — Разделение секрета по Шамиру в GF(256): Split/Combine
+  core/             — Оркестрация: все менеджеры движков, KV, идентификация
+  token/            — Модель токена: генерация, TTL, хранение в барьере
+  wrapping/         — Оборачивание ответов: одноразовые токены tuck_wrap_; wrap/unwrap/lookup/revoke
+  cubbyhole/        — Приватное хранилище токена; автоматически уничтожается при отзыве/истечении токена
+  policy/           — ACL: политики, glob-сопоставление путей, проверка прав
+  kvv2/             — KV v2: версионированные секреты, CAS, мягкое удаление, уничтожение
+  api/              — HTTP-уровень: маршрутизация, middleware, сериализация
+  audit/            — Журнал аудита с цепочкой хэшей SHA-256
+  metrics/          — Метрики Prometheus
+  ratelimit/        — Token bucket на IP-адрес
+  telemetry/        — Трассировка OpenTelemetry (OTLP)
+  tlsutil/          — Вспомогательные функции TLS (самоподписанный ECDSA, пользовательский сертификат)
+  ui/               — Встроенная веб-панель управления (go:embed)
+  k8s/              — Клиент Kubernetes TokenReview + RoleStore
+  operator/         — CRD-контроллер TuckSecret (выбор лидера, условия статуса)
+  injector/         — MutatingWebhook: изменение пода, построитель JSON Patch
   auth/
-    jwt/            — JWT / OIDC auth (JWKS fetcher, role matching)
-    approle/        — AppRole auth (role_id + secret_id)
-    ldap/           — LDAP / Active Directory auth (bind-search-bind, group→policy roles)
+    jwt/            — JWT / OIDC аутентификация (загрузчик JWKS, сопоставление ролей)
+    approle/        — AppRole аутентификация (role_id + secret_id)
+    ldap/           — LDAP / Active Directory аутентификация (bind-search-bind, группы → политики)
   dynamic/
-    aws/            — AWS engine: IAM user creds + STS AssumeRole sessions
-    gcp/            — GCP engine: service account keys + OAuth2 access tokens
-    azure/          — Azure engine: Azure AD client secrets (Graph API addPassword/removePassword)
-    database/       — Database engine: PostgreSQL / MySQL dynamic creds
-    pki/            — PKI engine: X.509 CA, role-based cert issuance, CRL
-    transit/        — Transit engine: versioned keys, encrypt/decrypt/sign/HMAC
-    ssh/            — SSH engine: CA-mode certificate signing
-    totp/           — TOTP engine: RFC 6238 OTP generation + validation
+    aws/            — Движок AWS: учётные данные IAM + сессии STS AssumeRole
+    gcp/            — Движок GCP: ключи сервисного аккаунта + токены OAuth2
+    azure/          — Движок Azure: клиентские секреты Azure AD (Graph API)
+    database/       — Движок БД: динамические учётные данные PostgreSQL / MySQL
+    pki/            — Движок PKI: CA X.509, выдача сертификатов по ролям, CRL
+    transit/        — Движок Transit: версионированные ключи, шифрование/дешифрование/подпись/HMAC
+    ssh/            — Движок SSH: подпись сертификатов в режиме CA
+    totp/           — Движок TOTP: генерация и проверка OTP по RFC 6238
 
 pkg/
-  client/           — typed Go SDK for the full Tuck API
+  client/           — Типизированный Go SDK для полного API Tuck
 
 build/
-  Dockerfile.*      — distroless images (uid 65532)
+  Dockerfile.*      — Образы distroless (uid 65532)
 ```
 
 ---
 
-## Layers and data flow
+## 3. Уровни и потоки данных
 
 ```
-Client (curl / tuckcli / SDK / operator)
+Клиент (curl / tuckcli / SDK / оператор)
         │  HTTPS
         ▼
   api.Server
-    TLS termination
-    Rate limiter (per-IP token bucket)
-    Audit middleware (hash chain)
-    Prometheus middleware
+    Завершение TLS
+    Ограничитель частоты (token bucket на IP)
+    Middleware аудита (цепочка хэшей)
+    Middleware Prometheus
     requireToken() → core.Authenticate()
         │
         ▼
   core.Core
-    Authenticate → EnforceAccess (policy glob match)
-    Routes to the correct engine or store:
+    Authenticate → EnforceAccess (glob-сопоставление политик)
+    Маршрутизация к нужному движку или хранилищу:
       ┌── KV v1/v2 (barrier.Get/Put/Delete/List)
       ├── Auth (token / k8s / jwt / approle / ldap)
-      ├── AWS engine
-      ├── GCP engine
-      ├── Azure engine
-      ├── Database engine
-      ├── PKI engine
-      ├── Transit engine
-      ├── SSH engine
-      └── TOTP engine
+      ├── Движок AWS
+      ├── Движок GCP
+      ├── Движок Azure
+      ├── Движок БД
+      ├── Движок PKI
+      ├── Движок Transit
+      ├── Движок SSH
+      └── Движок TOTP
         │
         ▼
   barrier.Barrier
-    IsSealed() → 503 on any operation
-    Get/Put/Delete/List: AES-256-GCM encrypt/decrypt per entry
+    IsSealed() → 503 для любой операции
+    Get/Put/Delete/List: шифрование/дешифрование AES-256-GCM для каждой записи
         │
         ▼
   physical.Backend
-    bbolt (single .db file) — only ciphertext ever touches disk
-    OR physraft.Backend — Raft-replicated, same ciphertext guarantee
+    bbolt (один файл .db) — на диск попадает только шифротекст
+    ИЛИ physraft.Backend — с репликацией Raft, та же гарантия шифрования
 ```
 
 ---
 
-## Cryptography
+## 4. Криптографическая подсистема
 
 ```
-root key (32 bytes, in memory only — provided by seal)
+корневой ключ (32 байта, только в памяти — предоставляется механизмом снятия печати)
      │
-     └──▶ barrier DEK (AES-256 key, stored as: AES-256-GCM(root_key, DEK))
+     └──► ключ шифрования данных (AES-256, хранится как: AES-256-GCM(корневой_ключ, КШД))
                │
-               └──▶ AES-256-GCM(DEK, nonce, plaintext) ──▶ physical backend
+               └──► AES-256-GCM(КШД, nonce, открытый_текст) ──► физический бэкенд
 ```
 
-**Envelope encryption:** root key encrypts DEK; DEK encrypts data entries.
+**Конвертное шифрование:** корневой ключ шифрует ключ шифрования данных (КШД); КШД шифрует записи данных.
 
-On restart: `seal.Unseal()` → root key → `barrier.Unseal()` → DEK decrypted → ready.
+При перезапуске: `seal.Unseal()` → корневой ключ → `barrier.Unseal()` → расшифровка КШД → система готова к работе.
 
-**Key rotation** (`POST /v1/sys/rotate`): generates new root key via seal, re-wraps DEK with new root key. No data re-encryption needed; only the keyring entry changes.
-
----
-
-## Seal types
-
-### dev (development only)
-- Root key stored **in plaintext** in a local file.
-- Auto-unseals on startup.
-- **Never use in production.**
-
-### shamir (multi-operator, on-prem)
-- Root key split into N shares using Shamir's Secret Sharing over GF(256).
-- Each share: `base64url(x || f(x))` — standalone share reveals nothing.
-- Server starts sealed; operators submit shares one at a time via `POST /v1/sys/unseal`.
-- After K shares: barrier unseals automatically.
-- Shares are never persisted — process repeats on every restart.
-
-### transit (cloud, auto-unseal)
-- Root key **wrapped** by an external KMS (Vault Transit-compatible API) at init time.
-- Wrapped blob stored locally.
-- On startup: read blob → POST to unwrap endpoint → root key → auto-unseal.
-
-### awskms (EKS / EC2, auto-unseal)
-- Generates 32-byte root key → encrypts via AWS KMS `Encrypt` API → stores base64 ciphertext on disk.
-- On startup: reads ciphertext → `Decrypt` → root key.
-- Credentials via IRSA (EKS), EC2 instance role, or `AWS_*` env vars.
-- Key identified by key ID, ARN, or alias (e.g. `alias/tuck-seal`).
-
-### gcpkms (GKE, auto-unseal)
-- Same envelope pattern with GCP Cloud KMS `Encrypt` / `Decrypt` (gRPC).
-- On GKE with Workload Identity: credentials from pod metadata server.
-- Outside GCP: set `GOOGLE_APPLICATION_CREDENTIALS` to a service account JSON.
-
-### azurekv (AKS / Azure, auto-unseal)
-- Encrypts root key with an RSA key stored in Azure Key Vault (`RSA-OAEP-256` by default).
-- Credentials via `DefaultAzureCredential`: AZURE_* env vars, Managed Identity, or Azure CLI.
-- Requires `Key Vault Crypto User` role on the vault key.
+**Ротация ключа** (`POST /v1/sys/rotate`): генерируется новый корневой ключ через механизм снятия печати, КШД перешифровывается новым корневым ключом. Перешифрование данных не требуется — изменяется только запись в реестре ключей.
 
 ---
 
-## Physical storage layout (barrier keys)
+## 5. Механизмы снятия печати
 
-| Logical key | Contents |
-|---|---|
-| `barrier/keyring` | DEK encrypted with root key |
-| `auth/token/<id>` | JSON token record (includes accessor field) |
-| `auth/accessor/<accessor>` | Accessor index → token ID mapping |
-| `auth/policy/<name>` | JSON policy |
-| `auth/k8s/role/<ns>/<sa>` | K8s role binding |
-| `auth/jwt/config` | JWKS config |
-| `auth/jwt/roles/<name>` | JWT role |
-| `auth/approle/roles/<name>` | AppRole role |
-| `auth/approle/secrets/<id>` | AppRole secret-id |
-| `auth/ldap/config` | LDAP connection config (bind_password encrypted in barrier) |
-| `auth/ldap/roles/<name>` | LDAP role (groups, users, policies, TTL) |
-| `secret/<path>` | KV v1 value (raw bytes) |
-| `kvv2/<path>/meta` | KV v2 version metadata |
-| `kvv2/<path>/v/<n>` | KV v2 version data |
-| `dynamic/aws/config` | AWS engine config (secret_access_key encrypted in barrier) |
-| `dynamic/gcp/config` | GCP engine config (credentials_json encrypted in barrier) |
-| `dynamic/gcp/roles/<name>` | GCP role (credential_type, service_account_email, scopes, TTL) |
-| `dynamic/gcp/leases/<id>` | GCP credential lease (gcp_key_name for SA key deletion) |
-| `dynamic/azure/config` | Azure engine config (client_secret encrypted in barrier) |
-| `dynamic/azure/roles/<name>` | Azure role (application_object_id, application_id, TTL) |
-| `dynamic/azure/leases/<id>` | Azure credential lease (key_id for Graph API removePassword) |
-| `sys/wrapping/<id>` | Wrapping token record (payload, created_at, expires_at) |
-| `cubbyhole/<token_id>/<path>` | Per-token private storage entry |
-| `dynamic/aws/roles/<name>` | AWS role (credential_type, policy_arns, role_arns, TTL) |
-| `dynamic/aws/leases/<id>` | AWS credential lease (revoked flag, username for iam_user) |
-| `dynamic/database/config/<name>` | DB connection config |
-| `dynamic/database/roles/<name>` | DB role (SQL templates) |
-| `dynamic/database/leases/<id>` | DB credential lease |
-| `dynamic/pki/ca` | PKI CA cert + encrypted private key |
-| `dynamic/pki/roles/<name>` | PKI role |
-| `dynamic/pki/certs/<serial>` | Issued cert record (no private key) |
-| `dynamic/transit/keys/<name>` | Transit key record (all versions, encrypted) |
-| `dynamic/ssh/ca` | SSH CA key pair (private key encrypted by barrier) |
-| `dynamic/ssh/roles/<name>` | SSH role |
-| `dynamic/totp/keys/<name>` | TOTP secret + config (secret encrypted by barrier) |
-| `audit/last_hash` | Latest audit log hash |
+### 5.1. dev (только для разработки)
 
----
+- Корневой ключ хранится **в открытом виде** в локальном файле.
+- Автоматическое снятие печати при запуске.
+- **Категорически не допускается применение в производственных средах.**
 
-## Dynamic secrets engines
+### 5.2. shamir (несколько операторов, on-prem)
 
-Each engine is isolated in its own package and talks to the barrier through a minimal local `barrier` interface (Get / Put / Delete / List). No engine receives the full `physical.Backend`.
+- Корневой ключ разделяется на N долей с применением схемы Шамира над GF(256).
+- Каждая доля: `base64url(x || f(x))` — отдельная доля не раскрывает информации.
+- Сервер запускается в запечатанном состоянии; операторы последовательно предъявляют доли через `POST /v1/sys/unseal`.
+- После предъявления K долей барьер автоматически вскрывается.
+- Доли не сохраняются — процедура повторяется при каждом перезапуске.
 
-### Database engine (`internal/dynamic/database`)
-- Registers named database configs (PostgreSQL / MySQL DSN + pool settings).
-- Roles carry `creation_statements` and `revocation_statements` with `{{username}}`, `{{password}}`, `{{expiry}}` templates.
-- `GenerateCreds` → executes creation SQL, returns credentials, records a `Lease`.
-- Background GC (`RevokeExpired`) revokes leases via the revocation SQL.
+### 5.3. transit (облачная среда, автоматическое снятие)
 
-### PKI engine (`internal/dynamic/pki`)
-- Generates or imports a root CA (ECDSA P-256 default, or RSA).
-- Roles constrain: `allowed_domains`, `allow_subdomains`, `allow_ip_sans`, `allow_localhost`, `key_type`, `key_bits`, `default_ttl`, `max_ttl`, `server_flag`, `client_flag`.
-- `IssueCert` validates CN + SANs, generates a new key pair, signs the leaf cert, persists a `CertRecord` (no private key stored), returns the cert + private key once.
-- `RevokeCert` marks a cert revoked; `GetCRL` generates a fresh signed CRL on demand.
-- CA cert and CRL endpoints are unauthenticated — clients can build trust stores without a token.
+- Корневой ключ **оборачивается** внешним KMS (API, совместимый с Vault Transit) при инициализации.
+- Обёрнутый блок сохраняется локально.
+- При запуске: чтение блока → POST к эндпоинту распаковки → корневой ключ → автоматическое снятие печати.
 
-### Transit engine (`internal/dynamic/transit`)
-- Versioned keys: `aes256-gcm96`, `ecdsa-p256`, `ed25519`, `rsa-2048`, `rsa-4096`.
-- Ciphertext/signature format: `vault:v{N}:{base64url-payload}` — version embedded for unambiguous routing.
-- AES: 12-byte random nonce prepended to GCM output.
-- `Rotate` adds a new key version; old versions remain available down to `min_decryption_version`.
-- `Rewrap` = decrypt with old version + encrypt with latest version.
-- Keys are not deletable by default; `UpdateKey` sets `deletable=true` first.
+### 5.4. awskms (EKS / EC2, автоматическое снятие)
 
-### SSH engine (`internal/dynamic/ssh`)
-- Generates or imports an SSH CA (Ed25519 default, or RSA-4096).
-- Roles control: `allowed_users` (empty = any principal), `cert_type` (user / host), `default_ttl`, `max_ttl`, `default_extensions`.
-- `SignPublicKey` validates principals against the role, caps TTL at `max_ttl`, signs the certificate with a random 64-bit serial.
-- Host certs have no extensions (SSH spec). User certs default to the five standard `permit-*` extensions.
-- CA public key endpoint is unauthenticated — hosts fetch it for `TrustedUserCAKeys` without a token.
+- Генерируется 32-байтный корневой ключ → шифруется через AWS KMS API `Encrypt` → зашифрованный текст в кодировке base64 сохраняется на диск.
+- При запуске: чтение шифротекста → `Decrypt` → корневой ключ.
+- Учётные данные через IRSA (EKS), роль экземпляра EC2 или переменные `AWS_*`.
 
-### TOTP engine (`internal/dynamic/totp`)
-- Stores TOTP secrets in the barrier (encrypted at rest).
-- Implements RFC 6238 / RFC 4226: `HOTP(key, floor(unix/period))` with dynamic truncation.
-- Supports SHA1 (default), SHA256, SHA512; 6 or 8 digits; configurable period and skew window.
-- `CreateKey` generates a random 20-byte secret and returns an `otpauth://` URI for QR import.
-- `GenerateCode` returns the current code and its expiry timestamp.
-- `ValidateCode` checks the submitted code against `skew` adjacent time windows on each side.
+### 5.5. gcpkms (GKE, автоматическое снятие)
+
+- Та же схема конвертного шифрования с GCP Cloud KMS `Encrypt` / `Decrypt` (gRPC).
+- На GKE с Workload Identity: учётные данные из метасервера пода.
+- Вне GCP: необходимо установить `GOOGLE_APPLICATION_CREDENTIALS`.
+
+### 5.6. azurekv (AKS / Azure, автоматическое снятие)
+
+- Шифрование корневого ключа с помощью RSA-ключа в Azure Key Vault (`RSA-OAEP-256`).
+- Учётные данные через `DefaultAzureCredential`: переменные `AZURE_*`, Managed Identity, Azure CLI.
+- Требуется роль `Key Vault Crypto User` на ключ хранилища.
 
 ---
 
-## Tokens
+## 6. Структура физического хранилища
 
-Format: `tuck_` + base64url(32 random bytes)
-
-Fields: `id`, `display_name`, `policies []string`, `created_at`, `expires_at`
-
-**Root token:** the only token with the `root` policy. Created at first startup, printed once. The root policy is hardcoded and cannot be deleted via the API.
-
-Token GC runs every 15 minutes (background goroutine) and removes entries where `expires_at < now`.
+| Логический ключ | Содержимое |
+|----------------|------------|
+| `barrier/keyring` | КШД, зашифрованный корневым ключом |
+| `auth/token/<id>` | JSON-запись токена (включая поле accessor) |
+| `auth/accessor/<accessor>` | Индекс accessor → идентификатор токена |
+| `auth/policy/<name>` | JSON-политика |
+| `auth/k8s/role/<ns>/<sa>` | Привязка роли Kubernetes |
+| `auth/jwt/config` | Конфигурация JWKS |
+| `auth/jwt/roles/<name>` | Роль JWT |
+| `auth/approle/roles/<name>` | Роль AppRole |
+| `auth/approle/secrets/<id>` | Secret-ID AppRole |
+| `auth/ldap/config` | Конфигурация подключения LDAP (bind_password зашифрован в барьере) |
+| `auth/ldap/roles/<name>` | Роль LDAP (группы, пользователи, политики, TTL) |
+| `secret/<path>` | Значение KV v1 (необработанные байты) |
+| `kvv2/<path>/meta` | Метаданные версий KV v2 |
+| `kvv2/<path>/v/<n>` | Данные версии KV v2 |
+| `dynamic/aws/config` | Конфигурация движка AWS (secret_access_key зашифрован в барьере) |
+| `dynamic/gcp/config` | Конфигурация движка GCP (credentials_json зашифрован в барьере) |
+| `dynamic/azure/config` | Конфигурация движка Azure (client_secret зашифрован в барьере) |
+| `dynamic/database/config/<name>` | Конфигурация подключения к БД |
+| `dynamic/database/roles/<name>` | Роль БД (шаблоны SQL) |
+| `dynamic/database/leases/<id>` | Аренда учётных данных БД |
+| `dynamic/pki/ca` | Сертификат PKI CA + зашифрованный закрытый ключ |
+| `dynamic/pki/roles/<name>` | Роль PKI |
+| `dynamic/pki/certs/<serial>` | Запись выданного сертификата (без закрытого ключа) |
+| `dynamic/transit/keys/<name>` | Запись ключа Transit (все версии, зашифровано) |
+| `dynamic/ssh/ca` | Ключевая пара SSH CA (закрытый ключ зашифрован барьером) |
+| `dynamic/ssh/roles/<name>` | Роль SSH |
+| `dynamic/totp/keys/<name>` | Секрет TOTP + конфигурация (секрет зашифрован барьером) |
+| `audit/last_hash` | Последний хэш журнала аудита |
 
 ---
 
-## Policies (ACL)
+## 7. Движки динамических секретов
+
+Каждый движок изолирован в собственном пакете и взаимодействует с барьером через минимальный локальный интерфейс `barrier` (Get / Put / Delete / List). Ни один движок не получает прямого доступа к `physical.Backend`.
+
+### 7.1. Движок баз данных (`internal/dynamic/database`)
+
+- Регистрирует именованные конфигурации БД (DSN PostgreSQL / MySQL + параметры пула).
+- Роли содержат шаблоны `creation_statements` и `revocation_statements` с переменными `{{username}}`, `{{password}}`, `{{expiry}}`.
+- `GenerateCreds` → выполняет SQL создания, возвращает учётные данные, регистрирует `Lease`.
+- Фоновый GC (`RevokeExpired`) отзывает аренды через SQL отзыва.
+
+### 7.2. Движок PKI (`internal/dynamic/pki`)
+
+- Генерирует или импортирует корневой CA (по умолчанию ECDSA P-256 или RSA).
+- Роли ограничивают: `allowed_domains`, `allow_subdomains`, `allow_ip_sans`, `key_type`, `key_bits`, `default_ttl`, `max_ttl`.
+- `IssueCert` проверяет CN + SAN, генерирует новую ключевую пару, подписывает листовой сертификат, сохраняет `CertRecord` (без закрытого ключа), возвращает сертификат + закрытый ключ однократно.
+- `RevokeCert` помечает сертификат отозванным; `GetCRL` генерирует свежий подписанный CRL по запросу.
+- Эндпоинты сертификата CA и CRL не требуют аутентификации.
+
+### 7.3. Движок Transit (`internal/dynamic/transit`)
+
+- Версионированные ключи: `aes256-gcm96`, `ecdsa-p256`, `ed25519`, `rsa-2048`, `rsa-4096`.
+- Формат шифротекста/подписи: `vault:v{N}:{base64url-payload}` — версия встроена для однозначной маршрутизации.
+- AES: 12-байтный случайный nonce предшествует выводу GCM.
+- `Rotate` добавляет новую версию ключа; старые версии доступны до `min_decryption_version`.
+- `Rewrap` = дешифрование старой версией + шифрование актуальной версией.
+
+### 7.4. Движок SSH (`internal/dynamic/ssh`)
+
+- Генерирует или импортирует SSH CA (по умолчанию Ed25519 или RSA-4096).
+- Роли управляют: `allowed_users`, `cert_type` (user / host), `default_ttl`, `max_ttl`, `default_extensions`.
+- `SignPublicKey` проверяет принципалы по роли, ограничивает TTL значением `max_ttl`, подписывает сертификат со случайным 64-битным серийным номером.
+- Эндпоинт открытого ключа CA не требует аутентификации.
+
+### 7.5. Движок TOTP (`internal/dynamic/totp`)
+
+- Хранит TOTP-секреты в барьере (в зашифрованном виде).
+- Реализует RFC 6238 / RFC 4226: `HOTP(key, floor(unix/period))` с динамическим усечением.
+- Поддерживает SHA1 (по умолчанию), SHA256, SHA512; 6 или 8 цифр; настраиваемый период и окно сдвига.
+- `CreateKey` генерирует случайный 20-байтный секрет и возвращает URI `otpauth://` для импорта QR.
+- `ValidateCode` проверяет код в `skew` смежных временных окнах с каждой стороны.
+
+---
+
+## 8. Модель токенов
+
+Формат: `tuck_` + base64url(32 случайных байта)
+
+Поля: `id`, `display_name`, `policies []string`, `created_at`, `expires_at`, `max_uses`, `num_uses`, `accessor`
+
+**Корневой токен:** единственный токен с политикой `root`. Создаётся при первом запуске, выводится однократно. Политика `root` встроена и не может быть удалена через API.
+
+GC токенов запускается каждые 15 минут (фоновая горутина) и удаляет записи, где `expires_at < now`.
+
+---
+
+## 9. Политики (ACL)
 
 ```json
 {
@@ -278,19 +278,17 @@ Token GC runs every 15 minutes (background goroutine) and removes entries where 
 }
 ```
 
-Capabilities: `read`, `write`, `delete`, `list`, `deny`.
+Права: `read`, `write`, `delete`, `list`, `deny`.
 
-Path matching is glob-based: `secret/db/*` matches `secret/db/password` but not `secret/db/sub/key`. Use `secret/**` for recursive depth. The root policy matches everything with all capabilities.
+Сопоставление путей основано на glob-масках: `secret/db/*` соответствует `secret/db/password`, но не `secret/db/sub/key`. Для рекурсивного охвата используется `secret/**`. Политика `root` соответствует всему с полными правами.
 
-**Deny rules** take precedence over any allow rule across all attached policies.
-`Allowed` performs a two-pass evaluation: deny-pass first, then allow-pass.
-A single matching deny rule blocks the request unconditionally.
+**Запрещающие правила** имеют приоритет над любым разрешающим правилом во всех прикреплённых политиках. Функция `Allowed` выполняет двупроходную оценку: сначала проход запрета, затем проход разрешения. Единственное совпавшее правило запрета безусловно блокирует запрос.
 
 ---
 
-## Kubernetes operator (TuckSecret CRD)
+## 10. Оператор Kubernetes (CRD TuckSecret)
 
-The operator syncs secrets from Tuck into native Kubernetes Secrets.
+Оператор синхронизирует секреты из Tuck в нативные Kubernetes Secrets.
 
 ```yaml
 apiVersion: tuck.io/v1alpha1
@@ -299,75 +297,76 @@ metadata:
   name: db-password
   namespace: production
 spec:
-  tuckPath: db/password          # path in Tuck (without /v1/secret/)
-  secretName: db-credentials     # target K8s Secret name
-  secretKey: password            # key within K8s Secret .data
+  tuckPath: db/password
+  secretName: db-credentials
+  secretKey: password
   refreshInterval: "5m"
-  deletionPolicy: Retain         # Retain (default) or Delete
+  deletionPolicy: Retain
 ```
 
-**Lifecycle:**
-1. Operator authenticates via K8s SA token (`POST /v1/auth/kubernetes/login`).
-2. Tuck token cached (TTL 4 min, refreshed 30s before expiry).
-3. Lease-based leader election — only the leader pod reconciles.
-4. On ADDED / MODIFIED: GET secret from Tuck → apply K8s Secret.
-5. `status.conditions` updated: `Synced: True` or error message.
-6. On DELETED with `deletionPolicy: Delete`: finalizer deletes K8s Secret before GC.
+**Жизненный цикл:**
+1. Оператор аутентифицируется через токен Kubernetes SA (`POST /v1/auth/kubernetes/login`).
+2. Токен Tuck кэшируется (TTL 4 мин, обновляется за 30 с до истечения).
+3. Выбор лидера на основе Lease — только под-лидер выполняет согласование.
+4. При событиях ADDED / MODIFIED: GET секрета из Tuck → применение Kubernetes Secret.
+5. Обновление `status.conditions`: `Synced: True` или сообщение об ошибке.
+6. При DELETED с `deletionPolicy: Delete`: финализатор удаляет Kubernetes Secret до очистки GC.
 
 ---
 
-## Webhook Agent Injector
+## 11. Webhook-инжектор агента
 
-Bypasses etcd entirely. Secrets exist only in Pod memory on a tmpfs volume.
+Секреты существуют исключительно в памяти пода на томе tmpfs — в etcd не попадают.
 
-**Flow:**
-1. `MutatingWebhookConfiguration` intercepts Pod creation in annotated namespaces.
-2. `injector.Handler` calls `BuildPatch` to produce a RFC 6902 JSON Patch:
-   - Adds a `tuck-secrets` `emptyDir{medium: Memory}` volume.
-   - Adds a `tuck-agent` init container.
-   - Mounts the volume read-only into every app container at `/tuck/secrets/`.
-3. `tuck-agent` (init container):
-   - Reads `TUCK_ADDR`, `TUCK_TOKEN_FILE`, `TUCK_SECRETS`.
-   - Fetches each secret via `pkg/client`.
-   - Writes files atomically (`tmpfile → rename`) with mode `0400`.
-   - Fails fast → Pod creation blocked if any secret is missing.
+**Порядок работы:**
+1. `MutatingWebhookConfiguration` перехватывает создание подов в аннотированных пространствах имён.
+2. `injector.Handler` вызывает `BuildPatch` для формирования JSON Patch по RFC 6902:
+   - Добавляет том `tuck-secrets` типа `emptyDir{medium: Memory}`.
+   - Добавляет init-контейнер `tuck-agent`.
+   - Монтирует том в режиме только для чтения во все контейнеры приложения в `/tuck/secrets/`.
+3. `tuck-agent` (init-контейнер):
+   - Читает переменные `TUCK_ADDR`, `TUCK_TOKEN_FILE`, `TUCK_SECRETS`.
+   - Получает каждый секрет через `pkg/client`.
+   - Записывает файлы атомарно (`tmpfile → rename`) с правами доступа `0400`.
+   - При отсутствии любого секрета завершается с ошибкой → создание пода блокируется.
 
 ---
 
-## Raft HA backend
+## 12. Бэкенд Raft HA
 
 ```
-Node 1 (leader)          Node 2            Node 3
+Узел 1 (лидер)          Узел 2            Узел 3
 ┌──────────────┐        ┌───────────┐     ┌───────────┐
-│  Tuck server │──Raft──│ Tuck server│────│ Tuck server│
+│  Сервер Tuck │──Raft──│ Сервер Tuck│────│ Сервер Tuck│
 │  fsm.db      │        │  fsm.db   │     │  fsm.db   │
 │  raft.db     │        │  raft.db  │     │  raft.db  │
 └──────────────┘        └───────────┘     └───────────┘
 ```
 
-- All writes go through the Raft log (leader → majority quorum → commit).
-- Only AES-256-GCM ciphertext is replicated — Raft adds consensus, not plaintext.
-- `FSM` is bbolt-backed; applies `put` / `delete` commands from the committed log.
-- Writes on a follower return `503 not leader` so clients can retry against the leader.
-- Online membership changes: `AddVoter` / `RemoveServer` via the leader's HTTP API.
+- Все операции записи проходят через журнал Raft (лидер → большинство кворума → фиксация).
+- Реплицируется только шифротекст AES-256-GCM — Raft обеспечивает консенсус, но не работает с открытым текстом.
+- `FSM` на основе bbolt; применяет команды `put` / `delete` из зафиксированного журнала.
+- Запись на последователе возвращает `503 not leader` — клиенты повторяют запрос к лидеру.
+- Изменение состава кластера в режиме онлайн: `AddVoter` / `RemoveServer` через HTTP API лидера.
 
 ---
 
-## Audit log
+## 13. Журнал аудита
 
-Every API call is logged as a JSON line with:
-- `timestamp`, `method`, `path`, `token_id` (accessor, not the raw token), `status_code`
-- `prev_hash` + `hash = SHA256(prev_hash || entry_json)` — forms a tamper-evident chain
-- Secret **values are never logged**
+Каждый вызов API записывается как строка JSON со следующими полями:
+
+- `timestamp`, `method`, `path`, `token_id` (accessor, не сам токен), `status_code`
+- `prev_hash` + `hash = SHA256(prev_hash || entry_json)` — формирует цепочку хэшей, защищённую от подделки
+- Значения секретов **никогда не записываются**
 
 ---
 
-## Test strategy
+## 14. Стратегия тестирования
 
-- Unit tests in every package; each uses a local `memBarrier` struct (no shared state).
-- `go test -race ./...` is clean — all tests pass the race detector.
-- Integration tests in `internal/api/` spin up a full in-memory Core + HTTP server.
-- RFC 6238 known test vectors validated in `internal/dynamic/totp/totp_test.go`.
-- x509 certificate chain verification in `internal/dynamic/pki/pki_test.go`.
-- SSH certificate chain verification via `gossh.CertChecker` in `internal/dynamic/ssh/ssh_test.go`.
-- Raft consensus tested with a 3-node in-process cluster in `internal/physical/raft/`.
+- Модульные тесты в каждом пакете; используется локальная структура `memBarrier` (без общего состояния).
+- `go test -race ./...` — все тесты проходят детектор гонок.
+- Интеграционные тесты в `internal/api/` запускают полное ядро в памяти + HTTP-сервер.
+- Известные тестовые векторы RFC 6238 проверяются в `internal/dynamic/totp/totp_test.go`.
+- Верификация цепочки X.509 в `internal/dynamic/pki/pki_test.go`.
+- Верификация SSH-сертификатов через `gossh.CertChecker` в `internal/dynamic/ssh/ssh_test.go`.
+- Консенсус Raft тестируется на внутрипроцессном кластере из 3 узлов в `internal/physical/raft/`.

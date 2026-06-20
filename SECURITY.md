@@ -1,69 +1,81 @@
-# Security Policy
+# Политика безопасности
 
-## Supported Versions
+## 1. Поддерживаемые версии
 
-| Version | Supported |
-|---------|-----------|
-| main (v0.9+) | ✅ Active |
-| < v0.9 | ❌ No patches |
+| Версия | Статус поддержки |
+|--------|-----------------|
+| v1.35.x (актуальная) | Активная поддержка |
+| v1.0.x — v1.34.x | Критические исправления |
+| < v1.0 | Поддержка не предоставляется |
 
-## Reporting a Vulnerability
+---
 
-**Please do NOT open a public GitHub issue for security vulnerabilities.**
+## 2. Порядок информирования об уязвимостях
 
-Report security issues via email to **genaevlive@gmail.com** with the subject line:
-`[TUCK SECURITY] <brief description>`
+**Не следует публиковать сведения об уязвимостях в открытых Issues на GitHub.**
 
-Include:
-- Description of the vulnerability
-- Steps to reproduce (proof of concept if possible)
-- Affected versions
-- Potential impact assessment
-- Your name / handle for acknowledgement (optional)
+Информация об уязвимостях безопасности направляется по электронной почте:
 
-You will receive an acknowledgement within **48 hours** and a detailed response
-within **7 days** indicating next steps.
+**genaevlive@gmail.com**
 
-## Coordinated Disclosure
+Тема письма: `[TUCK SECURITY] <краткое описание>`
 
-We follow a **90-day coordinated disclosure** policy:
+В сообщении необходимо указать:
 
-1. You report the vulnerability privately.
-2. We confirm, triage, and develop a fix (target: within 30 days for critical).
-3. We coordinate a release date with you.
-4. We publish the fix and a CVE (if applicable).
-5. You may publicly disclose after the fix is released or after 90 days, whichever comes first.
+- описание уязвимости и её технический характер;
+- шаги воспроизведения (при наличии — подтверждение концепции);
+- затронутые версии системы;
+- оценку потенциального воздействия;
+- контактные данные для уведомления (по желанию).
 
-If you believe the vulnerability is being exploited in the wild or poses immediate
-critical risk, please indicate this in your report so we can expedite the timeline.
+Подтверждение получения направляется в течение **48 часов**. Подробный ответ с указанием дальнейших действий — в течение **7 рабочих дней**.
 
-## Security Scope
+---
 
-**In scope:**
-- Authentication bypass (token forgery, policy bypass)
-- Cryptographic weaknesses (barrier encryption, Shamir implementation)
-- Memory disclosure of key material (root key, DEK)
-- Audit log tampering
-- Command injection via API inputs
-- TLS misconfiguration
+## 3. Процедура координированного раскрытия
 
-**Out of scope:**
-- Attacks requiring physical access to the host node (OS-level concern)
-- K8s etcd encryption (cluster operator responsibility)
-- Vulnerabilities in Go runtime or standard library (report upstream)
-- Social engineering
+Настоящая политика предусматривает **90-дневный срок координированного раскрытия**:
 
-## Known Limitations (by design)
+1. Исследователь направляет информацию об уязвимости в закрытом режиме.
+2. Команда подтверждает получение, классифицирует уязвимость и разрабатывает исправление (целевой срок для критических уязвимостей — 30 дней).
+3. Согласование даты выпуска исправления с исследователем.
+4. Публикация исправления и присвоение идентификатора CVE (при наличии оснований).
+5. Публичное раскрытие допускается после выхода исправления или по истечении 90 дней — в зависимости от того, что наступит раньше.
 
-See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for a full threat analysis.
-Notable limitations at current version:
+При наличии признаков активной эксплуатации уязвимости необходимо указать это в сообщении для ускорения обработки.
 
-- Secret **key names** (paths) are stored unencrypted in the bbolt file.
-  A bbolt dump reveals the namespace structure but not values.
-- The Go GC may copy key material before `clear()` runs.
-  `mlockall` is not yet implemented (planned: SEC-9).
-- Dev seal stores the root key in plaintext. Never use in production.
+---
 
-## Acknowledgements
+## 4. Границы применимости
 
-We thank the following researchers for responsible disclosure: *(none yet)*
+### 4.1. Вопросы, входящие в область ответственности
+
+- Обход аутентификации (подделка токена, обход политик ACL)
+- Криптографические уязвимости (барьерное шифрование, реализация схемы Шамира)
+- Раскрытие ключевого материала в памяти (корневой ключ, ключ шифрования данных)
+- Нарушение целостности журнала аудита
+- Инъекционные атаки через входные данные API
+- Некорректная конфигурация TLS
+
+### 4.2. Вопросы, не входящие в область ответственности
+
+- Атаки, требующие физического доступа к узлу (относятся к ответственности операционной системы)
+- Шифрование etcd в Kubernetes (ответственность оператора кластера)
+- Уязвимости в среде исполнения Go или стандартной библиотеке (направляются в команду Go)
+- Социальная инженерия
+
+---
+
+## 5. Известные ограничения (по проекту)
+
+Полный анализ угроз изложен в [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
+
+- **Имена путей ключей** хранятся в BoltDB без шифрования. Анализ дампа базы данных позволяет получить структуру пространства имён, но не значения секретов.
+- **Режим разработки** (`--seal-type=dev`) хранит корневой ключ в открытом виде. Применение данного режима в производственных средах категорически не допускается.
+- **Сборщик мусора Go** может скопировать ключевой материал до выполнения операции `clear()`. Функциональность `mlockall` находится в разработке.
+
+---
+
+## 6. Благодарности
+
+Выражается признательность исследователям, сообщившим об уязвимостях в рамках ответственного раскрытия: *(нет данных)*

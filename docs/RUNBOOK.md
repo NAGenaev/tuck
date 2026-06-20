@@ -1,40 +1,40 @@
-# Tuck — Operations Runbook
+# Tuck — Эксплуатационный регламент
 
-> Audience: on-call engineers, platform team  
-> Version: 0.9
+> Аудитория: дежурные инженеры, команда платформы
+> Версия: 1.35
 
 ---
 
-## 1. First Boot
+## 1. Первоначальный запуск
 
-### Dev seal (local testing only)
+### 1.1. Режим разработки (только для локального тестирования)
 
 ```bash
 tuck --seal-type=dev --addr=127.0.0.1:8200
 ```
 
-On first start Tuck prints:
+При первом запуске система выводит:
+
 ```
-ROOT TOKEN (shown once — store it securely):
+ROOT TOKEN (отображается однократно — сохранить в защищённом хранилище):
   tuck_<base64url>
 ```
 
-Save the root token in your password manager. It is **never** shown again.
+Корневой токен сохраняется в менеджере паролей. Повторный вывод **не предусмотрен**.
 
----
-
-### Shamir seal (production)
+### 1.2. Схема Шамира (производственная среда)
 
 ```bash
 tuck --seal-type=shamir --seal-shamir-n=5 --seal-shamir-k=3 \
      --addr=0.0.0.0:8200 --tls-cert=/etc/tuck/tls.crt --tls-key=/etc/tuck/tls.key
 ```
 
-On first start Tuck prints the root token **and** 5 Shamir shares:
+При первом запуске система выводит корневой токен и 5 долей Шамира:
+
 ```
-ROOT TOKEN (shown once — store it securely):
+ROOT TOKEN (отображается однократно — сохранить в защищённом хранилище):
   tuck_…
-SHAMIR SHARES (distribute to operators — never store together):
+ДОЛИ ШАМИРА (распределить операторам — не хранить совместно):
   [1] <base64url>
   [2] <base64url>
   [3] <base64url>
@@ -42,59 +42,58 @@ SHAMIR SHARES (distribute to operators — never store together):
   [5] <base64url>
 ```
 
-**Immediately:**
-1. Record the root token in an offline secure location.
-2. Distribute each share to a different operator via a secure channel.
-3. No single operator should hold ≥ k shares.
+**Немедленные действия после первого запуска:**
+1. Зафиксировать корневой токен в изолированном защищённом хранилище.
+2. Распределить каждую долю отдельному оператору по защищённому каналу.
+3. Ни один оператор не должен располагать количеством долей ≥ K.
 
 ---
 
-## 2. Unsealing After Restart
+## 2. Снятие печати после перезапуска
 
-After a process restart with Shamir seal, Tuck starts in **sealed** state.
-You must submit k-of-n shares via the API (or CLI):
+После перезапуска процесса при использовании схемы Шамира сервер стартует в **запечатанном** состоянии. Необходимо предъявить k из n долей:
 
 ```bash
-# Using tuckcli
 export TUCK_ADDR=https://tuck.example.com:8200
-tuckcli unseal <shard-1>
-tuckcli unseal <shard-2>
-tuckcli unseal <shard-3>   # "unsealed successfully"
+tuckcli unseal <доля-1>
+tuckcli unseal <доля-2>
+tuckcli unseal <доля-3>   # "unsealed successfully"
 ```
 
+Через API:
+
 ```bash
-# Using curl
 curl -X POST https://tuck:8200/v1/sys/unseal \
   -H "Content-Type: application/json" \
-  -d '{"key":"<shard-base64url>"}'
+  -d '{"key":"<доля-base64url>"}'
 ```
 
-Check status:
+Проверка состояния:
+
 ```bash
 tuckcli status
-# or
+# или
 curl https://tuck:8200/v1/sys/seal-status
 ```
 
 ---
 
-## 3. Sealing Manually
+## 3. Ручное запечатывание
 
 ```bash
 tuckcli --token=$ROOT_TOKEN seal
-# or
+# или
 curl -X POST https://tuck:8200/v1/sys/seal \
   -H "X-Tuck-Token: $ROOT_TOKEN"
 ```
 
-This drops the in-memory DEK immediately. All subsequent API calls return 503
-until the server is unsealed again.
+При запечатывании ключ шифрования данных немедленно удаляется из памяти. Все последующие вызовы API возвращают код 503 до повторного снятия печати.
 
 ---
 
-## 4. Backup and Restore
+## 4. Резервное копирование и восстановление
 
-### Taking a snapshot
+### 4.1. Создание снимка
 
 ```bash
 curl -H "X-Tuck-Token: $ROOT_TOKEN" \
@@ -102,146 +101,107 @@ curl -H "X-Tuck-Token: $ROOT_TOKEN" \
      -o tuck-$(date +%Y%m%d-%H%M%S).db
 ```
 
-Snapshots are binary bbolt files. The data inside is **still encrypted**.
-Store snapshots in a secure location (S3, encrypted volume). Even if the snapshot
-leaks, data cannot be decrypted without the root key.
+Снимки представляют собой двоичные файлы BoltDB. Хранимые данные **по-прежнему зашифрованы**. Снимки хранятся в защищённом месте (S3, зашифрованный том). Утечка снимка не позволяет расшифровать данные без корневого ключа.
 
-### Restoring from a snapshot
+### 4.2. Восстановление из снимка
 
-1. Stop the Tuck server.
-2. Replace `tuck.db` with the snapshot file.
-3. Restart. The server will unseal normally (same root key required).
+1. Остановить сервер Tuck.
+2. Заменить файл `tuck.db` файлом снимка.
+3. Запустить сервер. Снятие печати выполняется в штатном режиме (требуется тот же корневой ключ).
 
-> ⚠️ After restoring a snapshot, any tokens/secrets written after the snapshot
-> was taken are lost. Revoke all tokens and rotate secrets as a precaution.
+> **Внимание.** После восстановления из снимка токены и секреты, записанные после его создания, будут утрачены. В качестве меры предосторожности следует отозвать все токены и выполнить ротацию секретов.
 
 ---
 
-## 5. Key Rotation
+## 5. Ротация ключей
 
-### Rotate root key (re-wraps DEK, no data re-encryption needed)
+### 5.1. Ротация корневого ключа
 
 ```bash
 tuckcli --token=$ROOT_TOKEN rotate
 ```
 
-For Shamir seals, new shares are printed in the response. **Distribute them
-immediately** — the old shares become invalid after rotation.
+Операция перешифровывает ключ шифрования данных новым корневым ключом. Перешифрование данных не требуется.
 
-### When to rotate
-- Suspected compromise of the root key or Shamir shares
-- Periodic rotation policy (e.g., annually)
-- After removing an operator who held shares
+При использовании схемы Шамира новые доли выводятся в ответе. **Незамедлительно распределить их операторам** — старые доли становятся недействительными после ротации.
+
+### 5.2. Случаи, требующие ротации
+
+- Предполагаемая компрометация корневого ключа или долей Шамира
+- Периодическая ротация в соответствии с регламентом (например, ежегодно)
+- Исключение оператора, владевшего долями
 
 ---
 
-## 6. Token Management
-
-### Create a service token
+## 6. Управление токенами
 
 ```bash
+# Создание сервисного токена
 tuckcli --token=$ROOT_TOKEN token create \
   --name=ci-pipeline --policy=ci-read-only --ttl=24h
-```
 
-### List all tokens
-
-```bash
+# Перечисление токенов
 tuckcli --token=$ROOT_TOKEN token list
-```
 
-### Revoke a token
-
-```bash
+# Отзыв токена
 tuckcli --token=$ROOT_TOKEN token revoke tuck_<id>
-```
 
-### Renew a token
-
-```bash
+# Возобновление токена
 tuckcli --token=$ROOT_TOKEN token renew tuck_<id> 48h
 ```
 
-### Expired tokens
-
-Tuck GC runs every 15 minutes and removes expired tokens automatically.
-To force GC: restart the server (it runs on startup).
+Очистка истёкших токенов выполняется автоматически каждые 15 минут. Для принудительного запуска GC — перезапустить сервер.
 
 ---
 
-## 7. Policy Management
-
-### Create a read-only policy for a path prefix
+## 7. Управление политиками
 
 ```bash
+# Создание политики только для чтения
 tuckcli --token=$ROOT_TOKEN policy put ci-read-only \
   '[{"path":"secret/ci/*","capabilities":["read","list"]}]'
-```
 
-### List policies
-
-```bash
+# Перечисление политик
 tuckcli --token=$ROOT_TOKEN policy list
-```
 
-### Delete a policy
-
-```bash
+# Удаление политики
 tuckcli --token=$ROOT_TOKEN policy delete old-policy
 ```
 
 ---
 
-## 8. Kubernetes Operator
-
-### Check operator is running
+## 8. Оператор Kubernetes
 
 ```bash
+# Проверка работоспособности оператора
 kubectl -n tuck-system get pods
 kubectl -n tuck-system logs -l app=tuck-operator
-```
 
-### TuckSecret status
-
-```bash
+# Статус TuckSecret
 kubectl get ts -A
-# Shows: SYNCED | TuckPath | SecretName | LastSynced | Age
-```
+# Вывод: SYNCED | TuckPath | SecretName | LastSynced | Age
 
-### Force re-sync
-
-```bash
+# Принудительная повторная синхронизация
 kubectl annotate ts <name> tuck.io/force-sync="$(date)" --overwrite
-```
 
-The annotation change triggers a MODIFIED watch event → reconcile.
-
-### Leader election (HA operator)
-
-When running multiple operator replicas with `--leader-elect`:
-
-```bash
+# Проверка выбора лидера (HA)
 kubectl -n tuck-system get lease tuck-operator-leader -o yaml
 ```
 
-Look for `holderIdentity` — only that pod is actively reconciling.
-
 ---
 
-## 9. Metrics & Alerting
+## 9. Метрики и оповещения
 
-Tuck exposes Prometheus metrics at `GET /metrics` (no auth required).
+Метрики Prometheus доступны по адресу `GET /metrics` (аутентификация не требуется).
 
-Key metrics:
+| Метрика | Порог оповещения |
+|---------|-----------------|
+| `tuck_barrier_sealed` == 1 | Немедленный вызов дежурного |
+| `tuck_auth_failures_total` > 100/мин | Расследование возможной атаки перебором |
+| `tuck_requests_5xx_total` растёт | Расследование ошибок |
+| `tuck_gc_removed_tokens_total` | Мониторинг накопления токенов |
 
-| Metric | Alert threshold |
-|---|---|
-| `tuck_barrier_sealed` == 1 | Page immediately |
-| `tuck_auth_failures_total` > 100/min | Investigate brute-force |
-| `tuck_requests_5xx_total` rising | Investigate errors |
-| `tuck_gc_removed_tokens_total` | Monitor for token accumulation |
-
-Example Prometheus alert rule:
+Пример правила оповещения Prometheus:
 
 ```yaml
 - alert: TuckSealed
@@ -249,50 +209,50 @@ Example Prometheus alert rule:
   for: 1m
   severity: critical
   annotations:
-    summary: "Tuck is sealed — all secret reads returning 503"
+    summary: "Tuck находится в запечатанном состоянии — все запросы секретов возвращают 503"
 ```
 
 ---
 
-## 10. Incident Response
+## 10. Реагирование на инциденты
 
-### Secrets potentially exposed
+### 10.1. Возможная компрометация секретов
 
-1. **Seal the server immediately**: `tuckcli seal`
-2. **Rotate the root key** (new DEK envelope): `tuckcli rotate`
-3. **Revoke all tokens**: list and revoke, issue fresh tokens
-4. **Rotate secrets** whose values may have been exposed
-5. **Review audit log** to determine which secrets were accessed and by whom:
+1. **Незамедлительно запечатать сервер:** `tuckcli seal`
+2. **Выполнить ротацию корневого ключа:** `tuckcli rotate`
+3. **Отозвать все токены:** перечислить и отозвать, выпустить новые токены
+4. **Выполнить ротацию секретов**, значения которых могли быть раскрыты
+5. **Проверить журнал аудита** для определения, какие секреты и кем были запрошены:
    ```bash
    cat /var/log/tuck/audit.log | jq 'select(.path | startswith("secret/"))'
    ```
-6. **Restore from last known-good snapshot** if data integrity is in doubt
+6. **Восстановить из последнего заведомо исправного снимка** при сомнении в целостности данных
 
-### Token stolen
+### 10.2. Кража токена
 
-1. Revoke the token immediately: `tuckcli token revoke <id>`
-2. Review audit log for the token fingerprint (SHA-256[:6])
-3. Rotate any secrets the token had read access to
+1. Немедленно отозвать токен: `tuckcli token revoke <id>`
+2. Проверить журнал аудита по отпечатку токена (SHA-256[:6])
+3. Выполнить ротацию секретов, к которым токен имел доступ на чтение
 
-### Operator pod crash-looping
+### 10.3. Циклическое перезапуск пода оператора
 
-1. Check logs: `kubectl -n tuck-system logs <pod>`
-2. Verify Tuck server is reachable and unsealed
-3. Verify SA token file exists and TokenReview succeeds
-4. Check TuckSecret conditions: `kubectl get ts -A -o yaml | grep -A5 conditions`
+1. Проверить журналы: `kubectl -n tuck-system logs <pod>`
+2. Убедиться в доступности и незапечатанном состоянии сервера Tuck
+3. Проверить наличие файла токена SA и успешность TokenReview
+4. Проверить условия TuckSecret: `kubectl get ts -A -o yaml | grep -A5 conditions`
 
 ---
 
-## 11. Health Checks
+## 11. Проверки работоспособности
 
-| Endpoint | Use |
-|---|---|
-| `GET /v1/health` | Liveness probe (always 200 if process is up) |
-| `GET /v1/sys/ready` | Readiness probe (200 = unsealed, 503 = sealed) |
-| `GET /v1/sys/seal-status` | Seal state details |
-| `GET /metrics` | Prometheus scrape |
+| Эндпоинт | Назначение |
+|----------|------------|
+| `GET /v1/health` | Проба работоспособности (200, если процесс запущен) |
+| `GET /v1/sys/ready` | Проба готовности (200 = незапечатан, 503 = запечатан) |
+| `GET /v1/sys/seal-status` | Детали состояния печати |
+| `GET /metrics` | Сбор метрик Prometheus |
 
-### Kubernetes probes
+Пример конфигурации проб Kubernetes:
 
 ```yaml
 livenessProbe:

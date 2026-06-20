@@ -1,93 +1,101 @@
-# Contributing to Tuck
+# Руководство по участию в разработке
 
-Thank you for your interest in contributing! Tuck is a community-driven project and welcomes all contributions — bug reports, feature requests, documentation improvements, and code changes.
+## 1. Общие положения
 
-## Getting Started
+Настоящий документ устанавливает порядок участия во внешней разработке проекта Tuck. Принимаются сообщения об ошибках, запросы на добавление функциональности, улучшения документации и изменения программного кода.
 
-### Prerequisites
+---
 
-- Go 1.23+
-- Docker Desktop (for integration tests with minikube)
-- `golangci-lint` for linting: `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`
+## 2. Требования к среде разработки
 
-### Local Development
+### 2.1. Предварительные условия
+
+- Go 1.25+
+- Docker Desktop (для интеграционных тестов с Minikube)
+- `golangci-lint`: `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`
+
+### 2.2. Локальная сборка
 
 ```bash
 git clone https://github.com/NAGenaev/tuck.git
 cd tuck
 
-# Build everything
+# Сборка всех компонентов
 go build ./...
 
-# Run tests
+# Запуск тестов
 go test ./...
 
-# Build server binary
+# Сборка бинарного файла сервера
 go build -o bin/tuck ./cmd/tuck
 
-# Run dev server (in-memory, auto-unseal, no TLS)
+# Запуск сервера в режиме разработки
 ./bin/tuck --seal-type=dev --addr=127.0.0.1:8200
 ```
 
-### Project Structure
+### 2.3. Структура проекта
 
 ```
-cmd/tuck/           # Server binary
-cmd/tuck-operator/  # Kubernetes operator binary
-cmd/tuckcli/        # CLI client
+cmd/tuck/             Бинарный файл сервера
+cmd/tuck-operator/    Бинарный файл оператора Kubernetes
+cmd/tuckcli/          CLI-клиент
 internal/
-  api/              # HTTP handlers and routing
-  audit/            # Tamper-evident audit log
-  barrier/          # AES-256-GCM cryptographic barrier
-  core/             # Business logic (secrets, tokens, policies)
-  k8s/              # Kubernetes TokenReview auth
-  metrics/          # Prometheus metrics
-  operator/         # CRD controller and leader election
-  physical/         # Storage backends (bbolt, in-memory)
-  policy/           # Path-glob ACL
-  ratelimit/        # Per-IP token bucket
-  seal/             # Seal backends (dev, shamir, transit)
-  shamir/           # GF(256) secret sharing
-  tlsutil/          # TLS helpers
-  token/            # Token store
-  ui/               # Embedded web dashboard
-deploy/             # Kubernetes manifests and CRD
-docs/               # Architecture, threat model, runbook
-test/load/          # k6 load test scripts
+  api/                HTTP-обработчики и маршрутизация
+  audit/              Журнал аудита с цепочкой хэшей
+  barrier/            Криптографический барьер AES-256-GCM
+  core/               Бизнес-логика (секреты, токены, политики)
+  k8s/                Аутентификация Kubernetes TokenReview
+  metrics/            Метрики Prometheus
+  operator/           CRD-контроллер и выбор лидера
+  physical/           Физические бэкенды хранения (bbolt, in-memory)
+  policy/             ACL на основе glob-масок путей
+  ratelimit/          Token bucket на IP-адрес
+  seal/               Бэкенды снятия печати (dev, shamir, transit, kms)
+  shamir/             Разделение секрета в GF(256)
+  tlsutil/            Вспомогательные функции TLS
+  token/              Хранилище токенов
+  ui/                 Встроенная веб-панель управления
+deploy/               Kubernetes-манифесты и CRD
+docs/                 Архитектура, модель угроз, эксплуатация
 ```
 
-## How to Contribute
+---
 
-### Bug Reports
+## 3. Порядок оформления вкладов
 
-Use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.yml). Please include:
-- Tuck version (`tuck --version`)
-- Steps to reproduce
-- Expected vs. actual behaviour
-- Relevant logs (redact any tokens or secret values)
+### 3.1. Сообщения об ошибках
 
-### Feature Requests
+Используется шаблон [отчёта об ошибке](.github/ISSUE_TEMPLATE/bug_report.yml). В сообщении указываются:
 
-Use the [feature request template](.github/ISSUE_TEMPLATE/feature_request.yml).
-Check the [ROADMAP](docs/ROADMAP.md) first — your feature may already be planned.
+- версия системы (`tuck --version`);
+- шаги воспроизведения;
+- ожидаемое и фактическое поведение;
+- соответствующие записи журнала (токены и значения секретов должны быть удалены).
 
-### Pull Requests
+### 3.2. Запросы на добавление функциональности
 
-1. **Fork** the repository and create a feature branch: `git checkout -b feat/my-change`
-2. **Write tests** for new behaviour. Aim for coverage ≥ 70% on `crypto`/`auth` packages.
-3. **Run the full suite** before opening a PR:
+Используется шаблон [запроса функциональности](.github/ISSUE_TEMPLATE/feature_request.yml). Перед оформлением запроса рекомендуется ознакомиться с [дорожной картой](docs/ROADMAP.md).
+
+### 3.3. Pull Requests
+
+1. Выполнить форк репозитория и создать ветку функциональности: `git checkout -b feat/my-change`
+2. Написать тесты для нового поведения. Целевое покрытие для пакетов `crypto`/`auth` — не менее 70%.
+3. Выполнить полный прогон тестов до открытия PR:
    ```bash
    go test ./...
    golangci-lint run ./...
    go build ./...
    ```
-4. **Keep PRs focused.** One feature or fix per PR makes review faster.
-5. **Reference the issue** in your PR description: `Closes #123`.
-6. **Sign your commits** if your org requires it; otherwise standard commits are fine.
+4. Каждый PR должен содержать одно изменение или исправление.
+5. В описании PR указывается ссылка на связанную задачу: `Closes #123`.
 
-### Commit Style
+---
 
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
+## 4. Стандарты оформления кода
+
+### 4.1. Стиль сообщений коммитов
+
+Применяется формат [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
 feat(barrier): add Rekey() for root-key rotation
@@ -96,18 +104,21 @@ docs(threat-model): add bbolt exfiltration scenario
 test(operator): add UpdateStatus mock to controller test
 ```
 
-### Code Style
+### 4.2. Требования к коду
 
-- `gofmt` and `goimports` (enforced by CI)
-- No unused exports in internal packages
-- No `//nolint` without an explanation comment
-- No secrets in test fixtures — use `t.TempDir()` for key files
+- Соответствие требованиям `gofmt` и `goimports` (проверяется в CI)
+- Отсутствие неиспользуемых экспортируемых идентификаторов во внутренних пакетах
+- Директивы `//nolint` допускаются только с поясняющим комментарием
+- Ключевой материал в тестовых данных не допускается; для ключевых файлов используется `t.TempDir()`
 
-## Security Issues
+---
 
-Do **not** open public issues for security vulnerabilities.
-See [SECURITY.md](SECURITY.md) for the coordinated disclosure process.
+## 5. Вопросы безопасности
 
-## Licence
+Публикация сведений об уязвимостях безопасности в открытых Issues не допускается. Процедура координированного раскрытия описана в [SECURITY.md](SECURITY.md).
 
-By contributing, you agree your contributions are licensed under the [Apache 2.0 Licence](LICENSE).
+---
+
+## 6. Лицензионные условия
+
+Внося вклад в проект, участник соглашается с тем, что его материалы распространяются на условиях [лицензии MIT](LICENSE).

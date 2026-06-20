@@ -1,103 +1,110 @@
-# Tuck
-
-> The simplest Kubernetes-native secrets manager. Tuck a secret away — no ceremony.
+# Tuck — Система управления секретами
 
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v1.5.0-green)](https://github.com/NAGenaev/tuck/releases)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Release](https://img.shields.io/badge/release-v1.35.0-green)](https://github.com/NAGenaev/tuck/releases)
 
-Tuck is an open-source secrets manager built for Kubernetes. The pitch: **anti-Vault** — a single static binary, no external database, auto-unseal by default. `kubectl apply` and it runs.
-
-[Документация на русском →](README_RU.md)
+Tuck — специализированная система управления секретами (криптографическими ключами, учётными данными и конфиденциальными параметрами конфигурации), разработанная для функционирования в среде Kubernetes. Система реализована в виде единого исполняемого модуля без внешних зависимостей и обеспечивает централизованное хранение, разграничение доступа и автоматизированную ротацию секретов.
 
 ---
 
-## Why Tuck?
+## 1. Назначение системы
 
-[HashiCorp Vault](https://www.vaultproject.io) is powerful but operationally heavy: Consul or Raft quorum, manual unseal on every restart, a complex ACL model. [OpenBao](https://openbao.org) inherits that complexity. [Infisical](https://infisical.com) requires a database.
+Система Tuck предназначена для решения следующих задач:
 
-Tuck's wedge is **operational simplicity**:
-
-| | Vault | Tuck |
-|---|---|---|
-| Dependencies | Consul / Raft + DB | none — single binary |
-| Storage | External | Embedded bbolt or built-in Raft |
-| Unseal on restart | Manual (Shamir quorum) | Auto (dev / transit / AWS KMS / GCP KMS / Azure KV) |
-| Kubernetes operator | External (ESO) | Built-in |
-| Secrets engines | PKI, Transit, SSH, Database, TOTP | Same |
-| Auth methods | Token, K8s, JWT, AppRole | Same |
-| HA | Vault Enterprise / OSS Raft | Built-in Raft (3–5 nodes) |
-| Binary size | ~300 MB | ~20 MB |
+- централизованное хранение конфиденциальных данных с применением конвертного шифрования AES-256-GCM;
+- разграничение доступа к секретам на основе политик ACL с поддержкой glob-масок и запрещающих правил;
+- интеграция с платформой Kubernetes посредством CRD-контроллера, webhook-инжектора и CSI-драйвера;
+- поддержка отказоустойчивого кластера (Raft HA, 3–5 узлов) без внешних координаторов;
+- динамическая генерация учётных данных для СУБД и облачных провайдеров с автоматическим отзывом по истечении срока аренды.
 
 ---
 
-## Features
+## 2. Функциональные характеристики
 
-### Core
+### 2.1. Подсистема хранения секретов
 
-- **AES-256-GCM envelope encryption** — root key → DEK → ciphertext; key rotation re-wraps only the DEK, no data re-encryption
-- **Six seal types:** dev (auto-unseal, local), Shamir (n-of-k quorum), Transit (Vault-compatible API), AWS KMS (IRSA / instance role), GCP Cloud KMS (Workload Identity / ADC), Azure Key Vault (Workload Identity / Managed Identity / DefaultAzureCredential)
-- **KV v1** — simple key-value secrets with ACL enforcement
-- **KV v2** — versioned secrets: CAS (check-and-set), soft-delete, undelete, destroy, configurable `max_versions`
-- **Tamper-evident audit log** — SHA-256 hash chain, secret values never logged
-- **Per-IP rate limiting** — token bucket, exponential backoff on auth failures
-- **TLS** — ECDSA P-256 self-signed for dev, or bring your own cert
-- **Graceful shutdown** — 30-second drain + seal on exit
-- **Backup/restore** — `GET /v1/sys/snapshot` streams a live bbolt snapshot
-- **Key rotation** — `POST /v1/sys/rotate` generates a new root key, re-wraps the DEK
+| Компонент | Описание |
+|-----------|----------|
+| **KV v1** | Хранилище пар «ключ — значение» с контролем доступа по политикам ACL |
+| **KV v2** | Версионированное хранилище: проверка версии (CAS), мягкое удаление, восстановление, уничтожение версии, ограничение числа хранимых версий |
+| **Cubbyhole** | Изолированное хранилище, привязанное к токену; уничтожается при отзыве токена |
+| **Оборачивание ответов** | Одноразовая передача значения через обёрточный токен (response wrapping) |
 
-### Auth methods
+### 2.2. Подсистема аутентификации
 
-| Method | Description |
-|--------|-------------|
-| **Token** | Root token on init; create scoped tokens with TTL and policies |
-| **Kubernetes SA** | Workloads exchange ServiceAccount JWT via `TokenReview` API |
-| **JWT / OIDC** | Any OIDC provider — Keycloak, Auth0, GitHub Actions, Google |
-| **AppRole** | Machine-to-machine auth via `role_id` + `secret_id` pairs |
-| **LDAP / AD** | Authenticate users from OpenLDAP, Active Directory, FreeIPA; group membership mapped to policies via Roles |
+| Метод | Описание |
+|-------|----------|
+| **Token** | Корневой токен при инициализации; создание областных токенов с TTL, MaxUses, MaxTTL, возобновлением |
+| **Kubernetes SA** | Рабочие нагрузки предъявляют JWT сервисного аккаунта через API TokenReview |
+| **JWT / OIDC** | Любой провайдер — Keycloak, Auth0, GitHub Actions, Google Workspace |
+| **AppRole** | Машинная аутентификация по паре RoleID + SecretID |
+| **LDAP / Active Directory** | Аутентификация пользователей каталога; членство в группах отображается на политики |
+| **GitHub Actions OIDC** | Аутентификация конвейеров CI/CD без долгосрочных секретов |
 
-### Dynamic secrets engines
+### 2.3. Движки динамических секретов
 
-| Engine | Description |
-|--------|-------------|
-| **AWS** | On-demand IAM user credentials or STS AssumeRole sessions; auto-revoked at lease expiry |
-| **GCP** | On-demand service account JSON keys or OAuth2 access tokens; auto-revoked at lease expiry |
-| **Azure** | On-demand Azure AD client secrets (Graph API); auto-revoked at lease expiry |
-| **Database** | On-demand PostgreSQL / MySQL credentials; auto-revoked at lease expiry |
-| **PKI** | Internal X.509 CA; issue short-lived TLS certificates per role |
-| **Transit** | Encryption-as-a-service; versioned keys (AES-256-GCM, ECDSA, Ed25519, RSA-PSS); sign/verify/HMAC; rewrap after rotation |
-| **SSH** | CA-mode SSH certificates; sign user or host public keys; `TrustedUserCAKeys` workflow |
-| **TOTP** | Store TOTP secrets and validate / generate time-based OTP codes; `otpauth://` URL output |
+| Движок | Описание |
+|--------|----------|
+| **База данных** | Временные учётные данные PostgreSQL / MySQL; автоматический отзыв по истечении аренды |
+| **AWS IAM** | Временные ключи IAM-пользователя или сессии STS AssumeRole |
+| **GCP** | Ключи сервисного аккаунта или токены OAuth2; автоматический отзыв |
+| **Azure AD** | Клиентские секреты сервисных участников через Microsoft Graph API |
+| **PKI** | Внутренний удостоверяющий центр X.509; выдача TLS-сертификатов по ролям |
+| **Transit** | Шифрование как услуга: AES-256-GCM, ECDSA, Ed25519, RSA-PSS; ротация и перешифрование |
+| **SSH CA** | Центр сертификации SSH; подпись открытых ключей пользователей и узлов |
+| **TOTP** | Хранение ключей TOTP и проверка одноразовых паролей (RFC 6238) |
 
-### Kubernetes
+### 2.4. Подсистема интеграции с Kubernetes
 
-- **Operator** — `TuckSecret` CRD syncs Tuck secrets into native K8s Secrets; status conditions (`Synced`, `Ready`); Lease-based leader election; deletion policy (`Retain` / `Delete`)
-- **Webhook Agent Injector** — MutatingWebhook injects an init container that writes secrets to a tmpfs volume; bypasses etcd entirely
-- **Helm chart** — single `helm install` deploys server + operator + optional injector
+- **Оператор** — CRD `TuckSecret` синхронизирует секреты Tuck с объектами Kubernetes Secret; выбор лидера на основе Lease; политика при удалении (`Retain` / `Delete`)
+- **Webhook-инжектор** — MutatingWebhookConfiguration внедряет init-контейнер, записывающий секреты в том tmpfs; данные не попадают в etcd
+- **CSI-драйвер** — монтирование секретов как файловой системы SecretProviderClass
+- **Helm-чарт** — развёртывание сервера, оператора и инжектора одной командой
 
-### Operations
+### 2.5. Подсистема обеспечения отказоустойчивости
 
-- **Raft HA** — built-in 3–5 node cluster; embedded consensus; no external coordination service
-- **Prometheus metrics** at `/metrics`
-- **OpenTelemetry tracing** (OTLP exporter)
-- **Embedded web dashboard** at `/ui/` — ~80% API surface (KV, tokens, policies, auth, dynamic secrets, PKI, Transit, SSH, TOTP)
-- **CLI client** (`tuckcli`) — full coverage: KV, token, policy, dynamic creds, PKI, Transit, SSH, TOTP, auth logins
-- **Go SDK** (`pkg/client`) — typed Go client for the full API
-- **OpenAPI 3.0 spec** at `/openapi.json`
+- Встроенный Raft (3–5 узлов), не требующий внешних координаторов (Consul, etcd)
+- Автоматическое снятие печати: AWS KMS, GCP Cloud KMS, Azure Key Vault, Transit
+- Снятие печати по схеме Шамира (n-of-k): распределённое хранение долей
+- Резервное копирование: `GET /v1/sys/snapshot` — потоковый снимок BoltDB
+
+### 2.6. Средства аудита и мониторинга
+
+- Журнал аудита с цепочкой хэшей SHA-256 (значения секретов не записываются)
+- Метрики Prometheus на `/metrics`
+- Трассировка OpenTelemetry (OTLP-экспортёр)
+- Ограничение частоты запросов: token bucket на IP-адрес
 
 ---
 
-## Quickstart
+## 3. Технические характеристики
 
-### Run locally (dev seal)
+| Параметр | Значение |
+|----------|----------|
+| Язык реализации | Go 1.25.11 |
+| Размер исполняемого модуля | ~20 МБ |
+| Физическое хранилище | BoltDB (одиночный узел) / встроенный Raft (кластер) |
+| Шифрование | AES-256-GCM (конвертное) |
+| Транспортный протокол | HTTPS (TLS 1.2+, ECDSA P-256 или пользовательский сертификат) |
+| HTTP API | 194 эндпоинта, спецификация OpenAPI 3.0 |
+| Лицензия | MIT |
+
+---
+
+## 4. Порядок развёртывания
+
+### 4.1. Режим разработки (автоматическое снятие печати)
 
 ```sh
 go run ./cmd/tuck --seal-type=dev
 # tuck: unsealed (dev seal), serving on https://127.0.0.1:8200
-# ROOT TOKEN (shown once): tuck_...
+# ROOT TOKEN: tuck_...
 ```
 
-### Store and retrieve a secret
+> Режим разработки не предназначен для использования в производственных средах.
+
+### 4.2. Запись и чтение секрета
 
 ```sh
 export TUCK_ADDR=https://127.0.0.1:8200
@@ -105,25 +112,10 @@ export TUCK_TOKEN=tuck_...
 
 tuckcli kv put db/password s3cr3t
 tuckcli kv get db/password
-# {"path":"db/password","value":"s3cr3t"}
-
 tuckcli kv list db/
-# {"keys":["password"]}
 ```
 
-### Or with curl
-
-```sh
-curl -k -X PUT https://127.0.0.1:8200/v1/secret/db/password \
-  -H "X-Tuck-Token: $TUCK_TOKEN" -d 's3cr3t'
-
-curl -k https://127.0.0.1:8200/v1/secret/db/password \
-  -H "X-Tuck-Token: $TUCK_TOKEN"
-```
-
----
-
-## Production (Shamir seal)
+### 4.3. Производственное развёртывание (схема Шамира)
 
 ```sh
 tuck \
@@ -136,23 +128,15 @@ tuck \
   --data-dir=/var/lib/tuck
 ```
 
-On first start, Tuck prints the root token and 5 Shamir shares. Distribute the shares to separate operators — none of them alone can unseal.
-
-After a restart, submit any 3 shares:
+При первом запуске система выводит корневой токен и 5 долей Шамира. Доли распределяются операторам раздельно. После перезапуска сервера для снятия печати необходимо предъявить любые 3 доли:
 
 ```sh
-tuckcli unseal <share-1>
-tuckcli unseal <share-2>
-tuckcli unseal <share-3>   # "unsealed successfully"
+tuckcli unseal <доля-1>
+tuckcli unseal <доля-2>
+tuckcli unseal <доля-3>
 ```
 
----
-
-## AWS KMS seal (EKS / EC2)
-
-Zero-ops auto-unseal using an AWS Customer Managed Key. Credentials come
-from the pod's IAM role via IRSA — no key material in environment variables
-or config files.
+### 4.4. Автоматическое снятие печати — AWS KMS
 
 ```sh
 tuck \
@@ -164,16 +148,9 @@ tuck \
   --tls-key=/etc/tuck/tls.key
 ```
 
-The encrypted root key ciphertext is stored in `tuck-awskms.enc` (override
-with `--seal-awskms-key-file`). The file is safe to back up — it is
-meaningless without the KMS key.
+Учётные данные получаются автоматически через IRSA или роль экземпляра EC2. Зашифрованный корневой ключ сохраняется в файле `tuck-awskms.enc` и не представляет ценности без доступа к ключу KMS.
 
----
-
-## GCP Cloud KMS seal (GKE)
-
-Auto-unseal using a GCP CryptoKey. On GKE with Workload Identity the pod
-picks up credentials automatically from the metadata server.
+### 4.5. Автоматическое снятие печати — GCP Cloud KMS
 
 ```sh
 tuck \
@@ -184,16 +161,9 @@ tuck \
   --tls-key=/etc/tuck/tls.key
 ```
 
-Outside GCP, set `GOOGLE_APPLICATION_CREDENTIALS` to a service account JSON
-file with `roles/cloudkms.cryptoKeyEncrypterDecrypter` on the key.
+На GKE учётные данные предоставляются автоматически через Workload Identity. Вне GCP необходимо установить переменную `GOOGLE_APPLICATION_CREDENTIALS`.
 
----
-
-## Azure Key Vault seal (AKS / Azure)
-
-Auto-unseal using an RSA key stored in Azure Key Vault. Credentials are
-resolved automatically via `DefaultAzureCredential` — Managed Identity on
-AKS/VMs, `AZURE_*` env vars in CI, or Azure CLI for local development.
+### 4.6. Автоматическое снятие печати — Azure Key Vault
 
 ```sh
 tuck \
@@ -205,14 +175,9 @@ tuck \
   --tls-key=/etc/tuck/tls.key
 ```
 
-The pod's Managed Identity needs the `Key Vault Crypto User` role (or
-`Keys Encrypt` + `Keys Decrypt` permissions) on the key.
+Учётные данные разрешаются через `DefaultAzureCredential`: Managed Identity (AKS/ВМ), переменные `AZURE_*` (CI), Azure CLI (локальная разработка). Управляемому удостоверению требуется роль `Key Vault Crypto User`.
 
----
-
-## Kubernetes
-
-### Helm install
+### 4.7. Развёртывание в Kubernetes через Helm
 
 ```sh
 helm install tuck deploy/helm/tuck \
@@ -221,7 +186,7 @@ helm install tuck deploy/helm/tuck \
   --set server.shamirSeal.n=5,server.shamirSeal.k=3
 ```
 
-### Declare a secret
+**Объявление секрета через CRD:**
 
 ```yaml
 apiVersion: tuck.io/v1alpha1
@@ -236,7 +201,7 @@ spec:
   deletionPolicy: Retain
 ```
 
-### Webhook injection (bypasses etcd)
+**Внедрение секретов через webhook (без записи в etcd):**
 
 ```yaml
 metadata:
@@ -246,389 +211,247 @@ metadata:
     tuck.io/secrets: "db/password:password.txt,api/key:api-key.txt"
 ```
 
-Secrets are written to `/tuck/secrets/` on a tmpfs volume before app containers start.
+Секреты записываются в `/tuck/secrets/` на тот tmpfs до запуска контейнеров приложения.
 
 ---
 
-## Dynamic Secrets Examples
+## 5. Справочник API
 
-### PKI — issue a TLS certificate
+Все эндпоинты требуют заголовок `X-Tuck-Token`, если не указано иное.
 
-```sh
-# Generate root CA
-curl -XPOST https://tuck:8200/v1/pki/generate/root \
-  -H "X-Tuck-Token: $TOKEN" \
-  -d '{"common_name":"Tuck Internal CA","ttl":"87600h"}'
+### 5.1. Системные операции
 
-# Create a role
-curl -XPUT https://tuck:8200/v1/pki/roles/web \
-  -H "X-Tuck-Token: $TOKEN" \
-  -d '{"allowed_domains":["svc.cluster.local"],"allow_subdomains":true,"default_ttl":"72h"}'
+| Метод | Путь | Аутент. | Описание |
+|-------|------|---------|----------|
+| GET | `/v1/sys/seal-status` | публичный | Состояние печати |
+| GET | `/v1/sys/ready` | публичный | Готовность (503 при запечатанном состоянии) |
+| GET | `/v1/health` | публичный | Работоспособность |
+| POST | `/v1/sys/unseal` | публичный | Предъявить долю Шамира |
+| POST | `/v1/sys/seal` | токен | Запечатать сервер |
+| POST | `/v1/sys/rotate` | токен | Ротация корневого ключа |
+| GET | `/v1/sys/snapshot` | токен | Загрузить резервную копию BoltDB |
+| GET | `/v1/sys/cluster` | токен | Статус кластера Raft |
+| POST | `/v1/sys/cluster/join` | токен | Добавить узел Raft |
+| DELETE | `/v1/sys/cluster/node/{id}` | токен | Исключить узел Raft |
 
-# Issue a cert
-curl -XPOST https://tuck:8200/v1/pki/issue/web \
-  -H "X-Tuck-Token: $TOKEN" \
-  -d '{"common_name":"api.svc.cluster.local"}'
-```
+### 5.2. Хранилище KV v1
 
-### SSH — sign an SSH public key
+| Метод | Путь | Описание |
+|-------|------|----------|
+| GET/PUT/DELETE | `/v1/secret/{path}` | Чтение / запись / удаление |
+| LIST | `/v1/secret/{prefix}` | Перечисление ключей |
 
-```sh
-# Set up target host (once): add CA pubkey to TrustedUserCAKeys
-curl https://tuck:8200/v1/ssh/ca/public-key | jq -r .public_key \
-  | sudo tee /etc/ssh/trusted_user_ca_keys
+### 5.3. Хранилище KV v2 (версионированное)
 
-# Sign a user's key
-curl -XPOST https://tuck:8200/v1/ssh/sign/ops \
-  -H "X-Tuck-Token: $TOKEN" \
-  -d '{"public_key":"ssh-ed25519 AAAA...","valid_principals":["ubuntu"],"ttl":"24h"}'
-```
+| Метод | Путь | Описание |
+|-------|------|----------|
+| GET/PUT/DELETE | `/v2/secret/{path}` | Чтение / запись / мягкое удаление |
+| LIST | `/v2/secret/{prefix}` | Перечисление ключей |
+| POST | `/v2/secret/undelete/{path}` | Восстановление удалённой версии |
+| POST | `/v2/secret/destroy/{path}` | Необратимое уничтожение версии |
+| GET/PUT/DELETE | `/v2/secret/metadata/{path}` | Метаданные версий |
 
-### Transit — encrypt/decrypt without handling keys
+### 5.4. Аутентификация
 
-```sh
-# Create an AES key
-curl -XPOST https://tuck:8200/v1/transit/keys/payments \
-  -H "X-Tuck-Token: $TOKEN" -d '{"type":"aes256-gcm96"}'
+| Метод | Путь | Описание |
+|-------|------|----------|
+| POST | `/v1/auth/token` | Создать токен |
+| GET/DELETE | `/v1/auth/token/{id}` | Получить / отозвать |
+| POST | `/v1/auth/token/{id}/renew` | Возобновить |
+| LIST | `/v1/auth/token/` | Перечислить |
+| POST | `/v1/auth/kubernetes/login` | Вход по Kubernetes SA (публичный) |
+| PUT/GET/DELETE | `/v1/auth/kubernetes/role/{ns}/{sa}` | Привязка роли K8s |
+| POST | `/v1/auth/jwt/login` | Вход JWT/OIDC (публичный) |
+| GET/PUT | `/v1/auth/jwt/config` | Конфигурация JWKS |
+| PUT/GET/DELETE/LIST | `/v1/auth/jwt/role/{name}` | Управление ролями JWT |
+| POST | `/v1/auth/approle/login` | Вход AppRole (публичный) |
+| PUT/GET/DELETE/LIST | `/v1/auth/approle/role/{name}` | Управление ролями AppRole |
+| POST | `/v1/auth/approle/role/{name}/secret-id` | Генерация SecretID |
+| POST | `/v1/auth/ldap/login` | Вход LDAP/AD (публичный) |
+| GET/PUT | `/v1/auth/ldap/config` | Конфигурация LDAP |
+| PUT/GET/DELETE/LIST | `/v1/auth/ldap/role/{name}` | Управление ролями LDAP |
 
-# Encrypt
-CIPHER=$(curl -s -XPOST https://tuck:8200/v1/transit/encrypt/payments \
-  -H "X-Tuck-Token: $TOKEN" \
-  -d "{\"plaintext\":\"$(echo -n 'card:4242' | base64)\"}" | jq -r .ciphertext)
+### 5.5. Политики
 
-# Rotate and rewrap
-curl -XPOST https://tuck:8200/v1/transit/keys/payments/rotate \
-  -H "X-Tuck-Token: $TOKEN"
-curl -XPOST https://tuck:8200/v1/transit/rewrap/payments \
-  -H "X-Tuck-Token: $TOKEN" -d "{\"ciphertext\":\"$CIPHER\"}"
-```
+| Метод | Путь | Описание |
+|-------|------|----------|
+| PUT/GET/DELETE | `/v1/policy/{name}` | Управление политикой |
+| LIST | `/v1/policy/` | Перечислить политики |
 
-### LDAP / Active Directory — authenticate directory users
+### 5.6. Движок PKI
 
-```sh
-# Configure (example: Active Directory)
-curl -XPUT https://tuck:8200/v1/auth/ldap/config \
-  -H "X-Tuck-Token: $TOKEN" \
-  -d '{
-    "urls": ["ldaps://ad.corp.example.com:636"],
-    "bind_dn": "CN=tuck-svc,OU=ServiceAccounts,DC=corp,DC=example,DC=com",
-    "bind_password": "svc-password",
-    "user_dn": "OU=Users,DC=corp,DC=example,DC=com",
-    "user_attr": "sAMAccountName"
-  }'
+| Метод | Путь | Аутент. | Описание |
+|-------|------|---------|----------|
+| POST | `/v1/pki/generate/root` | токен | Создать корневой CA |
+| POST | `/v1/pki/import/ca` | токен | Импортировать существующий CA |
+| GET | `/v1/pki/ca/pem` | публичный | Сертификат CA |
+| GET | `/v1/pki/crl/pem` | публичный | Список отзыва (CRL) |
+| PUT/GET/DELETE/LIST | `/v1/pki/roles/{name}` | токен | Управление ролями PKI |
+| POST | `/v1/pki/issue/{role}` | токен | Выдать сертификат |
+| POST | `/v1/pki/revoke/{serial}` | токен | Отозвать сертификат |
 
-# Create a role (maps AD group to Tuck policy)
-curl -XPUT https://tuck:8200/v1/auth/ldap/role/ops \
-  -H "X-Tuck-Token: $TOKEN" \
-  -d '{"groups":["Ops-Team"],"policies":["ops-policy"],"ttl":"8h"}'
+### 5.7. Движок Transit
 
-# Login — returns a scoped Tuck token
-curl -XPOST https://tuck:8200/v1/auth/ldap/login \
-  -d '{"username":"alice","password":"alicepass"}'
-# → {"token":"tuck_...","policies":["ops-policy"],"expires_at":"..."}
-```
+| Метод | Путь | Описание |
+|-------|------|----------|
+| POST | `/v1/transit/keys/{name}` | Создать ключ |
+| GET/DELETE/LIST | `/v1/transit/keys/{name}` | Управление ключами |
+| POST | `/v1/transit/keys/{name}/rotate` | Ротация ключа |
+| POST | `/v1/transit/encrypt/{name}` | Зашифровать |
+| POST | `/v1/transit/decrypt/{name}` | Дешифровать |
+| POST | `/v1/transit/rewrap/{name}` | Перешифровать новым ключом |
+| POST | `/v1/transit/sign/{name}` | Подписать |
+| POST | `/v1/transit/verify/{name}` | Проверить подпись |
+| POST | `/v1/transit/hmac/{name}` | Вычислить HMAC |
 
-### TOTP — 2FA validation
+### 5.8. Движок SSH
 
-```sh
-# Create a key (returns secret + otpauth:// URL for QR import)
-curl -XPOST https://tuck:8200/v1/totp/keys/myapp \
-  -H "X-Tuck-Token: $TOKEN" \
-  -d '{"issuer":"ACME Corp","account":"user@example.com"}'
+| Метод | Путь | Аутент. | Описание |
+|-------|------|---------|----------|
+| POST | `/v1/ssh/generate/ca` | токен | Создать ключевую пару CA |
+| GET | `/v1/ssh/ca/public-key` | публичный | Открытый ключ CA |
+| PUT/GET/DELETE/LIST | `/v1/ssh/roles/{name}` | токен | Управление ролями SSH |
+| POST | `/v1/ssh/sign/{role}` | токен | Подписать открытый ключ |
 
-# Validate user-submitted code
-curl -XPOST https://tuck:8200/v1/totp/code/myapp \
-  -H "X-Tuck-Token: $TOKEN" -d '{"code":"123456"}'
-# → {"valid":true}
-```
+### 5.9. Движок TOTP
 
----
+| Метод | Путь | Описание |
+|-------|------|----------|
+| POST | `/v1/totp/keys/{name}` | Создать ключ (возвращает URL `otpauth://`) |
+| GET/DELETE/LIST | `/v1/totp/keys/{name}` | Управление ключами |
+| GET | `/v1/totp/code/{name}` | Получить текущий код |
+| POST | `/v1/totp/code/{name}` | Проверить код |
 
-## API Reference
+### 5.10. Служебные эндпоинты
 
-All endpoints require `X-Tuck-Token` header unless marked **public**.
-
-### System
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/v1/sys/seal-status` | public | Seal state |
-| GET | `/v1/sys/ready` | public | Readiness (503 if sealed) |
-| GET | `/v1/health` | public | Liveness |
-| POST | `/v1/sys/unseal` | public | Submit Shamir share |
-| POST | `/v1/sys/seal` | token | Seal the server |
-| POST | `/v1/sys/rotate` | token | Rotate root key |
-| GET | `/v1/sys/snapshot` | token | Download bbolt backup |
-| GET | `/v1/sys/cluster` | token | Raft cluster status |
-| POST | `/v1/sys/cluster/join` | token | Add a Raft voter |
-| DELETE | `/v1/sys/cluster/node/{id}` | token | Remove a Raft voter |
-
-### KV v1
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET/PUT/DELETE | `/v1/secret/{path}` | Read / write / delete |
-| LIST | `/v1/secret/{prefix}` | List keys |
-
-### KV v2 (versioned)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET/PUT/DELETE | `/v2/secret/{path}` | Read / write / soft-delete |
-| LIST | `/v2/secret/{prefix}` | List keys |
-| POST | `/v2/secret/undelete/{path}` | Restore a soft-deleted version |
-| POST | `/v2/secret/destroy/{path}` | Permanent delete |
-| GET/PUT/DELETE | `/v2/secret/metadata/{path}` | Version metadata |
-
-### Auth
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/v1/auth/token` | Create token |
-| GET/DELETE | `/v1/auth/token/{id}` | Get / revoke |
-| POST | `/v1/auth/token/{id}/renew` | Renew |
-| LIST | `/v1/auth/token/` | List |
-| POST | `/v1/auth/kubernetes/login` | K8s SA login (public) |
-| PUT/GET/DELETE | `/v1/auth/kubernetes/role/{ns}/{sa}` | K8s role binding |
-| POST | `/v1/auth/jwt/login` | JWT/OIDC login (public) |
-| GET/PUT | `/v1/auth/jwt/config` | JWKS config |
-| PUT/GET/DELETE | `/v1/auth/jwt/role/{name}` | JWT role |
-| LIST | `/v1/auth/jwt/role/` | List JWT roles |
-| POST | `/v1/auth/approle/login` | AppRole login (public) |
-| PUT/GET/DELETE | `/v1/auth/approle/role/{name}` | AppRole role |
-| LIST | `/v1/auth/approle/role/` | List roles |
-| POST | `/v1/auth/approle/role/{name}/secret-id` | Generate secret-id |
-| GET/DELETE | `/v1/auth/approle/role/{name}/secret-id/{id}` | Inspect / destroy |
-| POST | `/v1/auth/ldap/login` | LDAP / AD login (public) |
-| GET/PUT | `/v1/auth/ldap/config` | LDAP config (bind_password redacted on GET) |
-| PUT/GET/DELETE | `/v1/auth/ldap/role/{name}` | LDAP role |
-| LIST | `/v1/auth/ldap/role/` | List LDAP roles |
-
-### Policies
-
-| Method | Path | Description |
-|--------|------|-------------|
-| PUT/GET/DELETE | `/v1/policy/{name}` | Manage policy |
-| LIST | `/v1/policy/` | List |
-
-### Database engine
-
-| Method | Path | Description |
-|--------|------|-------------|
-| PUT/GET/DELETE | `/v1/database/config/{name}` | Connection config |
-| LIST | `/v1/database/config/` | List configs |
-| PUT/GET/DELETE | `/v1/database/role/{name}` | Role (creation/revocation SQL) |
-| LIST | `/v1/database/role/` | List roles |
-| POST | `/v1/database/creds/{role}` | Generate ephemeral credentials |
-| GET/DELETE | `/v1/database/lease/{id}` | Inspect / revoke lease |
-| LIST | `/v1/database/lease/` | List leases |
-
-### PKI engine
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/v1/pki/generate/root` | token | Generate root CA |
-| POST | `/v1/pki/import/ca` | token | Import existing CA |
-| GET | `/v1/pki/ca/pem` | **public** | CA certificate (for client trust stores) |
-| GET | `/v1/pki/crl/pem` | **public** | Current CRL |
-| PUT/GET/DELETE | `/v1/pki/roles/{name}` | token | Manage roles |
-| LIST | `/v1/pki/roles/` | token | List roles |
-| POST | `/v1/pki/issue/{role}` | token | Issue certificate |
-| POST | `/v1/pki/revoke/{serial}` | token | Revoke certificate |
-| GET | `/v1/pki/certs/{serial}` | token | Get cert record |
-| LIST | `/v1/pki/certs/` | token | List certs |
-
-### Transit engine
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/v1/transit/keys/{name}` | Create key |
-| GET/DELETE | `/v1/transit/keys/{name}` | Get / delete |
-| LIST | `/v1/transit/keys/` | List |
-| POST | `/v1/transit/keys/{name}/rotate` | Rotate (new version) |
-| POST | `/v1/transit/keys/{name}/config` | Set `min_decryption_version`, `deletable` |
-| POST | `/v1/transit/encrypt/{name}` | Encrypt |
-| POST | `/v1/transit/decrypt/{name}` | Decrypt |
-| POST | `/v1/transit/rewrap/{name}` | Rewrap ciphertext with latest key |
-| POST | `/v1/transit/sign/{name}` | Sign |
-| POST | `/v1/transit/verify/{name}` | Verify signature |
-| POST | `/v1/transit/hmac/{name}` | Compute HMAC |
-
-### SSH engine
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/v1/ssh/generate/ca` | token | Generate CA key pair |
-| POST | `/v1/ssh/import/ca` | token | Import existing CA |
-| GET | `/v1/ssh/ca/public-key` | **public** | CA public key (for `TrustedUserCAKeys`) |
-| PUT/GET/DELETE | `/v1/ssh/roles/{name}` | token | Manage roles |
-| LIST | `/v1/ssh/roles/` | token | List roles |
-| POST | `/v1/ssh/sign/{role}` | token | Sign a public key → SSH certificate |
-
-### TOTP engine
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/v1/totp/keys/{name}` | Create key (returns `otpauth://` URL) |
-| GET/DELETE | `/v1/totp/keys/{name}` | Get metadata / delete |
-| LIST | `/v1/totp/keys/` | List |
-| GET | `/v1/totp/code/{name}` | Generate current code |
-| POST | `/v1/totp/code/{name}` | Validate code → `{"valid":true}` |
-
-### Other
-
-| Path | Description |
-|------|-------------|
-| `GET /metrics` | Prometheus metrics |
-| `GET /ui/` | Embedded web dashboard |
-| `GET /openapi.json` | OpenAPI 3.0 spec |
+| Путь | Описание |
+|------|----------|
+| `GET /metrics` | Метрики Prometheus |
+| `GET /ui/` | Веб-интерфейс управления |
+| `GET /openapi.json` | Спецификация OpenAPI 3.0 |
 
 ---
 
-## CLI Reference
+## 6. Справочник CLI
 
 ```sh
-tuckcli status                              # seal status
-tuckcli unseal <share>                      # submit Shamir share
-tuckcli seal                                # seal the server
-tuckcli rotate                              # rotate root key
+# Системные операции
+tuckcli status                              # состояние печати
+tuckcli unseal <доля>                       # предъявить долю Шамира
+tuckcli seal                                # запечатать сервер
+tuckcli rotate                              # ротация корневого ключа
 
-tuckcli kv get <path>                       # read a secret
-tuckcli kv put <path> <value>               # write a secret
-tuckcli kv delete <path>                    # delete a secret
-tuckcli kv list <prefix/>                   # list keys
+# Хранилище секретов
+tuckcli kv get <путь>
+tuckcli kv put <путь> <значение>
+tuckcli kv delete <путь>
+tuckcli kv list <префикс/>
 
+# Управление токенами
 tuckcli token create --name=x --policy=y --ttl=24h
 tuckcli token get <id>
 tuckcli token renew <id> 48h
 tuckcli token revoke <id>
 tuckcli token list
 
-tuckcli policy put <name> <json-rules>
-tuckcli policy get <name>
-tuckcli policy delete <name>
+# Управление политиками
+tuckcli policy put <имя> <json-правила>
+tuckcli policy get <имя>
+tuckcli policy delete <имя>
 tuckcli policy list
 ```
 
-Environment variables: `TUCK_ADDR` (default `https://127.0.0.1:8200`), `TUCK_TOKEN`.
+Переменные среды: `TUCK_ADDR` (по умолчанию `https://127.0.0.1:8200`), `TUCK_TOKEN`.
 
 ---
 
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  HTTP API  (net/http, no framework)                      │
-│  TLS · Auth middleware · Rate limiter · Audit log        │
-│  Prometheus metrics · OpenTelemetry · OpenAPI            │
-├─────────────────────────────────────────────────────────┤
-│  Core  (orchestration + logical operations)              │
-│  Token store · Policy store · KV v1/v2                   │
-├────────────────┬────────────────────────────────────────┤
-│  Auth engines  │  Dynamic secrets engines               │
-│  · K8s SA      │  · Database (PostgreSQL / MySQL)       │
-│  · JWT / OIDC  │  · PKI (X.509 CA)                      │
-│  · AppRole     │  · Transit (encryption-as-a-service)   │
-│  · LDAP / AD   │  · SSH (CA-mode certificates)           │
-│                │  · TOTP (time-based OTP)               │
-├────────────────┴────────────────────────────────────────┤
-│  Barrier  (AES-256-GCM envelope encryption)             │
-│  root key → DEK → ciphertext                            │
-├─────────────────────────────────────────────────────────┤
-│  Physical backend                                        │
-│  bbolt (single file) | Raft HA (3–5 nodes, embedded)    │
-└─────────────────────────────────────────────────────────┘
-               ▲
-         Seal (dev | shamir | transit | awskms | gcpkms | azurekv)
-```
-
----
-
-## Go SDK
+## 7. Go SDK
 
 ```go
 import "github.com/NAGenaev/tuck/pkg/client"
 
-c := client.New("https://tuck:8200", client.WithToken("tuck_..."))
+c, err := client.New(client.Config{
+    Addr:  "https://tuck:8200",
+    Token: os.Getenv("TUCK_TOKEN"),
+})
 
-// KV
-c.Put(ctx, "secret/db/password", []byte("s3cr3t"))
-val, _ := c.Get(ctx, "secret/db/password")
+// KV v1
+_ = c.KV().Put(ctx, "secret/db/password", "s3cr3t")
+val, _ := c.KV().Get(ctx, "secret/db/password")
 
 // KV v2
-c.V2Write(ctx, "app/config", map[string]string{"key": "val"})
+_ = c.KVv2().Put(ctx, "app/config", map[string]string{"key": "val"})
+secret, _ := c.KVv2().Get(ctx, "app/config", 0) // 0 = последняя версия
+
+// Transit
+ct, _ := c.Transit().Encrypt(ctx, "payments", []byte("данные"))
+pt, _ := c.Transit().Decrypt(ctx, "payments", ct)
+
+// PKI
+cert, _ := c.PKI().Issue(ctx, "pki", "web", client.PKIIssueRequest{
+    CommonName: "api.example.com",
+    TTL:        "720h",
+})
 ```
 
 ---
 
-## Development
+## 8. Архитектура системы
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Уровень HTTP API  (net/http)                                │
+│  TLS · Аутентификация · Ограничение частоты · Аудит         │
+│  Prometheus · OpenTelemetry · OpenAPI 3.0                    │
+├─────────────────────────────────────────────────────────────┤
+│  Уровень ядра  (оркестрация и логические операции)           │
+│  Хранилище токенов · Хранилище политик · KV v1/v2           │
+├───────────────────┬─────────────────────────────────────────┤
+│  Методы аутент.   │  Движки динамических секретов           │
+│  · Kubernetes SA  │  · База данных (PostgreSQL / MySQL)      │
+│  · JWT / OIDC     │  · PKI (удостоверяющий центр X.509)     │
+│  · AppRole        │  · Transit (шифрование как услуга)      │
+│  · LDAP / AD      │  · SSH (сертификаты в режиме CA)        │
+│  · GitHub OIDC    │  · TOTP (одноразовые пароли)            │
+├───────────────────┴─────────────────────────────────────────┤
+│  Криптографический барьер  (AES-256-GCM)                    │
+│  корневой ключ → ключ шифрования данных → шифротекст        │
+├─────────────────────────────────────────────────────────────┤
+│  Физический уровень хранения                                 │
+│  BoltDB (одиночный узел) | Raft HA (3–5 узлов, встроенный) │
+└─────────────────────────────────────────────────────────────┘
+               ▲
+         Снятие печати (dev | shamir | transit | awskms | gcpkms | azurekv)
+```
+
+---
+
+## 9. Разработка и сборка
 
 ```sh
 git clone https://github.com/NAGenaev/tuck
 cd tuck
 
-go test ./...              # all tests
-go test -race ./...        # with race detector
-go build ./cmd/tuck        # server binary
-go build ./cmd/tuckcli     # CLI binary
+go test ./...              # все тесты
+go test -race ./...        # с детектором гонок
+go build ./cmd/tuck        # бинарный файл сервера
+go build ./cmd/tuckcli     # бинарный файл CLI
 go build ./cmd/tuck-operator
 go build ./cmd/tuck-injector
-go build ./cmd/tuck-agent
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/RUNBOOK.md](docs/RUNBOOK.md).
+Дополнительная документация: [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/RUNBOOK.md](docs/RUNBOOK.md).
 
 ---
 
-## Status
+## 10. Безопасность
 
-| Milestone | Version | Status |
-|-----------|---------|--------|
-| M0 — Crypto core, bbolt, KV API | v0.1 | ✅ |
-| M1 — Token auth, ACL policies | v0.2 | ✅ |
-| M2 — Kubernetes SA auth | v0.3 | ✅ |
-| M3 — TuckSecret CRD + operator | v0.4 | ✅ |
-| M4 — Shamir + Transit seals | v0.5 | ✅ |
-| M5 — TLS, graceful shutdown, CI | v0.5 | ✅ |
-| M6 — Audit log, metrics, backup, rate limiting | v0.6 | ✅ |
-| M7 — LIST endpoints, token renew, key rotation, CLI | v0.7 | ✅ |
-| M8 — HA operator, embedded UI, threat model | v0.9 | ✅ |
-| M9 — KV v2, OpenTelemetry, OpenAPI spec, embedded dashboard | v0.9 | ✅ |
-| M10 — Go SDK, goreleaser, release pipeline | v0.10 | ✅ |
-| M11 — Raft HA backend (3–5 node cluster) | v0.11 | ✅ |
-| M12 — Webhook Agent Injector (tmpfs, bypasses etcd) | v0.12 | ✅ |
-| M13 — JWT/OIDC auth, Helm chart | v0.13 | ✅ |
-| M14 — AppRole auth, Database dynamic secrets | v0.14 | ✅ |
-| M15 — PKI secrets engine (internal X.509 CA) | v0.15 | ✅ |
-| M16 — Transit secrets engine (encryption-as-a-service) | v0.16 | ✅ |
-| M17 — SSH secrets engine (CA-mode certificates) | v0.17 | ✅ |
-| M18 — TOTP secrets engine (2FA / OTP validation) | v0.18 | ✅ |
-| M19 — AWS KMS + GCP Cloud KMS seal backends | v0.19 | ✅ |
-| M20 — LDAP/AD auth, Azure Key Vault seal | v0.20 | ✅ |
-| M21 — AWS dynamic secrets (IAM user + STS AssumeRole) | v0.21 | ✅ |
-| M22 — GCP dynamic secrets (SA key + access token) | v0.22 | ✅ |
-| M23 — Azure dynamic secrets (AD client secrets, Graph API) | v0.23 | ✅ |
-| M24 — Response wrapping (single-use tokens, secure secret hand-off) | v0.24 | ✅ |
-| M25 — Cubbyhole engine (per-token private storage, auto-purge) | v0.25 | ✅ |
-| M26 — Token accessor (tuck_acc_ alias, lookup/revoke without raw token) | v0.26 | ✅ |
-| M27 — Policy deny rules (CapDeny; deny-first evaluation overrides any allow) | v0.27 | ✅ |
-| M28 — Renewable tokens with MaxTTL (renewable flag, max_ttl cap, lookup-self, renew-self) | v0.28 | ✅ |
-| M29 — Token MaxUses (num_uses; auto-revoke after N authenticated calls) | v0.29 | ✅ |
-| M30 — UI: Auth Methods (AppRole/JWT/LDAP/K8s) + Dynamic Secrets (DB/AWS/GCP/Azure) + Leases | v0.30 | ✅ |
-| M31 — UI: Crypto Engines (PKI / Transit / SSH / TOTP in browser) | v0.31 | 🔜 |
-| M32 — CLI completeness (db/aws/gcp/azure creds, pki/transit/ssh/totp ops) | v0.32 | 🔜 |
-| v1.0 GA — External security audit | — | 🔜 |
+Политика раскрытия уязвимостей изложена в [SECURITY.md](SECURITY.md). Модель угроз — в [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
+
+Сообщения об уязвимостях направлять по адресу: **genaevlive@gmail.com** (координированное раскрытие, срок — 90 дней).
 
 ---
 
-## Security
+## 11. Лицензия
 
-See [SECURITY.md](SECURITY.md) for the vulnerability disclosure policy and [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the threat model.
-
-Report vulnerabilities: **genaevlive@gmail.com** (coordinated disclosure, 90-day window).
-
----
-
-## License
-
-Apache-2.0. See [LICENSE](LICENSE).
+MIT. Подробности — в файле [LICENSE](LICENSE).

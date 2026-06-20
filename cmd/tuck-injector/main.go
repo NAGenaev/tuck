@@ -33,7 +33,7 @@ func main() {
 	flag.Parse()
 
 	if *versionFlag {
-		fmt.Fprintf(os.Stdout, "tuck-injector %s\n", Version)
+		fmt.Printf("tuck-injector %s\n", Version)
 		os.Exit(0)
 	}
 

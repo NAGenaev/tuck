@@ -88,7 +88,7 @@ func (c *client) doRaw(method, path string, bodyReader io.Reader) (*http.Respons
 }
 
 func mustJSON(resp *http.Response, ok int) map[string]any {
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != ok {
 		fatalf("HTTP %d: %s", resp.StatusCode, body)
@@ -171,7 +171,7 @@ func cmdKvPut(c *client, path, value string) {
 	if err != nil {
 		fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 204 {
 		body, _ := io.ReadAll(resp.Body)
 		fatalf("HTTP %d: %s", resp.StatusCode, body)
@@ -184,7 +184,7 @@ func cmdKvDelete(c *client, path string) {
 	if err != nil {
 		fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 204 {
 		body, _ := io.ReadAll(resp.Body)
 		fatalf("HTTP %d: %s", resp.StatusCode, body)
@@ -245,7 +245,7 @@ func cmdTokenRevoke(c *client, id string) {
 	if err != nil {
 		fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 204 {
 		body, _ := io.ReadAll(resp.Body)
 		fatalf("HTTP %d: %s", resp.StatusCode, body)
@@ -276,7 +276,7 @@ func cmdPolicyDelete(c *client, name string) {
 	if err != nil {
 		fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 204 {
 		body, _ := io.ReadAll(resp.Body)
 		fatalf("HTTP %d: %s", resp.StatusCode, body)
@@ -301,7 +301,7 @@ func cmdPolicyPut(c *client, name string, rulesJSON string) {
 	if err != nil {
 		fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 204 {
 		body, _ := io.ReadAll(resp.Body)
 		fatalf("HTTP %d: %s", resp.StatusCode, body)
@@ -545,7 +545,7 @@ func cmdAuthGitHubRoleCreate(c *client, name, repo, owner, ref, env, workflowRef
 	if err != nil {
 		fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 204 {
 		body2, _ := io.ReadAll(resp.Body)
 		fatalf("HTTP %d: %s", resp.StatusCode, body2)
@@ -566,7 +566,7 @@ func cmdAuthGitHubRoleDelete(c *client, name string) {
 	if err != nil {
 		fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 204 {
 		body, _ := io.ReadAll(resp.Body)
 		fatalf("HTTP %d: %s", resp.StatusCode, body)
@@ -629,7 +629,7 @@ func cmdIdentityEntityDelete(c *client, id string) {
 	if err != nil {
 		fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 204 {
 		body, _ := io.ReadAll(resp.Body)
 		fatalf("HTTP %d: %s", resp.StatusCode, body)
@@ -667,7 +667,7 @@ func cmdIdentityAliasDelete(c *client, id string) {
 	if err != nil {
 		fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 204 {
 		body, _ := io.ReadAll(resp.Body)
 		fatalf("HTTP %d: %s", resp.StatusCode, body)
@@ -736,7 +736,7 @@ func cmdIdentityGroupDelete(c *client, id string) {
 	if err != nil {
 		fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 204 {
 		body, _ := io.ReadAll(resp.Body)
 		fatalf("HTTP %d: %s", resp.StatusCode, body)
@@ -781,7 +781,7 @@ func cmdIdentityGroupAliasDelete(c *client, id string) {
 	if err != nil {
 		fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 204 {
 		body, _ := io.ReadAll(resp.Body)
 		fatalf("HTTP %d: %s", resp.StatusCode, body)
@@ -869,7 +869,7 @@ func (v *vaultClient) listKeys(apiPath string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == 404 {
 		return nil, nil
 	}
@@ -893,7 +893,7 @@ func (v *vaultClient) readKV(apiPath string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("vault GET %s: HTTP %d: %s", apiPath, resp.StatusCode, body)
@@ -960,7 +960,7 @@ func migrateKVPaths(vault *vaultClient, tuck *client, listPath, dataPath, tuckPr
 			skipped++
 			continue
 		}
-		tResp.Body.Close()
+		_ = tResp.Body.Close()
 		if tResp.StatusCode != 204 {
 			fmt.Fprintf(os.Stderr, "warn: tuck put %s: HTTP %d\n", tuckPath, tResp.StatusCode)
 			skipped++
@@ -1048,7 +1048,7 @@ func cmdMigratePolicies(vault *vaultClient, tuck *client, dryRun bool) {
 	if err != nil {
 		fatalf("vault list policies: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
 		fatalf("vault list policies: HTTP %d: %s", resp.StatusCode, body)
@@ -1072,7 +1072,7 @@ func cmdMigratePolicies(vault *vaultClient, tuck *client, dryRun bool) {
 			continue
 		}
 		pBody, _ := io.ReadAll(resp2.Body)
-		resp2.Body.Close()
+		_ = resp2.Body.Close()
 		if resp2.StatusCode != 200 {
 			fmt.Fprintf(os.Stderr, "warn: policy %s: HTTP %d\n", name, resp2.StatusCode)
 			skipped++
@@ -1105,7 +1105,7 @@ func cmdMigratePolicies(vault *vaultClient, tuck *client, dryRun bool) {
 			skipped++
 			continue
 		}
-		tResp.Body.Close()
+		_ = tResp.Body.Close()
 		if tResp.StatusCode != 204 {
 			fmt.Fprintf(os.Stderr, "warn: tuck policy put %s: HTTP %d\n", name, tResp.StatusCode)
 			skipped++
@@ -1264,7 +1264,7 @@ func cmdNamespaceDelete(c *client, name string) {
 	if err != nil {
 		fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 204 {
 		body, _ := io.ReadAll(resp.Body)
 		fatalf("HTTP %d: %s", resp.StatusCode, body)
@@ -1291,7 +1291,7 @@ func cmdAuditEnableFile(c *client, name, path string, maxSizeMB int64, maxBackup
 	if err != nil {
 		fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 204 {
 		body, _ := io.ReadAll(resp.Body)
 		fatalf("HTTP %d: %s", resp.StatusCode, body)
@@ -1307,7 +1307,7 @@ func cmdAuditEnableWebhook(c *client, name, url string, timeoutSec int) {
 	if err != nil {
 		fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 204 {
 		body, _ := io.ReadAll(resp.Body)
 		fatalf("HTTP %d: %s", resp.StatusCode, body)
@@ -1320,7 +1320,7 @@ func cmdAuditDisable(c *client, name string) {
 	if err != nil {
 		fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 204 {
 		body, _ := io.ReadAll(resp.Body)
 		fatalf("HTTP %d: %s", resp.StatusCode, body)
@@ -1357,7 +1357,7 @@ func cmdTokenRoleCreate(c *client, name string, policies []string, ttl, maxTTL s
 	if err != nil {
 		fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 204 {
 		body2, _ := io.ReadAll(resp.Body)
 		fatalf("HTTP %d: %s", resp.StatusCode, body2)
@@ -1378,7 +1378,7 @@ func cmdTokenRoleDelete(c *client, name string) {
 	if err != nil {
 		fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 204 {
 		body, _ := io.ReadAll(resp.Body)
 		fatalf("HTTP %d: %s", resp.StatusCode, body)

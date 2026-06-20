@@ -93,7 +93,7 @@ func TestLoginWrongRoleID(t *testing.T) {
 	ctx := context.Background()
 
 	r := &Role{Name: "r", Policies: []string{"p"}}
-	s.PutRole(ctx, r)
+	_ = s.PutRole(ctx, r)
 	sid, _ := s.GenerateSecretID(ctx, "r")
 
 	_, err := s.Login(ctx, "wrong-role-id", sid.ID, "")
@@ -107,7 +107,7 @@ func TestLoginWrongSecretID(t *testing.T) {
 	ctx := context.Background()
 
 	r := &Role{Name: "r", Policies: []string{"p"}}
-	s.PutRole(ctx, r)
+	_ = s.PutRole(ctx, r)
 
 	_, err := s.Login(ctx, r.RoleID, "nonexistent", "")
 	if err != ErrInvalidCredentials {
@@ -120,7 +120,7 @@ func TestSecretIDNumUses(t *testing.T) {
 	ctx := context.Background()
 
 	r := &Role{Name: "r", Policies: []string{"p"}, SecretIDNumUses: 2}
-	s.PutRole(ctx, r)
+	_ = s.PutRole(ctx, r)
 	sid, _ := s.GenerateSecretID(ctx, "r")
 
 	if _, err := s.Login(ctx, r.RoleID, sid.ID, ""); err != nil {
@@ -140,12 +140,12 @@ func TestSecretIDTTL(t *testing.T) {
 	ctx := context.Background()
 
 	r := &Role{Name: "r", Policies: []string{"p"}, SecretIDTTL: 1}
-	s.PutRole(ctx, r)
+	_ = s.PutRole(ctx, r)
 	sid, _ := s.GenerateSecretID(ctx, "r")
 
 	// Manually expire the SecretID by back-dating ExpiresAt.
 	sid.ExpiresAt = time.Now().Add(-time.Second)
-	s.put(ctx, secretIDsPrefix+sid.ID, sid)
+	_ = s.put(ctx, secretIDsPrefix+sid.ID, sid)
 
 	_, err := s.Login(ctx, r.RoleID, sid.ID, "")
 	if err != ErrInvalidCredentials {

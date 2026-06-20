@@ -162,7 +162,7 @@ func TestListKeys(t *testing.T) {
 func TestGenerateAndValidateRoundTrip(t *testing.T) {
 	m := NewManager(newMem())
 	ctx := context.Background()
-	m.CreateKey(ctx, "k", CreateKeyRequest{})
+	_, _ = m.CreateKey(ctx, "k", CreateKeyRequest{})
 
 	res, err := m.GenerateCode(ctx, "k")
 	if err != nil {
@@ -188,7 +188,7 @@ func TestGenerateAndValidateRoundTrip(t *testing.T) {
 func TestValidateCodeInvalid(t *testing.T) {
 	m := NewManager(newMem())
 	ctx := context.Background()
-	m.CreateKey(ctx, "k", CreateKeyRequest{})
+	_, _ = m.CreateKey(ctx, "k", CreateKeyRequest{})
 
 	res, _ := m.GenerateCode(ctx, "k")
 	// Flip the last digit to produce a definitely wrong code.
@@ -245,7 +245,7 @@ func TestValidateSkewRejectsExpired(t *testing.T) {
 func TestAlgorithmSHA256(t *testing.T) {
 	m := NewManager(newMem())
 	ctx := context.Background()
-	m.CreateKey(ctx, "k", CreateKeyRequest{Algorithm: "sha256"})
+	_, _ = m.CreateKey(ctx, "k", CreateKeyRequest{Algorithm: "sha256"})
 
 	res, err := m.GenerateCode(ctx, "k")
 	if err != nil {

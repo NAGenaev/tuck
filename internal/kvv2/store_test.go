@@ -77,7 +77,7 @@ func TestSoftDelete(t *testing.T) {
 	s := New(newMem())
 	ctx := context.Background()
 
-	s.Write(ctx, "k", []byte("v1"), nil)
+	_, _ = s.Write(ctx, "k", []byte("v1"), nil)
 	if err := s.SoftDelete(ctx, "k", []int{1}); err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestDestroy(t *testing.T) {
 	s := New(newMem())
 	ctx := context.Background()
 
-	s.Write(ctx, "k", []byte("secret"), nil)
+	_, _ = s.Write(ctx, "k", []byte("secret"), nil)
 	if err := s.Destroy(ctx, "k", []int{1}); err != nil {
 		t.Fatal(err)
 	}
@@ -127,8 +127,8 @@ func TestDeleteAll(t *testing.T) {
 	s := New(newMem())
 	ctx := context.Background()
 
-	s.Write(ctx, "k", []byte("v1"), nil)
-	s.Write(ctx, "k", []byte("v2"), nil)
+	_, _ = s.Write(ctx, "k", []byte("v1"), nil)
+	_, _ = s.Write(ctx, "k", []byte("v2"), nil)
 	if err := s.DeleteAll(ctx, "k"); err != nil {
 		t.Fatal(err)
 	}
@@ -146,9 +146,9 @@ func TestList(t *testing.T) {
 	s := New(newMem())
 	ctx := context.Background()
 
-	s.Write(ctx, "db/password", []byte("x"), nil)
-	s.Write(ctx, "db/user", []byte("y"), nil)
-	s.Write(ctx, "other/key", []byte("z"), nil)
+	_, _ = s.Write(ctx, "db/password", []byte("x"), nil)
+	_, _ = s.Write(ctx, "db/user", []byte("y"), nil)
+	_, _ = s.Write(ctx, "other/key", []byte("z"), nil)
 
 	keys, err := s.List(ctx, "db/")
 	if err != nil {

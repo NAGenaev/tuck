@@ -85,7 +85,7 @@ func (c *KubeClient) List(ctx context.Context, namespace string) (*TuckSecretLis
 	if err != nil {
 		return nil, fmt.Errorf("list TuckSecrets: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("list TuckSecrets: unexpected status %d", resp.StatusCode)
 	}
@@ -113,14 +113,14 @@ func (c *KubeClient) Watch(ctx context.Context, namespace, resourceVersion strin
 		return nil, fmt.Errorf("watch TuckSecrets: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("watch TuckSecrets: unexpected status %d", resp.StatusCode)
 	}
 
 	ch := make(chan WatchEvent)
 	go func() {
 		defer close(ch)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		scanner := bufio.NewScanner(resp.Body)
 		for scanner.Scan() {
 			line := scanner.Bytes()
@@ -152,7 +152,7 @@ func (c *KubeClient) ApplySecret(ctx context.Context, secret *KubeSecret) error 
 	if err != nil {
 		return fmt.Errorf("get secret %s/%s: %w", ns, name, err)
 	}
-	defer getResp.Body.Close()
+	defer func() { _ = getResp.Body.Close() }()
 
 	body, err := json.Marshal(secret)
 	if err != nil {
@@ -188,7 +188,7 @@ func (c *KubeClient) ApplySecret(ctx context.Context, secret *KubeSecret) error 
 	if err != nil {
 		return fmt.Errorf("apply secret %s/%s: %w", ns, name, err)
 	}
-	defer applyResp.Body.Close()
+	defer func() { _ = applyResp.Body.Close() }()
 	if applyResp.StatusCode < 200 || applyResp.StatusCode >= 300 {
 		return fmt.Errorf("apply secret %s/%s: unexpected status %d", ns, name, applyResp.StatusCode)
 	}
@@ -217,7 +217,7 @@ func (c *KubeClient) UpdateStatus(ctx context.Context, ts *TuckSecret) error {
 	if err != nil {
 		return fmt.Errorf("update status %s/%s: %w", ns, name, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("update status %s/%s: unexpected status %d", ns, name, resp.StatusCode)
 	}
@@ -236,7 +236,7 @@ func (c *KubeClient) GetLease(ctx context.Context, namespace, name string) (*Lea
 	if err != nil {
 		return nil, fmt.Errorf("get lease: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, nil
 	}
@@ -261,7 +261,7 @@ func (c *KubeClient) CreateLease(ctx context.Context, namespace string, lease *L
 	if err != nil {
 		return nil, fmt.Errorf("create lease: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("create lease: status %d", resp.StatusCode)
 	}
@@ -283,7 +283,7 @@ func (c *KubeClient) UpdateLease(ctx context.Context, namespace string, lease *L
 	if err != nil {
 		return nil, fmt.Errorf("update lease: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("update lease: status %d", resp.StatusCode)
 	}
@@ -302,7 +302,7 @@ func (c *KubeClient) DeleteSecret(ctx context.Context, namespace, name string) e
 	if err != nil {
 		return fmt.Errorf("delete secret %s/%s: %w", namespace, name, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
 		return nil
 	}
@@ -356,7 +356,7 @@ func (c *KubeClient) patchFinalizers(ctx context.Context, ts *TuckSecret, finali
 	if err != nil {
 		return fmt.Errorf("patch finalizers %s/%s: %w", ns, name, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("patch finalizers %s/%s: unexpected status %d", ns, name, resp.StatusCode)
 	}

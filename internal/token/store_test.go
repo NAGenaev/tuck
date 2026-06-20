@@ -125,7 +125,7 @@ func TestChildrenIndex(t *testing.T) {
 	ctx := context.Background()
 
 	parent, _ := Generate("parent", []string{"root"}, 0)
-	store.Put(ctx, parent)
+	_ = store.Put(ctx, parent)
 
 	// Create two children with ParentID set.
 	child1, _ := Generate("child1", []string{"read"}, time.Hour)
@@ -156,11 +156,11 @@ func TestDeleteCleansChildrenIndex(t *testing.T) {
 	ctx := context.Background()
 
 	parent, _ := Generate("parent", []string{"root"}, 0)
-	store.Put(ctx, parent)
+	_ = store.Put(ctx, parent)
 
 	child, _ := Generate("child", []string{"read"}, time.Hour)
 	child.ParentID = parent.ID
-	store.Put(ctx, child)
+	_ = store.Put(ctx, child)
 
 	// Verify child is listed.
 	before, _ := store.Children(ctx, parent.ID)
@@ -169,7 +169,7 @@ func TestDeleteCleansChildrenIndex(t *testing.T) {
 	}
 
 	// Delete the child; its entry in the children index should be cleaned up.
-	store.Delete(ctx, child.ID)
+	_ = store.Delete(ctx, child.ID)
 
 	after, _ := store.Children(ctx, parent.ID)
 	if len(after) != 0 {

@@ -23,7 +23,6 @@ type fakeLDAPConn struct {
 	servicesDN string              // expected service account DN
 	servicesPS string              // expected service account password
 	bound      string              // currently bound DN
-	groupsByDN map[string][]string // groupBaseDN → group DNs (for group search)
 }
 
 func newFakeConn(servicesDN, servicesPS string, users map[string]fakeUser) *fakeLDAPConn {

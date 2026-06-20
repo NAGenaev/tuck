@@ -35,7 +35,7 @@ func createTestToken(t *testing.T, ts *httptest.Server, rootTok, displayName str
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create token: status=%d body=%s", resp.StatusCode, body)
 	}
@@ -49,7 +49,7 @@ func createTestPolicy(t *testing.T, ts *httptest.Server, rootTok, name, rulesJSO
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("create policy %q: status=%d", name, resp.StatusCode)
 	}
@@ -63,13 +63,13 @@ func TestRevokedTokenDenied(t *testing.T) {
 
 	// token works before revocation
 	resp, _ := http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/health", "", tokID))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	// health is unauthenticated, use a secret read instead
 	resp, err := http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/secret/x", "", tokID))
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	// 404 is fine — secret doesn't exist but token was accepted
 	if resp.StatusCode == http.StatusUnauthorized {
 		t.Fatal("token should be valid before revocation")
@@ -80,7 +80,7 @@ func TestRevokedTokenDenied(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("revoke: status=%d", resp.StatusCode)
 	}
@@ -90,7 +90,7 @@ func TestRevokedTokenDenied(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("revoked token status = %d, want 401", resp.StatusCode)
 	}
@@ -108,7 +108,7 @@ func TestExpiredToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expired token status = %d, want 401", resp.StatusCode)
 	}
@@ -131,7 +131,7 @@ func TestNoPoliciesToken(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusForbidden {
 			t.Errorf("%s %s: status=%d, want 403", tc.method, tc.path, resp.StatusCode)
 		}
@@ -156,33 +156,33 @@ func TestMultiplePoliciesUnion(t *testing.T) {
 
 	// can read prod
 	resp, _ := http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/secret/prod/key", "", tokID))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("read prod: status=%d, want 200", resp.StatusCode)
 	}
 
 	// cannot write prod (read-only policy)
 	resp, _ = http.DefaultClient.Do(authedReq(t, http.MethodPut, ts.URL+"/v1/secret/prod/key", "x", tokID))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("write prod: status=%d, want 403", resp.StatusCode)
 	}
 
 	// can read+write staging
 	resp, _ = http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/secret/staging/key", "", tokID))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("read staging: status=%d, want 200", resp.StatusCode)
 	}
 	resp, _ = http.DefaultClient.Do(authedReq(t, http.MethodPut, ts.URL+"/v1/secret/staging/new", "v", tokID))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Errorf("write staging: status=%d, want 204", resp.StatusCode)
 	}
 
 	// cannot access other namespaces
 	resp, _ = http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/secret/other/key", "", tokID))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("read other: status=%d, want 403", resp.StatusCode)
 	}
@@ -198,7 +198,7 @@ func TestRootPolicyIsImmutable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("GET root policy: status=%d, want 404 (root policy is hardcoded, not stored)", resp.StatusCode)
 	}
@@ -216,7 +216,7 @@ func TestTokenMaxUses(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create token: status=%d body=%s", resp.StatusCode, raw)
 	}
@@ -227,7 +227,7 @@ func TestTokenMaxUses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r1.Body.Close()
+	_ = r1.Body.Close()
 	if r1.StatusCode != http.StatusOK {
 		t.Errorf("use 1: status=%d, want 200", r1.StatusCode)
 	}
@@ -237,7 +237,7 @@ func TestTokenMaxUses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r2.Body.Close()
+	_ = r2.Body.Close()
 	if r2.StatusCode != http.StatusOK {
 		t.Errorf("use 2: status=%d, want 200", r2.StatusCode)
 	}
@@ -247,7 +247,7 @@ func TestTokenMaxUses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r3.Body.Close()
+	_ = r3.Body.Close()
 	if r3.StatusCode != http.StatusUnauthorized {
 		t.Errorf("use 3 (exhausted): status=%d, want 401", r3.StatusCode)
 	}
@@ -263,7 +263,7 @@ func TestTokenMaxUsesOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create: %d %s", resp.StatusCode, raw)
 	}
@@ -271,14 +271,14 @@ func TestTokenMaxUsesOne(t *testing.T) {
 
 	// Only use: succeeds.
 	r1, _ := http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/auth/token/lookup-self", "", oneTok))
-	r1.Body.Close()
+	_ = r1.Body.Close()
 	if r1.StatusCode != http.StatusOK {
 		t.Errorf("use 1: status=%d, want 200", r1.StatusCode)
 	}
 
 	// Second use: fails.
 	r2, _ := http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/auth/token/lookup-self", "", oneTok))
-	r2.Body.Close()
+	_ = r2.Body.Close()
 	if r2.StatusCode != http.StatusUnauthorized {
 		t.Errorf("use 2: status=%d, want 401", r2.StatusCode)
 	}
@@ -294,7 +294,7 @@ func TestTokenMaxUsesZeroMeansUnlimited(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	tok := parseTokenID(t, raw)
 
 	// Use it 5 times — all should succeed.
@@ -317,7 +317,7 @@ func TestInvalidTokenFormat(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusUnauthorized {
 			t.Errorf("token %q: status=%d, want 401", bad, resp.StatusCode)
 		}

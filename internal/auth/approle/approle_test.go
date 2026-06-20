@@ -197,7 +197,7 @@ func TestBoundCIDRs_Role(t *testing.T) {
 	ctx := context.Background()
 
 	r := &Role{Name: "r", Policies: []string{"p"}, BoundCIDRs: []string{"10.0.0.0/8"}}
-	s.PutRole(ctx, r)
+	_ = s.PutRole(ctx, r)
 	sid, _ := s.GenerateSecretID(ctx, "r")
 
 	// IP inside CIDR — allowed.
@@ -211,7 +211,7 @@ func TestBoundCIDRs_RoleDenied(t *testing.T) {
 	ctx := context.Background()
 
 	r := &Role{Name: "r", Policies: []string{"p"}, BoundCIDRs: []string{"10.0.0.0/8"}}
-	s.PutRole(ctx, r)
+	_ = s.PutRole(ctx, r)
 	// NumUses=0 (unlimited), each login gets its own secret-id.
 	sid2, _ := s.GenerateSecretID(ctx, "r")
 
@@ -227,7 +227,7 @@ func TestBoundCIDRs_SecretIDOverridesRole(t *testing.T) {
 
 	// Role bound to 10.0.0.0/8, but secret-id overrides to 192.168.0.0/16.
 	r := &Role{Name: "r", Policies: []string{"p"}, BoundCIDRs: []string{"10.0.0.0/8"}}
-	s.PutRole(ctx, r)
+	_ = s.PutRole(ctx, r)
 	sid, _ := s.GenerateSecretIDWithOptions(ctx, "r", SecretIDOptions{
 		BoundCIDRs: []string{"192.168.0.0/16"},
 	})
@@ -243,7 +243,7 @@ func TestSecretIDMetadata(t *testing.T) {
 	ctx := context.Background()
 
 	r := &Role{Name: "r", Policies: []string{"p"}}
-	s.PutRole(ctx, r)
+	_ = s.PutRole(ctx, r)
 	sid, err := s.GenerateSecretIDWithOptions(ctx, "r", SecretIDOptions{
 		Metadata: map[string]string{"env": "prod", "team": "platform"},
 	})

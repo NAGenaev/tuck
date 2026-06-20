@@ -282,7 +282,7 @@ func TestSignCertificateAnyPrincipalAllowed(t *testing.T) {
 	ctx := context.Background()
 
 	// Role with empty AllowedUsers = any principal is OK.
-	m.PutRole(ctx, &Role{
+	_ = m.PutRole(ctx, &Role{
 		Name:       "open",
 		DefaultTTL: time.Hour,
 	})
@@ -303,7 +303,7 @@ func TestSignHostCertificate(t *testing.T) {
 	m := mgrWithCA(t)
 	ctx := context.Background()
 
-	m.PutRole(ctx, &Role{
+	_ = m.PutRole(ctx, &Role{
 		Name:       "hosts",
 		CertType:   "host",
 		DefaultTTL: 7 * 24 * time.Hour,
@@ -330,7 +330,7 @@ func TestSignWithRSACA(t *testing.T) {
 	if _, err := m.GenerateCA(ctx, "rsa"); err != nil {
 		t.Fatal(err)
 	}
-	m.PutRole(ctx, &Role{
+	_ = m.PutRole(ctx, &Role{
 		Name:       "r",
 		DefaultTTL: time.Hour,
 	})
@@ -354,7 +354,7 @@ func TestImportRSACAAndSign(t *testing.T) {
 	if err := m.ImportCA(ctx, privPEM); err != nil {
 		t.Fatalf("ImportCA RSA: %v", err)
 	}
-	m.PutRole(ctx, &Role{Name: "r", DefaultTTL: time.Hour})
+	_ = m.PutRole(ctx, &Role{Name: "r", DefaultTTL: time.Hour})
 	pubKeyStr, _ := genUserPubKey(t)
 	if _, err := m.SignPublicKey(ctx, "r", pubKeyStr, []string{"user"}, 0); err != nil {
 		t.Fatalf("sign with imported RSA CA: %v", err)

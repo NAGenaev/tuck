@@ -112,7 +112,7 @@ func TestChaosTransientErrors(t *testing.T) {
 		attempts++
 		r, e := http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/secret/chaos/ref", "", rootTok))
 		if e == nil {
-			r.Body.Close()
+			_ = r.Body.Close()
 			if r.StatusCode == http.StatusOK {
 				successes++
 			}
@@ -120,7 +120,7 @@ func TestChaosTransientErrors(t *testing.T) {
 		// Also exercise writes so Put errors are covered.
 		wr, we := http.DefaultClient.Do(authedReq(t, http.MethodPut, ts.URL+"/v1/secret/chaos/rnd", "x", rootTok))
 		if we == nil {
-			wr.Body.Close()
+			_ = wr.Body.Close()
 		}
 	}
 	cb.failRate.Store(0)

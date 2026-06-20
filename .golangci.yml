@@ -1,25 +1,20 @@
-linters-settings:
-  errcheck:
-    exclude-functions:
-      - (*net/http.Response).Body.Close
-      - (*database/sql.DB).Close
-      - fmt.Fprintf
-      - fmt.Fprintln
-      - fmt.Fprint
-      - fmt.Sscanf
-  staticcheck:
-    checks:
-      - "all"
-      - "-SA1019"
-      - "-QF1003"
-      - "-SA9003"
-      - "-S1039"
-      - "-S1005"
+version: "2"
 
-issues:
-  exclude-rules:
-    - path: '.*_test\.go$'
-      linters:
-        - errcheck
-        - unused
-        - staticcheck
+linters:
+  settings:
+    errcheck:
+      exclude-functions:
+        - (*net/http.Response).Body.Close
+        - (*database/sql.DB).Close
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Fprint
+        - fmt.Sscanf
+    staticcheck:
+      checks:
+        - "all"
+        - "-SA1019"
+        - "-QF1003"
+        - "-SA9003"
+        - "-S1039"
+        - "-S1005"

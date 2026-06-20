@@ -76,6 +76,6 @@ func TestTLSServerListens(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
-	resp.Body.Close()
-	srv.Close()
+	_ = resp.Body.Close()
+	_ = srv.Close()
 }

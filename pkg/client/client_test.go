@@ -16,7 +16,7 @@ func TestGetSecret(t *testing.T) {
 		}
 		if r.URL.Path != "/v1/secret/db/password" {
 			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]string{"error": "not found"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "not found"})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

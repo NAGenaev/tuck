@@ -117,7 +117,7 @@ func TestTokenRolePutGet(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPut && r.URL.Path == "/v1/auth/token/roles/reader":
-			json.NewDecoder(r.Body).Decode(&got)
+			_ = json.NewDecoder(r.Body).Decode(&got)
 			w.WriteHeader(http.StatusNoContent)
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/auth/token/roles/reader":
 			w.Header().Set("Content-Type", "application/json")
@@ -147,7 +147,7 @@ func TestAuditEnableWebhook(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPut && r.URL.Path == "/v1/sys/audit/webhook/events" {
-			json.NewDecoder(r.Body).Decode(&gotBody)
+			_ = json.NewDecoder(r.Body).Decode(&gotBody)
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -291,7 +291,7 @@ func TestCubbyholeGetPut(t *testing.T) {
 			w.WriteHeader(http.StatusNoContent)
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/cubbyhole/temp/pass":
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(stored)
+			_, _ = w.Write(stored)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 			json.NewEncoder(w).Encode(map[string]string{"error": "not found"})
@@ -344,7 +344,7 @@ func TestScopedNamespaceHeader(t *testing.T) {
 
 	c := New(srv.URL, "tok", WithHTTPClient(srv.Client()))
 	sc := c.Scoped("prod")
-	sc.GetSecret(context.Background(), "key")
+	_, _ = sc.GetSecret(context.Background(), "key")
 	if gotNS != "prod" {
 		t.Fatalf("expected prod namespace header, got %q", gotNS)
 	}

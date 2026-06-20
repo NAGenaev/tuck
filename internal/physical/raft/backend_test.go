@@ -26,7 +26,7 @@ func openSingle(t *testing.T) *Backend {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	t.Cleanup(func() { b.Close() })
+	t.Cleanup(func() { _ = b.Close() })
 	waitLeader(t, b)
 	return b
 }

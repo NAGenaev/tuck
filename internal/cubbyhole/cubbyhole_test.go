@@ -60,12 +60,6 @@ func (m *memBarrier) List(_ context.Context, prefix string) ([]string, error) {
 	return out, nil
 }
 
-func (m *memBarrier) count() int {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return len(m.data)
-}
-
 // --- tests ---
 
 func TestPutGet(t *testing.T) {

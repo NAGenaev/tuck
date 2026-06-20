@@ -109,7 +109,7 @@ func TestCreateKeyInvalidSecret(t *testing.T) {
 func TestGetKeyNoSecret(t *testing.T) {
 	m := NewManager(newMem())
 	ctx := context.Background()
-	m.CreateKey(ctx, "k", CreateKeyRequest{Issuer: "Test", Account: "a@b.com"})
+	_, _ = m.CreateKey(ctx, "k", CreateKeyRequest{Issuer: "Test", Account: "a@b.com"})
 
 	info, err := m.GetKey(ctx, "k")
 	if err != nil {
@@ -135,7 +135,7 @@ func TestKeyNotFound(t *testing.T) {
 func TestDeleteKey(t *testing.T) {
 	m := NewManager(newMem())
 	ctx := context.Background()
-	m.CreateKey(ctx, "del", CreateKeyRequest{})
+	_, _ = m.CreateKey(ctx, "del", CreateKeyRequest{})
 	if err := m.DeleteKey(ctx, "del"); err != nil {
 		t.Fatal(err)
 	}
@@ -147,8 +147,8 @@ func TestDeleteKey(t *testing.T) {
 func TestListKeys(t *testing.T) {
 	m := NewManager(newMem())
 	ctx := context.Background()
-	m.CreateKey(ctx, "alpha", CreateKeyRequest{})
-	m.CreateKey(ctx, "beta", CreateKeyRequest{})
+	_, _ = m.CreateKey(ctx, "alpha", CreateKeyRequest{})
+	_, _ = m.CreateKey(ctx, "beta", CreateKeyRequest{})
 
 	names, err := m.ListKeys(ctx)
 	if err != nil {

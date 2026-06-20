@@ -11,6 +11,8 @@ linters:
         - fmt.Fprint
 
 issues:
+  per-file-ignores:
+    - "*_test.go:errcheck"
   exclude-rules:
     - path: '_test\.go'
       linters:

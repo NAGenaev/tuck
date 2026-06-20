@@ -193,7 +193,7 @@ func TestSignCertificateUserCert(t *testing.T) {
 	m := mgrWithCA(t)
 	ctx := context.Background()
 
-	m.PutRole(ctx, &Role{
+	_ = m.PutRole(ctx, &Role{
 		Name:         "dev",
 		AllowedUsers: []string{"ubuntu"},
 		DefaultTTL:   time.Hour,
@@ -244,7 +244,7 @@ func TestSignCertificateTTLCap(t *testing.T) {
 	m := mgrWithCA(t)
 	ctx := context.Background()
 
-	m.PutRole(ctx, &Role{
+	_ = m.PutRole(ctx, &Role{
 		Name:       "r",
 		DefaultTTL: time.Hour,
 		MaxTTL:     2 * time.Hour,
@@ -264,7 +264,7 @@ func TestSignCertificatePrincipalDenied(t *testing.T) {
 	m := mgrWithCA(t)
 	ctx := context.Background()
 
-	m.PutRole(ctx, &Role{
+	_ = m.PutRole(ctx, &Role{
 		Name:         "strict",
 		AllowedUsers: []string{"ubuntu"},
 		DefaultTTL:   time.Hour,

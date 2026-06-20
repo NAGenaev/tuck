@@ -157,8 +157,8 @@ func TestListAndDeleteRole(t *testing.T) {
 	s := NewStore(newMem())
 	ctx := context.Background()
 
-	s.PutRole(ctx, &Role{Name: "a", Policies: []string{"p"}})
-	s.PutRole(ctx, &Role{Name: "b", Policies: []string{"p"}})
+	_ = s.PutRole(ctx, &Role{Name: "a", Policies: []string{"p"}})
+	_ = s.PutRole(ctx, &Role{Name: "b", Policies: []string{"p"}})
 
 	names, err := s.ListRoles(ctx)
 	if err != nil {
@@ -168,7 +168,7 @@ func TestListAndDeleteRole(t *testing.T) {
 		t.Fatalf("expected 2 roles, got %d", len(names))
 	}
 
-	s.DeleteRole(ctx, "a")
+	_ = s.DeleteRole(ctx, "a")
 	names, _ = s.ListRoles(ctx)
 	if len(names) != 1 {
 		t.Fatalf("expected 1 role after delete, got %d", len(names))
@@ -180,7 +180,7 @@ func TestDestroySecretID(t *testing.T) {
 	ctx := context.Background()
 
 	r := &Role{Name: "r", Policies: []string{"p"}}
-	s.PutRole(ctx, r)
+	_ = s.PutRole(ctx, r)
 	sid, _ := s.GenerateSecretID(ctx, "r")
 
 	if err := s.DestroySecretID(ctx, sid.ID); err != nil {

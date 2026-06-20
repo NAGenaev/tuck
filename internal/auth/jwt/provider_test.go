@@ -42,7 +42,7 @@ func testKey(t *testing.T) (*rsa.PrivateKey, string) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(jwksBody)
+		_, _ = w.Write(jwksBody)
 	}))
 	t.Cleanup(srv.Close)
 	return priv, srv.URL

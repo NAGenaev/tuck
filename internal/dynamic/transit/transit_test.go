@@ -177,8 +177,8 @@ func TestMinVersionBlocksDecrypt(t *testing.T) {
 	oldCT, _ := m.Encrypt(ctx, "k", []byte("old"))
 
 	// Rotate, then set min_decryption_version=2.
-	m.Rotate(ctx, "k")
-	m.UpdateKey(ctx, "k", 2, false)
+	_ = m.Rotate(ctx, "k")
+	_ = m.UpdateKey(ctx, "k", 2, false)
 
 	// Old v1 ciphertext must be rejected.
 	if _, err := m.Decrypt(ctx, "k", oldCT); !errors.Is(err, ErrKeyVersionTooOld) {
@@ -205,7 +205,7 @@ func TestDeleteKeyAfterMarkingDeletable(t *testing.T) {
 	m := mgr(t)
 	ctx := context.Background()
 	mustCreateKey(t, m, "k", "aes256-gcm96")
-	m.UpdateKey(ctx, "k", 0, true)
+	_ = m.UpdateKey(ctx, "k", 0, true)
 
 	if err := m.DeleteKey(ctx, "k"); err != nil {
 		t.Fatal(err)
@@ -354,7 +354,7 @@ func TestSignRotateVerifyOldVersion(t *testing.T) {
 	sig, _ := m.Sign(ctx, "k", msg, "sha2-256")
 
 	// Rotate — now v2 is latest. Old signature (v1) must still verify.
-	m.Rotate(ctx, "k")
+	_ = m.Rotate(ctx, "k")
 	ok, err := m.Verify(ctx, "k", msg, sig, "sha2-256")
 	if err != nil || !ok {
 		t.Fatalf("v1 signature should still verify after rotate: err=%v ok=%v", err, ok)

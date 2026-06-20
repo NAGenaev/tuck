@@ -188,7 +188,7 @@ func TestInjectExistingVolumes(t *testing.T) {
 	raw, _ := base64.StdEncoding.DecodeString(string(resp.Response.Patch))
 
 	var patches []jsonPatch
-	json.Unmarshal(raw, &patches)
+	_ = json.Unmarshal(raw, &patches)
 
 	// When volumes already exist, we should use /spec/volumes/- not /spec/volumes.
 	for _, p := range patches {

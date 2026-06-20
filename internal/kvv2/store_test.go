@@ -35,8 +35,8 @@ func TestMultipleVersions(t *testing.T) {
 	s := New(newMem())
 	ctx := context.Background()
 
-	s.Write(ctx, "k", []byte("v1"), nil)
-	s.Write(ctx, "k", []byte("v2"), nil)
+	_ , _ = s.Write(ctx, "k", []byte("v1"), nil)
+	_ , _ = s.Write(ctx, "k", []byte("v2"), nil)
 	v3, _ := s.Write(ctx, "k", []byte("v3"), nil)
 
 	val, _, _ := s.Read(ctx, "k", 0)
@@ -58,7 +58,7 @@ func TestCAS(t *testing.T) {
 	s := New(newMem())
 	ctx := context.Background()
 
-	s.Write(ctx, "k", []byte("v1"), nil)
+	_, _ = s.Write(ctx, "k", []byte("v1"), nil)
 
 	cas := 1
 	_, err := s.Write(ctx, "k", []byte("v2"), &cas)
@@ -98,9 +98,9 @@ func TestUndelete(t *testing.T) {
 	s := New(newMem())
 	ctx := context.Background()
 
-	s.Write(ctx, "k", []byte("v1"), nil)
-	s.SoftDelete(ctx, "k", []int{1})
-	s.Undelete(ctx, "k", []int{1})
+	_, _ = s.Write(ctx, "k", []byte("v1"), nil)
+	_ = s.SoftDelete(ctx, "k", []int{1})
+	_ = s.Undelete(ctx, "k", []int{1})
 
 	val, _, err := s.Read(ctx, "k", 1)
 	if err != nil || string(val) != "v1" {
@@ -163,7 +163,7 @@ func TestMaxVersionsEnforced(t *testing.T) {
 	s := New(newMem())
 	ctx := context.Background()
 
-	s.UpdateMeta(ctx, "k", 2)
+	_ = s.UpdateMeta(ctx, "k", 2)
 	s.Write(ctx, "k", []byte("v1"), nil)
 	s.Write(ctx, "k", []byte("v2"), nil)
 	s.Write(ctx, "k", []byte("v3"), nil) // should destroy v1

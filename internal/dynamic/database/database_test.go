@@ -80,7 +80,7 @@ func TestRoleCRUD(t *testing.T) {
 	m := NewManager(newMem())
 	ctx := context.Background()
 
-	m.PutConfig(ctx, &Config{Name: "pg", PluginName: "postgresql", ConnectionURL: "x"})
+	_ = m.PutConfig(ctx, &Config{Name: "pg", PluginName: "postgresql", ConnectionURL: "x"})
 
 	role := &Role{Name: "app", DBName: "pg", DefaultTTL: time.Hour}
 	if err := m.PutRole(ctx, role); err != nil {
@@ -99,7 +99,7 @@ func TestRoleCRUD(t *testing.T) {
 		t.Fatalf("ListRoles: %v", names)
 	}
 
-	m.DeleteRole(ctx, "app")
+	_ = m.DeleteRole(ctx, "app")
 	if _, err := m.GetRole(ctx, "app"); err != ErrNotFound {
 		t.Fatalf("expected ErrNotFound after delete, got %v", err)
 	}

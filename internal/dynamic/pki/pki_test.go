@@ -391,8 +391,8 @@ func TestListCerts(t *testing.T) {
 		DefaultTTL:     time.Hour,
 	})
 
-	m.IssueCert(ctx, "r", "a.com", nil, 0)
-	m.IssueCert(ctx, "r", "b.com", nil, 0)
+	_, _ = m.IssueCert(ctx, "r", "a.com", nil, 0)
+	_, _ = m.IssueCert(ctx, "r", "b.com", nil, 0)
 
 	serials, err := m.ListCerts(ctx)
 	if err != nil {

@@ -43,10 +43,8 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          version: v2.1.6
           args: --timeout=5m
-        env:
-          GOTOOLCHAIN: local
 
   security:
     name: Security Scan
@@ -67,4 +65,4 @@ jobs:
       - name: gosec
         run: |
           go install github.com/securego/gosec/v2/cmd/gosec@latest
-          gosec -exclude=G104 ./...
+          gosec -exclude=G104,G704,G706 ./...

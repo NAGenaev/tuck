@@ -143,7 +143,7 @@ func (t *TransitSeal) encrypt(plaintext []byte) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("HTTP POST encrypt: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -184,7 +184,7 @@ func (t *TransitSeal) decrypt(ciphertext string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("HTTP POST decrypt: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

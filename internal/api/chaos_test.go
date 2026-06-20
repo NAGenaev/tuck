@@ -101,7 +101,7 @@ func TestChaosTransientErrors(t *testing.T) {
 		}
 		t.Fatalf("setup write: err=%v status=%d", err, status)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Enable 30 % error injection.
 	cb.failRate.Store(30)

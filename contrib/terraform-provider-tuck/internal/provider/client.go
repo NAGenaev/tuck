@@ -12,6 +12,7 @@ import (
 	"time"
 )
 
+
 // tuckClient is a minimal HTTP client for the Tuck API.
 type tuckClient struct {
 	addr      string
@@ -171,4 +172,234 @@ func (c *tuckClient) deletePolicy(ctx context.Context, name string) error {
 		return fmt.Errorf("tuck DELETE policy/%s: HTTP %d", name, status)
 	}
 	return nil
+}
+
+// ─── KV v2 ───────────────────────────────────────────────────────────────────
+
+type kvv2ReadResp struct {
+	Value   string `json:"value"`
+	Version int    `json:"version"`
+	Deleted bool   `json:"deleted"`
+}
+
+// getKVv2 reads a KV v2 secret. version=0 returns the latest.
+func (c *tuckClient) getKVv2(ctx context.Context, path string, version int) (*kvv2ReadResp, bool, error) {
+	url := "/v2/secret/" + path
+	if version > 0 {
+		url += fmt.Sprintf("?version=%d", version)
+	}
+	body, status, err := c.doJSON(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	if status == http.StatusNotFound {
+		return nil, false, nil
+	}
+	if status != http.StatusOK {
+		return nil, false, fmt.Errorf("tuck GET v2/secret/%s: HTTP %d: %s", path, status, body)
+	}
+	var resp kvv2ReadResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, false, fmt.Errorf("parse KV v2 response: %w", err)
+	}
+	return &resp, true, nil
+}
+
+// putKVv2 writes a KV v2 secret and returns the new version number.
+func (c *tuckClient) putKVv2(ctx context.Context, path, value string) (int, error) {
+	body, status, err := c.doRaw(ctx, http.MethodPut, "/v2/secret/"+path, []byte(value))
+	if err != nil {
+		return 0, err
+	}
+	if status != http.StatusOK {
+		return 0, fmt.Errorf("tuck PUT v2/secret/%s: HTTP %d: %s", path, status, body)
+	}
+	var resp struct {
+		Version int `json:"version"`
+	}
+	_ = json.Unmarshal(body, &resp)
+	return resp.Version, nil
+}
+
+// deleteKVv2 soft-deletes the current version of a KV v2 secret.
+func (c *tuckClient) deleteKVv2(ctx context.Context, path string) error {
+	_, status, err := c.doJSON(ctx, http.MethodDelete, "/v2/secret/"+path, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent && status != http.StatusNotFound {
+		return fmt.Errorf("tuck DELETE v2/secret/%s: HTTP %d", path, status)
+	}
+	return nil
+}
+
+// ─── Token roles ─────────────────────────────────────────────────────────────
+
+type tokenRoleReq struct {
+	Policies  []string `json:"policies"`
+	TTL       string   `json:"ttl,omitempty"`
+	MaxTTL    string   `json:"max_ttl,omitempty"`
+	MaxUses   int      `json:"max_uses,omitempty"`
+	Renewable bool     `json:"renewable"`
+	Period    string   `json:"period,omitempty"`
+}
+
+// tokenRoleAPIResp mirrors token.Role JSON (durations are ns int64).
+type tokenRoleAPIResp struct {
+	Name      string   `json:"name"`
+	Policies  []string `json:"policies"`
+	TTL       int64    `json:"ttl"`
+	MaxTTL    int64    `json:"max_ttl"`
+	MaxUses   int      `json:"max_uses"`
+	Renewable bool     `json:"renewable"`
+	Period    int64    `json:"period"`
+}
+
+func (c *tuckClient) getTokenRole(ctx context.Context, name string) (*tokenRoleAPIResp, bool, error) {
+	body, status, err := c.doJSON(ctx, http.MethodGet, "/v1/auth/token/roles/"+name, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	if status == http.StatusNotFound {
+		return nil, false, nil
+	}
+	if status != http.StatusOK {
+		return nil, false, fmt.Errorf("tuck GET token role %s: HTTP %d: %s", name, status, body)
+	}
+	var resp tokenRoleAPIResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, false, fmt.Errorf("parse token role response: %w", err)
+	}
+	return &resp, true, nil
+}
+
+func (c *tuckClient) putTokenRole(ctx context.Context, name string, req tokenRoleReq) error {
+	_, status, err := c.doJSON(ctx, http.MethodPut, "/v1/auth/token/roles/"+name, req)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent {
+		return fmt.Errorf("tuck PUT token role %s: HTTP %d", name, status)
+	}
+	return nil
+}
+
+func (c *tuckClient) deleteTokenRole(ctx context.Context, name string) error {
+	_, status, err := c.doJSON(ctx, http.MethodDelete, "/v1/auth/token/roles/"+name, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent && status != http.StatusNotFound {
+		return fmt.Errorf("tuck DELETE token role %s: HTTP %d", name, status)
+	}
+	return nil
+}
+
+// ─── AppRole roles ───────────────────────────────────────────────────────────
+
+type appRoleReq struct {
+	Policies        []string `json:"policies"`
+	TokenTTL        string   `json:"token_ttl,omitempty"`
+	SecretIDTTL     string   `json:"secret_id_ttl,omitempty"`
+	SecretIDNumUses int      `json:"secret_id_num_uses,omitempty"`
+}
+
+type appRoleAPIResp struct {
+	Name            string   `json:"name"`
+	RoleID          string   `json:"role_id"`
+	Policies        []string `json:"policies"`
+	TokenTTL        int64    `json:"token_ttl"`
+	SecretIDTTL     int64    `json:"secret_id_ttl"`
+	SecretIDNumUses int      `json:"secret_id_num_uses"`
+}
+
+func (c *tuckClient) getAppRole(ctx context.Context, name string) (*appRoleAPIResp, bool, error) {
+	body, status, err := c.doJSON(ctx, http.MethodGet, "/v1/auth/approle/role/"+name, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	if status == http.StatusNotFound {
+		return nil, false, nil
+	}
+	if status != http.StatusOK {
+		return nil, false, fmt.Errorf("tuck GET approle %s: HTTP %d: %s", name, status, body)
+	}
+	var resp appRoleAPIResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, false, fmt.Errorf("parse approle response: %w", err)
+	}
+	return &resp, true, nil
+}
+
+func (c *tuckClient) putAppRole(ctx context.Context, name string, req appRoleReq) (*appRoleAPIResp, error) {
+	body, status, err := c.doJSON(ctx, http.MethodPut, "/v1/auth/approle/role/"+name, req)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("tuck PUT approle %s: HTTP %d: %s", name, status, body)
+	}
+	var resp appRoleAPIResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("parse approle response: %w", err)
+	}
+	return &resp, nil
+}
+
+func (c *tuckClient) deleteAppRole(ctx context.Context, name string) error {
+	_, status, err := c.doJSON(ctx, http.MethodDelete, "/v1/auth/approle/role/"+name, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent && status != http.StatusNotFound {
+		return fmt.Errorf("tuck DELETE approle %s: HTTP %d", name, status)
+	}
+	return nil
+}
+
+// ─── Namespaces ──────────────────────────────────────────────────────────────
+
+func (c *tuckClient) namespaceExists(ctx context.Context, name string) (bool, error) {
+	_, status, err := c.doJSON(ctx, http.MethodGet, "/v1/sys/namespaces/"+name, nil)
+	if err != nil {
+		return false, err
+	}
+	if status == http.StatusNotFound {
+		return false, nil
+	}
+	if status != http.StatusOK {
+		return false, fmt.Errorf("tuck GET namespace %s: HTTP %d", name, status)
+	}
+	return true, nil
+}
+
+func (c *tuckClient) createNamespace(ctx context.Context, name string) error {
+	_, status, err := c.doJSON(ctx, http.MethodPost, "/v1/sys/namespaces", map[string]string{"name": name})
+	if err != nil {
+		return err
+	}
+	if status != http.StatusCreated && status != http.StatusOK {
+		return fmt.Errorf("tuck POST namespace %s: HTTP %d", name, status)
+	}
+	return nil
+}
+
+func (c *tuckClient) deleteNamespace(ctx context.Context, name string) error {
+	_, status, err := c.doJSON(ctx, http.MethodDelete, "/v1/sys/namespaces/"+name, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent && status != http.StatusNotFound {
+		return fmt.Errorf("tuck DELETE namespace %s: HTTP %d", name, status)
+	}
+	return nil
+}
+
+// nsDuration converts a nanosecond int64 (as returned by the Tuck API for time.Duration fields)
+// to a Go duration string. Returns "" for zero.
+func nsDuration(ns int64) string {
+	if ns == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s", (time.Duration(ns)).String())
 }

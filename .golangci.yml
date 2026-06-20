@@ -1,45 +1,25 @@
-version: "2"
+linters-settings:
+  errcheck:
+    exclude-functions:
+      - (*net/http.Response).Body.Close
+      - (*database/sql.DB).Close
+      - fmt.Fprintf
+      - fmt.Fprintln
+      - fmt.Fprint
+      - fmt.Sscanf
+  staticcheck:
+    checks:
+      - "all"
+      - "-SA1019"
+      - "-QF1003"
+      - "-SA9003"
+      - "-S1039"
+      - "-S1005"
 
-linters:
-  settings:
-    errcheck:
-      exclude-functions:
-        - (*net/http.Response).Body.Close
-        - (*database/sql.DB).Close
-        - fmt.Fprintf
-        - fmt.Fprintln
-        - fmt.Fprint
-        - fmt.Sscanf
-
-exclusions:
-  rules:
-    # Exclude errcheck in all test files
-    - path: 'test'
+issues:
+  exclude-rules:
+    - path: '.*_test\.go$'
       linters:
         - errcheck
-    - path: 'test'
-      linters:
         - unused
-    # Exclude all remaining Close/Cancel errors from errcheck
-    - text: '\.Close'
-      linters:
-        - errcheck
-    - text: '\.Cancel'
-      linters:
-        - errcheck
-    # Disable noisy staticcheck rules
-    - text: 'SA1019'
-      linters:
-        - staticcheck
-    - text: 'QF1003'
-      linters:
-        - staticcheck
-    - text: 'SA9003'
-      linters:
-        - staticcheck
-    - text: 'S1039'
-      linters:
-        - staticcheck
-    - text: 'S1005'
-      linters:
         - staticcheck

@@ -20,7 +20,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -105,7 +104,6 @@ type barrierIface interface {
 type Engine struct {
 	b        barrierIface
 	newGraph func(*Config) (AzureGraphClient, error)
-	mu       sync.Mutex
 }
 
 // New creates an Engine backed by b.

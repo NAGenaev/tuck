@@ -28,7 +28,7 @@ func OpenBolt(path string) (*Bolt, error) {
 		return e
 	})
 	if err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("create bucket: %w", err)
 	}
 	return &Bolt{db: db}, nil

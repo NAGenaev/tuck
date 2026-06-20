@@ -9,7 +9,6 @@ import (
 )
 
 const (
-	defaultRefreshInterval = 5 * time.Minute
 	// reconnectBase is the initial backoff delay after a watch-cycle error.
 	reconnectBase = 1 * time.Second
 	// reconnectMax caps the exponential backoff.

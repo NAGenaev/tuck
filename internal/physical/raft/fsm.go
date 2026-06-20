@@ -35,7 +35,7 @@ func newFSM(path string) (*fsm, error) {
 		_, err := tx.CreateBucketIfNotExists([]byte(dataBucket))
 		return err
 	}); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("init FSM bucket: %w", err)
 	}
 	return &fsm{db: db}, nil
@@ -84,7 +84,7 @@ func (f *fsm) Snapshot() (hraft.FSMSnapshot, error) {
 }
 
 func (f *fsm) Restore(rc io.ReadCloser) error {
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	var data map[string][]byte
 	if err := json.NewDecoder(rc).Decode(&data); err != nil {
 		return fmt.Errorf("decode snapshot: %w", err)
@@ -158,7 +158,7 @@ type fsmSnapshot struct {
 
 func (s *fsmSnapshot) Persist(sink hraft.SnapshotSink) error {
 	if err := json.NewEncoder(sink).Encode(s.data); err != nil {
-		sink.Cancel()
+		_ = sink.Cancel()
 		return fmt.Errorf("encode snapshot: %w", err)
 	}
 	return sink.Close()

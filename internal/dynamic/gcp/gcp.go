@@ -17,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"google.golang.org/api/iam/v1"
@@ -109,7 +108,6 @@ type Engine struct {
 	b        barrierIface
 	newAdmin func(*Config) (GCPAdminClient, error)
 	newToken func(*Config) (GCPTokenClient, error)
-	mu       sync.Mutex
 }
 
 // New creates an Engine backed by b.

@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	awsv2 "github.com/aws/aws-sdk-go-v2/aws"
@@ -114,7 +113,6 @@ type Engine struct {
 	b      barrierIface
 	newIAM func(*Config) (IAMClient, error)
 	newSTS func(*Config) (STSClient, error)
-	mu     sync.Mutex
 }
 
 // New creates an Engine backed by b.

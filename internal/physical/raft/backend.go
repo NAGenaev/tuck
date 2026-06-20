@@ -109,15 +109,15 @@ func Open(cfg Config) (*Backend, error) {
 
 	logStore, err := raftbolt.NewBoltStore(filepath.Join(cfg.DataDir, "raft.db"))
 	if err != nil {
-		machine.db.Close()
+		_ = machine.db.Close()
 		return nil, fmt.Errorf("raft: open log store: %w", err)
 	}
 
 	snapDir := filepath.Join(cfg.DataDir, "snapshots")
 	snapStore, err := hraft.NewFileSnapshotStore(snapDir, 3, nil)
 	if err != nil {
-		logStore.Close()
-		machine.db.Close()
+		_ = logStore.Close()
+		_ = machine.db.Close()
 		return nil, fmt.Errorf("raft: open snapshot store: %w", err)
 	}
 
@@ -127,14 +127,14 @@ func Open(cfg Config) (*Backend, error) {
 	}
 	advAddr, err := net.ResolveTCPAddr("tcp", advertise)
 	if err != nil {
-		logStore.Close()
-		machine.db.Close()
+		_ = logStore.Close()
+		_ = machine.db.Close()
 		return nil, fmt.Errorf("raft: resolve advertise addr %q: %w", advertise, err)
 	}
 	transport, err := hraft.NewTCPTransport(cfg.BindAddr, advAddr, 5, 10*time.Second, nil)
 	if err != nil {
-		logStore.Close()
-		machine.db.Close()
+		_ = logStore.Close()
+		_ = machine.db.Close()
 		return nil, fmt.Errorf("raft: create transport: %w", err)
 	}
 
@@ -159,9 +159,9 @@ func Open(cfg Config) (*Backend, error) {
 
 	r, err := hraft.NewRaft(rc, machine, logStore, logStore, snapStore, transport)
 	if err != nil {
-		transport.Close()
-		logStore.Close()
-		machine.db.Close()
+		_ = transport.Close()
+		_ = logStore.Close()
+		_ = machine.db.Close()
 		return nil, fmt.Errorf("raft: create raft: %w", err)
 	}
 
@@ -178,9 +178,9 @@ func Open(cfg Config) (*Backend, error) {
 		}
 		clusterCfg := hraft.Configuration{Servers: servers}
 		if f := r.BootstrapCluster(clusterCfg); f.Error() != nil && f.Error() != hraft.ErrCantBootstrap {
-			transport.Close()
-			logStore.Close()
-			machine.db.Close()
+			_ = transport.Close()
+			_ = logStore.Close()
+			_ = machine.db.Close()
 			return nil, fmt.Errorf("raft: bootstrap: %w", f.Error())
 		}
 	}
@@ -285,8 +285,8 @@ func (b *Backend) Close() error {
 	if f := b.raft.Shutdown(); f.Error() != nil {
 		return f.Error()
 	}
-	b.trans.Close()
-	b.log.Close()
+	_ = b.trans.Close()
+	_ = b.log.Close()
 	return b.fsm.db.Close()
 }
 

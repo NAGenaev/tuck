@@ -11,6 +11,33 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [1.35.0] — 2026-06-20
+
+### Added
+
+- **Go SDK — Dynamic secrets engines**: новые типизированные клиенты `DB()`, `AWS()`, `GCP()`, `Azure()` с полным CRUD для конфигов и ролей, генерацией кредов и отзывом lease. Клиент `Leases()` для системных операций над lease (Get, Renew, Revoke, List).
+- **Go SDK — Crypto engines**: клиенты `Transit()` (Encrypt/Decrypt/Sign/Verify/HMAC/Rotate), `PKI()` (GenerateCA/IssueCert/RevokeCert/Roles), `SSH()` (GenerateCA/Sign/Roles), `TOTP()` (CreateKey/GenerateCode/ValidateCode).
+- **Go SDK — AppRole management**: клиент `AppRole()` для CRUD ролей и управления SecretID (GenerateSecretID, LookupSecretID, DestroySecretID). Аутентификация по-прежнему через `Auth().LoginAppRole()`.
+- **Go SDK — Mounts**: клиент `Mounts()` для перечисления, включения и отключения secret engine mount-ов.
+- **Go SDK — `putJSONOut` helper**: внутренний метод для PUT-запросов, возвращающих JSON-тело ответа.
+- **Terraform — `tuck_mount`**: ресурс для управления secret engine mount-ами (path, type, description, computed accessor; path+type неизменяемы, замена при изменении).
+- **Terraform — расширенные примеры** (`examples/main.tf`): демонстрация всех ресурсов — namespace, mount, policy, token role, AppRole, KV v1/v2, datasources.
+
+---
+
+## [1.34.0] — 2026-06-20
+
+### Added
+
+- **Terraform — `tuck_kv_secret_v2`**: ресурс для версионированных KV v2 секретов с computed `version`.
+- **Terraform — `data.tuck_kv_secret_v2`**: datasource для чтения любой версии KV v2 секрета (version=0 → latest).
+- **Terraform — `tuck_token_role`**: ресурс для управления token roles (policies, TTL, max_ttl, max_uses, period, renewable).
+- **Terraform — `tuck_approle_role`**: ресурс для AppRole ролей с computed `role_id`.
+- **Terraform — `tuck_namespace`**: ресурс для управления Tuck namespace-ами (multi-tenancy).
+- **Terraform provider client**: типизированные методы для KV v2, token roles, AppRole, namespace — полный lifecycle.
+
+---
+
 ## [1.7.0] — 2026-06-13
 
 ### Added

@@ -35,8 +35,8 @@ func TestMultipleVersions(t *testing.T) {
 	s := New(newMem())
 	ctx := context.Background()
 
-	_ , _ = s.Write(ctx, "k", []byte("v1"), nil)
-	_ , _ = s.Write(ctx, "k", []byte("v2"), nil)
+	_, _ = s.Write(ctx, "k", []byte("v1"), nil)
+	_, _ = s.Write(ctx, "k", []byte("v2"), nil)
 	v3, _ := s.Write(ctx, "k", []byte("v3"), nil)
 
 	val, _, _ := s.Read(ctx, "k", 0)

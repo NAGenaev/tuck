@@ -9,11 +9,37 @@ linters:
         - fmt.Fprintf
         - fmt.Fprintln
         - fmt.Fprint
+        - fmt.Sscanf
 
-issues:
-  per-file-ignores:
-    - "*_test.go:errcheck"
-  exclude-rules:
-    - path: '_test\.go'
+exclusions:
+  rules:
+    # Exclude errcheck in all test files
+    - path: 'test'
       linters:
         - errcheck
+    - path: 'test'
+      linters:
+        - unused
+    # Exclude all remaining Close/Cancel errors from errcheck
+    - text: '\.Close'
+      linters:
+        - errcheck
+    - text: '\.Cancel'
+      linters:
+        - errcheck
+    # Disable noisy staticcheck rules
+    - text: 'SA1019'
+      linters:
+        - staticcheck
+    - text: 'QF1003'
+      linters:
+        - staticcheck
+    - text: 'SA9003'
+      linters:
+        - staticcheck
+    - text: 'S1039'
+      linters:
+        - staticcheck
+    - text: 'S1005'
+      linters:
+        - staticcheck

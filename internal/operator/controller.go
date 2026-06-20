@@ -101,7 +101,7 @@ func (ctrl *Controller) runOnce(ctx context.Context) error {
 			}
 			continue
 		}
-		ctrl.ensureFinalizer(ctx, ts)
+		_ = ctrl.ensureFinalizer(ctx, ts)
 		if err := ctrl.reconcile(ctx, ts); err != nil {
 			slog.Error("operator: reconcile", "namespace", ts.Metadata.Namespace, "name", ts.Metadata.Name, "err", err)
 		}

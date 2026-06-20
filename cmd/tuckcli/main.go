@@ -908,10 +908,10 @@ func (v *vaultClient) readKV(apiPath string) (map[string]any, error) {
 // extractKVData pulls the secret fields from a Vault KV response.
 // KV v2 nests them at data.data; KV v1 has them directly at data.
 func extractKVData(result map[string]any, kvVersion int) map[string]any {
-	dataRaw, _ := result["data"]
+	dataRaw := result["data"]
 	data, _ := dataRaw.(map[string]any)
 	if kvVersion == 2 {
-		innerRaw, _ := data["data"]
+		innerRaw := data["data"]
 		inner, _ := innerRaw.(map[string]any)
 		return inner
 	}

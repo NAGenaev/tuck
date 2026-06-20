@@ -300,7 +300,7 @@ func TestTokenMaxUsesZeroMeansUnlimited(t *testing.T) {
 	// Use it 5 times — all should succeed.
 	for i := 1; i <= 5; i++ {
 		r, _ := http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/auth/token/lookup-self", "", tok))
-		r.Body.Close()
+		_ = r.Body.Close()
 		if r.StatusCode != http.StatusOK {
 			t.Errorf("use %d: status=%d, want 200", i, r.StatusCode)
 		}

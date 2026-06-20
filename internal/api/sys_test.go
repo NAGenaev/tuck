@@ -140,7 +140,7 @@ func TestPostSeal_SealsThenStatusReflects(t *testing.T) {
 	// Now seal-status should report sealed=true.
 	resp2, _ := http.Get(ts.URL + "/v1/sys/seal-status")
 	body2, _ := io.ReadAll(resp2.Body)
-	resp2.Body.Close()
+	_ = resp2.Body.Close()
 	var status map[string]any
 	json.Unmarshal(body2, &status) //nolint:errcheck
 	if status["sealed"] != true {
@@ -281,7 +281,7 @@ func TestShamirUnsealFlow(t *testing.T) {
 	// Verify the seal-status endpoint now reports unsealed.
 	resp2, _ := http.Get(ts.URL + "/v1/sys/seal-status")
 	body2, _ := io.ReadAll(resp2.Body)
-	resp2.Body.Close()
+	_ = resp2.Body.Close()
 	var status map[string]any
 	json.Unmarshal(body2, &status) //nolint:errcheck
 	if status["sealed"] != false {

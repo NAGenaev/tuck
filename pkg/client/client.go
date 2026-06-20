@@ -145,7 +145,7 @@ func (c *Client) Snapshot(ctx context.Context, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if err := checkStatus(resp); err != nil {
 		return err
 	}
@@ -274,7 +274,7 @@ func (v *KVv2Client) Write(ctx context.Context, path string, value []byte, cas i
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if err := checkStatus(resp); err != nil {
 		return nil, err
 	}
@@ -553,7 +553,7 @@ func (c *Client) get(ctx context.Context, path string, out any) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if err := checkStatus(resp); err != nil {
 		return err
 	}
@@ -583,7 +583,7 @@ func (c *Client) post(ctx context.Context, path string, body any, out any) error
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if err := checkStatus(resp); err != nil {
 		return err
 	}
@@ -603,7 +603,7 @@ func (c *Client) putRaw(ctx context.Context, path string, value []byte) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return checkStatus(resp)
 }
 
@@ -621,7 +621,7 @@ func (c *Client) putJSON(ctx context.Context, path string, body any) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return checkStatus(resp)
 }
 
@@ -634,7 +634,7 @@ func (c *Client) doDelete(ctx context.Context, path string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return checkStatus(resp)
 }
 
@@ -647,7 +647,7 @@ func (c *Client) doList(ctx context.Context, path string, out any) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if err := checkStatus(resp); err != nil {
 		return err
 	}

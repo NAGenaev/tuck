@@ -225,7 +225,7 @@ func main() {
 		if raftErr != nil {
 			log.Fatalf("open raft backend: %v", raftErr)
 		}
-		defer rb.Close()
+		defer func() { _ = rb.Close() }()
 
 		// Auto-join an existing cluster via the leader's HTTP API.
 		if *clusterJoin != "" {
@@ -242,7 +242,7 @@ func main() {
 		if bbErr != nil {
 			log.Fatalf("open backend: %v", bbErr)
 		}
-		defer bb.Close()
+		defer func() { _ = bb.Close() }()
 		backend = bb
 	}
 

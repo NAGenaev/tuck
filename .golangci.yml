@@ -6,9 +6,12 @@ linters:
       exclude-functions:
         - (*net/http.Response).Body.Close
         - (*database/sql.DB).Close
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Fprint
 
-exclusions:
-  rules:
+issues:
+  exclude-rules:
     - path: '_test\.go'
       linters:
         - errcheck

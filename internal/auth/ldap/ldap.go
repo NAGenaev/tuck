@@ -407,7 +407,7 @@ func defaultDial(_ context.Context, cfg Config) (Conn, error) {
 		}
 		if cfg.StartTLS {
 			if err := conn.StartTLS(tlsCfg); err != nil {
-				conn.Close()
+				_ = conn.Close()
 				lastErr = err
 				continue
 			}

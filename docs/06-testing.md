@@ -10,11 +10,12 @@
 
 | Метрика | Значение |
 |---------|----------|
-| Файлов тестов | 52 |
-| Строк тестов | ~9 000 |
-| Соотношение тест/код | ~0.40 (9k / 22.6k) |
-| Race detector | `go test -race ./...` — чисто |
+| Файлов тестов | 69 |
+| Строк тестов | ~14 500 |
+| Соотношение тест/код | ~0.51 (14.5k / 28.5k) |
+| Race detector | `go test -race ./...` — чисто (Linux/macOS; Windows без CGO) |
 | e2e на minikube | 37 / 37 PASS |
+| API integration tests | 119 тестов в `internal/api` (Transit, TOTP, SSH, JWT, LDAP, K8s, Chaos, Sys, AppRole, KVv2, Wrapping, PKI, GitHub, Config) |
 | Бенчмарки | Go benchmarks (in-process) для KV/Token/SealStatus |
 | Нагрузочные | k6-сценарии smoke / load / stress / soak |
 
@@ -145,12 +146,18 @@ flowchart LR
 | Область | Unit | Integration | E2E | Fuzz | Soak/Chaos |
 |---------|:----:|:-----------:|:---:|:----:|:----------:|
 | Barrier / Seal | ✅ | ✅ | ⚠️ | ❌ нужно | — |
-| Shamir | ✅ | ✅ | — | ❌ нужно | — |
+| Shamir | ✅ | ✅ | ✅ | ❌ нужно | — |
 | Policy / ACL | ✅ | ✅ | ✅ | ❌ нужно | — |
 | Tokens | ✅ | ✅ | ✅ | — | ⚠️ |
 | KV v1/v2 | ✅ | ✅ | ✅ | ⚠️ | ⚠️ |
 | Dynamic (db/aws/gcp/azure) | ✅ | ⚠️ | ❌ реальные | — | — |
-| PKI/Transit/SSH/TOTP | ✅ | ✅ | ⚠️ | ⚠️ | — |
+| Transit | ✅ | ✅ | ✅ | ⚠️ | — |
+| PKI | ✅ | ✅ | ✅ | ⚠️ | — |
+| SSH | ✅ | ✅ | ✅ | — | — |
+| TOTP | ✅ | ✅ | ✅ | — | — |
+| JWT/LDAP auth | ✅ | ✅ | ✅ | — | — |
+| AppRole/K8s auth | ✅ | ✅ | ✅ | — | — |
+| GitHub auth | ✅ | ✅ | ⚠️ (только CI) | — | — |
 | Raft HA | ✅ | ✅ | ⚠️ | — | ❌ нужно chaos |
 | Operator / Injector | ✅ | ✅ | ✅(minikube) | — | — |
 | Rate-limit / Audit | ✅ | ✅ | — | — | ⚠️ |

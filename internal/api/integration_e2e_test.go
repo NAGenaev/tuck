@@ -773,6 +773,65 @@ func TestSecretDeleteAndRecreate(t *testing.T) {
 	}
 }
 
+// TestAppRoleTokenRenewable verifies that a token issued by AppRole login is
+// renewable and can survive past its original TTL after a renew-self call.
+func TestAppRoleTokenRenewable(t *testing.T) {
+	ts, _, root := newTestServer(t)
+
+	// Create an AppRole with a very short token TTL.
+	doJSON(t, ts, http.MethodPut, "/v1/auth/approle/role/renew-test",
+		`{"policies":["root"],"token_ttl":"500ms"}`, root)
+
+	status, body := doJSON(t, ts, http.MethodGet, "/v1/auth/approle/role/renew-test", "", root)
+	if status != http.StatusOK {
+		t.Fatalf("get role: %d %s", status, body)
+	}
+	roleID := jsonField(t, body, "role_id")
+
+	status, body = doJSON(t, ts, http.MethodPost, "/v1/auth/approle/role/renew-test/secret-id", "", root)
+	if status != http.StatusOK {
+		t.Fatalf("gen secret-id: %d %s", status, body)
+	}
+	secretID := jsonField(t, body, "id")
+
+	// Login via AppRole.
+	loginBody := mustJSON(map[string]string{"role_id": roleID, "secret_id": secretID})
+	status, body = doJSON(t, ts, http.MethodPost, "/v1/auth/approle/login", loginBody, "")
+	if status != http.StatusOK {
+		t.Fatalf("approle login: %d %s", status, body)
+	}
+	appTok := jsonField(t, body, "token")
+	if appTok == "" {
+		t.Fatalf("token empty, body: %s", body)
+	}
+
+	// lookup-self must report renewable=true.
+	status, body = doJSON(t, ts, http.MethodGet, "/v1/auth/token/lookup-self", "", appTok)
+	if status != http.StatusOK {
+		t.Fatalf("lookup-self: %d %s", status, body)
+	}
+	renewable := jsonField(t, body, "renewable")
+	if renewable != "true" {
+		t.Errorf("approle token renewable=%s, want true", renewable)
+	}
+
+	// Renew self while token is still valid.
+	renewBody := mustJSON(map[string]string{"ttl": "10s"})
+	status, body = doJSON(t, ts, http.MethodPost, "/v1/auth/token/renew-self", renewBody, appTok)
+	if status != http.StatusOK {
+		t.Fatalf("renew-self: %d %s, want 200", status, body)
+	}
+
+	// Wait past the original 500ms TTL.
+	time.Sleep(600 * time.Millisecond)
+
+	// Token must still be valid after renewal.
+	status, _ = doJSON(t, ts, http.MethodGet, "/v1/auth/token/lookup-self", "", appTok)
+	if status != http.StatusOK {
+		t.Errorf("lookup-self after original TTL: %d, want 200 (token should be alive due to renewal)", status)
+	}
+}
+
 // min is a helper for older Go compatibility.
 func min(a, b int) int {
 	if a < b {

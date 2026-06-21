@@ -680,7 +680,7 @@ func (c *Core) LoginK8s(ctx context.Context, saToken string) (*token.Token, erro
 		}
 		return nil, fmt.Errorf("get k8s role: %w", err)
 	}
-	tok, err := c.CreateToken(ctx, "k8s:"+namespace+"/"+sa, role.Policies, role.TTL)
+	tok, err := c.CreateToken(ctx, "k8s:"+namespace+"/"+sa, role.Policies, role.TTL, WithRenewable(0))
 	if err != nil {
 		return nil, err
 	}
@@ -939,7 +939,7 @@ func (c *Core) LoginJWT(ctx context.Context, tokenStr string) (*token.Token, err
 	if err != nil {
 		return nil, err
 	}
-	tok, err := c.CreateToken(ctx, "jwt:"+result.Subject, result.Policies, result.TTL)
+	tok, err := c.CreateToken(ctx, "jwt:"+result.Subject, result.Policies, result.TTL, WithRenewable(0))
 	if err != nil {
 		return nil, err
 	}
@@ -981,7 +981,7 @@ func (c *Core) LoginGitHub(ctx context.Context, tokenStr, roleName string) (*tok
 	if err != nil {
 		return nil, err
 	}
-	tok, err := c.CreateToken(ctx, "github:"+result.Subject, result.Policies, result.TTL)
+	tok, err := c.CreateToken(ctx, "github:"+result.Subject, result.Policies, result.TTL, WithRenewable(0))
 	if err != nil {
 		return nil, err
 	}
@@ -1146,7 +1146,7 @@ func (c *Core) LoginAppRole(ctx context.Context, roleID, secretID, remoteIP stri
 	if err != nil {
 		return nil, err
 	}
-	tok, err := c.CreateToken(ctx, result.Subject, result.Policies, result.TTL)
+	tok, err := c.CreateToken(ctx, result.Subject, result.Policies, result.TTL, WithRenewable(0))
 	if err != nil {
 		return nil, err
 	}
@@ -1425,7 +1425,7 @@ func (c *Core) LoginLDAP(ctx context.Context, username, password string) (*token
 	if err != nil {
 		return nil, err
 	}
-	tok, err := c.CreateToken(ctx, "ldap:"+result.Username, result.Policies, result.TTL)
+	tok, err := c.CreateToken(ctx, "ldap:"+result.Username, result.Policies, result.TTL, WithRenewable(0))
 	if err != nil {
 		return nil, err
 	}

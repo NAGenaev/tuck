@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -64,7 +65,13 @@ func newShamirServerWithShares(t *testing.T, n, k int) (*httptest.Server, *core.
 		t.Fatalf("restart Start() = %v, want ErrNeedsUnseal", startErr)
 	}
 
-	ts := httptest.NewServer(New(shamirCore).Handler())
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	ts := httptest.NewUnstartedServer(New(shamirCore).Handler())
+	ts.Listener = &rstListener{ln}
+	ts.Start()
 	t.Cleanup(ts.Close)
 	return ts, shamirCore, shares, rootTokID
 }

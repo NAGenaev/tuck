@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -47,10 +48,13 @@ func newJWKSServer(t *testing.T) *jwtTestEnv {
 		}},
 	})
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(jwksBody)
 	}))
+	srv.Listener = &rstListener{ln}
+	srv.Start()
 	t.Cleanup(srv.Close)
 
 	return &jwtTestEnv{priv: priv, jwksURL: srv.URL}

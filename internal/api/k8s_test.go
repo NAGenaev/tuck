@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -33,7 +34,13 @@ func newTestServerWithK8s(t *testing.T, reviewer k8sauth.Reviewer) (*httptest.Se
 	if err != nil {
 		t.Fatalf("core start: %v", err)
 	}
-	ts := httptest.NewServer(New(c).Handler())
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	ts := httptest.NewUnstartedServer(New(c).Handler())
+	ts.Listener = &rstListener{ln}
+	ts.Start()
 	t.Cleanup(ts.Close)
 	return ts, c, result.RootToken.ID
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -78,7 +79,13 @@ func newChaosTestServer(tb testing.TB) (*httptest.Server, *core.Core, string, *c
 	if err != nil {
 		tb.Fatalf("chaos server start: %v", err)
 	}
-	ts := httptest.NewServer(New(c).Handler())
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		tb.Fatalf("chaos listen: %v", err)
+	}
+	ts := httptest.NewUnstartedServer(New(c).Handler())
+	ts.Listener = &rstListener{ln}
+	ts.Start()
 	tb.Cleanup(ts.Close)
 	return ts, c, result.RootToken.ID, cb
 }
@@ -92,8 +99,20 @@ func TestChaosTransientErrors(t *testing.T) {
 
 	ts, _, rootTok, cb := newChaosTestServer(t)
 
+	// Use a private client capped at one connection per host. This ensures all
+	// requests share a single TCP connection, leaving at most one ephemeral port
+	// in TIME_WAIT after the server closes — avoiding Windows WSAEADDRINUSE
+	// failures in subsequent tests when the OS recycles the server's port.
+	chaosClient := &http.Client{
+		Transport: &http.Transport{
+			MaxConnsPerHost:     1,
+			MaxIdleConnsPerHost: 1,
+		},
+	}
+	defer chaosClient.CloseIdleConnections()
+
 	// Write a reference secret with zero errors (stable baseline).
-	resp, err := http.DefaultClient.Do(authedReq(t, http.MethodPut, ts.URL+"/v1/secret/chaos/ref", "stable", rootTok))
+	resp, err := chaosClient.Do(authedReq(t, http.MethodPut, ts.URL+"/v1/secret/chaos/ref", "stable", rootTok))
 	if err != nil || resp.StatusCode != http.StatusNoContent {
 		status := 0
 		if resp != nil {
@@ -110,7 +129,7 @@ func TestChaosTransientErrors(t *testing.T) {
 	var attempts, successes int
 	for time.Now().Before(deadline) {
 		attempts++
-		r, e := http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/secret/chaos/ref", "", rootTok))
+		r, e := chaosClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/secret/chaos/ref", "", rootTok))
 		if e == nil {
 			_ = r.Body.Close()
 			if r.StatusCode == http.StatusOK {
@@ -118,7 +137,7 @@ func TestChaosTransientErrors(t *testing.T) {
 			}
 		}
 		// Also exercise writes so Put errors are covered.
-		wr, we := http.DefaultClient.Do(authedReq(t, http.MethodPut, ts.URL+"/v1/secret/chaos/rnd", "x", rootTok))
+		wr, we := chaosClient.Do(authedReq(t, http.MethodPut, ts.URL+"/v1/secret/chaos/rnd", "x", rootTok))
 		if we == nil {
 			_ = wr.Body.Close()
 		}
@@ -152,7 +171,13 @@ func TestChaosSealUnsealCycle(t *testing.T) {
 		t.Fatalf("boot1 start: %v", err)
 	}
 	rootTok := result.RootToken.ID
-	ts1 := httptest.NewServer(New(c1).Handler())
+	ln1, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen ts1: %v", err)
+	}
+	ts1 := httptest.NewUnstartedServer(New(c1).Handler())
+	ts1.Listener = &rstListener{ln1}
+	ts1.Start()
 	t.Cleanup(ts1.Close)
 
 	const n = 10
@@ -189,7 +214,13 @@ func TestChaosSealUnsealCycle(t *testing.T) {
 	if _, err := c2.Start(context.Background()); err != nil {
 		t.Fatalf("boot2 start: %v", err)
 	}
-	ts2 := httptest.NewServer(New(c2).Handler())
+	ln2, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen ts2: %v", err)
+	}
+	ts2 := httptest.NewUnstartedServer(New(c2).Handler())
+	ts2.Listener = &rstListener{ln2}
+	ts2.Start()
 	t.Cleanup(ts2.Close)
 
 	// All n secrets must be intact after the restart.

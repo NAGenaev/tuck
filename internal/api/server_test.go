@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -15,6 +16,25 @@ import (
 	"github.com/NAGenaev/tuck/internal/seal"
 )
 
+// rstListener wraps a TCP listener so that every accepted connection has
+// SO_LINGER=0. When the server closes such a connection it sends RST instead
+// of the normal FIN sequence, preventing the connection from entering
+// TIME_WAIT. On Windows, TIME_WAIT accumulation across many back-to-back
+// test runs exhausts the ephemeral port range and causes spurious
+// WSAEADDRINUSE errors on subsequent httptest server connections.
+type rstListener struct{ net.Listener }
+
+func (l *rstListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	if tc, ok := conn.(*net.TCPConn); ok {
+		_ = tc.SetLinger(0)
+	}
+	return conn, nil
+}
+
 func newTestServer(tb testing.TB) (*httptest.Server, *core.Core, string) {
 	tb.Helper()
 	c := core.New(physical.NewInMem(), seal.NewDev(filepath.Join(tb.TempDir(), "rootkey")))
@@ -22,7 +42,13 @@ func newTestServer(tb testing.TB) (*httptest.Server, *core.Core, string) {
 	if err != nil {
 		tb.Fatalf("core start: %v", err)
 	}
-	ts := httptest.NewServer(New(c).Handler())
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		tb.Fatalf("listen: %v", err)
+	}
+	ts := httptest.NewUnstartedServer(New(c).Handler())
+	ts.Listener = &rstListener{ln}
+	ts.Start()
 	tb.Cleanup(ts.Close)
 	return ts, c, result.RootToken.ID
 }

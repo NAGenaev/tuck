@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -85,7 +86,13 @@ func newLDAPTestServer(t *testing.T) (*httptest.Server, *core.Core, string) {
 		return conn, nil
 	})
 
-	ts := httptest.NewServer(New(c).Handler())
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	ts := httptest.NewUnstartedServer(New(c).Handler())
+	ts.Listener = &rstListener{ln}
+	ts.Start()
 	t.Cleanup(ts.Close)
 	return ts, c, result.RootToken.ID
 }

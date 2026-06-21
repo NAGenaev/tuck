@@ -82,6 +82,11 @@ func (s *Server) postUnseal(w http.ResponseWriter, r *http.Request) {
 	}
 	if complete {
 		resp.Message = "unseal complete"
+		// Barrier is now open — restore any persisted rate-limit config so that
+		// live-configured limits survive a Shamir-sealed restart.
+		if cfg, cfgErr := s.core.GetSysConfig(r.Context()); cfgErr == nil {
+			s.ApplyRateConfig(cfg)
+		}
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

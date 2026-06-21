@@ -133,7 +133,8 @@ flowchart LR
 - [ ] Завершить CSI-драйвер (`tuckcsi`).
 - [ ] Миграционный инструмент Vault → Tuck (KV, политики, auth-роли).
 - [ ] Публикация Helm-чарта в Artifact Hub, операторов — в OperatorHub.
-- [ ] GitHub Auth (классический), rate-limit на KV/token-эндпоинтах.
+- [ ] GitHub Auth (классический).
+- [x] Rate-limit на KV/token-эндпоинтах (per-IP + per-token, live config via `/v1/sys/config`, survives restart).
 - [ ] Плагин-система для внешних движков.
 
 ---

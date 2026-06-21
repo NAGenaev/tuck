@@ -395,8 +395,17 @@ func main() {
 		log.Fatalf("--tls-cert and --tls-key must be provided together")
 	}
 
-	// --- Rate limiters ---
-	handler := api.New(c).Handler()
+	// --- API server + rate limiters ---
+	apiSrv := api.New(c)
+	// Restore barrier-persisted rate-limit config when the barrier is already
+	// open (dev seal, auto-unseal). Shamir-sealed servers restore in postUnseal.
+	if !errors.Is(startErr, core.ErrNeedsUnseal) {
+		if persisted, cfgErr := c.GetSysConfig(ctx); cfgErr == nil {
+			apiSrv.ApplyRateConfig(persisted)
+		}
+	}
+	apiSrv.StartLimiterCleanup(ctx)
+	handler := apiSrv.Handler()
 	if *ipRateRPS > 0 {
 		ipLimiter := ratelimit.New(*ipRateRPS, *ipRateBurst)
 		handler = ipLimiter.Middleware(handler)

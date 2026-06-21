@@ -142,7 +142,7 @@ File: `internal/dynamic/transit/transit.go`
 |----|-------------|----------|------|
 | SEC-6 | No `mlockall` — root key may be swapped to disk under memory pressure | Low | v1.x |
 | OPS-7 | Audit log rotation not implemented — file grows unbounded | Low | v1.x |
-| INF-1 | No rate limiting on KV/token endpoints (only auth/unseal) | Low | v1.x |
+| INF-1 | ~~No rate limiting on KV/token endpoints (only auth/unseal)~~ — **Fixed v1.35**: per-IP and per-token limiters wired to all endpoints via `PUT /v1/sys/config`; limits survive restart (auto-unseal) and Shamir unseal | Low | ✅ |
 
 ---
 

@@ -100,13 +100,13 @@ k6-пороги для GA: KV GET/PUT p99 < 50 мс, token create p99 < 100 мс
 
 | # | Пробел | Риск | Приоритет |
 |---|--------|------|-----------|
-| 1 | **Нет fuzz-тестов** парсеров (Shamir-доли, glob-ACL, JSON-входы, нормализация путей) | Edge-case паника/обход ACL | P0 |
+| 1 | ~~**Нет fuzz-тестов** парсеров~~ — **Закрыто**: `FuzzDecryptBytes`, `FuzzBarrierUnseal`, `FuzzParseVaultToken`, `FuzzDecryptAES`, `FuzzVerifyECDSA/Ed25519`, `FuzzMetaJSON`, `FuzzWrite`, `FuzzReadAfterWrite` + `FuzzEncryptDecryptRoundtrip` (barrier, transit, kvv2) | — | ✅ |
 | 2 | **Soak 24h не в CI** (есть сценарий, но не автоматизирован) | Утечки памяти/goroutine под нагрузкой | P1 |
 | 3 | **Chaos-тесты Raft** (убийство лидера/ноды, network partition) ограничены | Потеря данных/split-brain | P1 |
 | 4 | **e2e против реальных облаков** (AWS/GCP/Azure) и реальных БД | Регрессии dynamic-движков и seal | P1 |
 | 5 | **Coverage-гейт** не зафиксирован на security-пакетах | Дрейф покрытия | P1 |
 | 6 | **Тесты ротации/восстановления** (rotate → restore → consistency) не как отдельный e2e-набор | Ошибки DR | P1 |
-| 7 | **Negative/abuse-тесты** rate-limit, brute-force lockout под нагрузкой | Обход защиты | P2 |
+| 7 | ~~**Negative/abuse-тесты** rate-limit~~ — **Частично закрыто**: `TestIPRateLimitBlocks`, `TestTokenRateLimitBlocks`, `TestRateLimitDisabled`, `TestRateLimitTokenIsolation` в `internal/api/ratelimit_test.go`; brute-force lockout под нагрузкой остаётся | Обход защиты | P2 |
 | 8 | **Тесты совместимости формата хранилища** между версиями (миграции схемы) | Поломка апгрейда | P2 |
 | 9 | **Тесты на бинарную безопасность** значений (не-UTF8) во всех движках | Порча данных | P2 |
 | 10 | **Property-based** для крипто-инвариантов (encrypt→decrypt идемпотентность, rewrap) | Логические дефекты | P2 |
@@ -116,8 +116,9 @@ k6-пороги для GA: KV GET/PUT p99 < 50 мс, token create p99 < 100 мс
 ## 6.5. Рекомендуемый план тестирования
 
 ### Фаза A — безопасность тестов (P0)
-- [ ] `FuzzShamirParse`, `FuzzGlobMatch`, `FuzzPolicyJSON`, `FuzzPathNormalize` (нативный Go fuzzing, `go test -fuzz`).
-- [ ] Property-тесты крипто: `encrypt(decrypt(x)) == x`, `rewrap` сохраняет plaintext, версия в ciphertext корректна.
+- [x] Fuzz-тесты парсеров: `FuzzDecryptBytes`, `FuzzBarrierUnseal`, `FuzzParseVaultToken`, `FuzzDecryptAES`, `FuzzVerifyECDSA/Ed25519`, `FuzzMetaJSON`, `FuzzWrite`, `FuzzReadAfterWrite`.
+- [x] Property-тесты крипто: `FuzzEncryptDecryptRoundtrip` (barrier + transit), `FuzzRewrap` — `encrypt(decrypt(x)) == x` и `rewrap` не паникует.
+- [ ] `FuzzShamirParse`, `FuzzGlobMatch`, `FuzzPolicyJSON`, `FuzzPathNormalize` — ещё не написаны.
 - [ ] Тест «нет токена в дампе»: грепнуть `tuck.db` после создания токенов — не должно быть валидных ID.
 
 ### Фаза B — устойчивость и нагрузка (P1)

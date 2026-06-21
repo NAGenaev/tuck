@@ -122,6 +122,10 @@ type Core struct {
 	k8sReviewer k8sauth.Reviewer
 	k8sRoles    *k8sauth.RoleStore
 
+	// ldapDialerFn, when non-nil, overrides the real LDAP dial. Tests inject a
+	// fake Conn via SetLDAPDialer so they don't need a live directory server.
+	ldapDialerFn func(ctx context.Context, cfg authlda.Config) (authlda.Conn, error)
+
 	// unsealMu guards unseal-shard operations so concurrent POST /v1/sys/unseal
 	// requests cannot race on AcceptShard.
 	unsealMu sync.Mutex
@@ -129,6 +133,11 @@ type Core struct {
 	// unsealCtx is stored during the "waiting for shards" window so that
 	// UnsealShard can call barrier.Unseal once the key is reconstructed.
 	unsealCtx context.Context //nolint:containedctx // intentional: stored for deferred barrier.Unseal
+}
+
+// SetLDAPDialer replaces the LDAP connection factory. Intended for tests only.
+func (c *Core) SetLDAPDialer(fn func(ctx context.Context, cfg authlda.Config) (authlda.Conn, error)) {
+	c.ldapDialerFn = fn
 }
 
 // New builds a Core without Kubernetes auth support.
@@ -1420,7 +1429,11 @@ func (c *Core) LoginLDAP(ctx context.Context, username, password string) (*token
 	if err != nil {
 		return nil, fmt.Errorf("load ldap roles: %w", err)
 	}
-	auth := authlda.NewAuthenticator(*cfg)
+	var authOpts []func(*authlda.Authenticator)
+	if c.ldapDialerFn != nil {
+		authOpts = append(authOpts, authlda.WithDialer(c.ldapDialerFn))
+	}
+	auth := authlda.NewAuthenticator(*cfg, authOpts...)
 	result, err := auth.Login(ctx, roles, username, password)
 	if err != nil {
 		return nil, err

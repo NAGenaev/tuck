@@ -2,24 +2,27 @@ import {
     ActionIcon,
     Badge,
     Button,
-    Card,
     Group,
     NumberInput,
     SegmentedControl,
+    SimpleGrid,
     Stack,
     Table,
     Text,
     TextInput
 } from '@mantine/core'
+import { useDisclosure } from '@mantine/hooks'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { TbFileText, TbPlus, TbTrash } from 'react-icons/tb'
+import { TbAlertTriangle, TbFileText, TbPlus, TbTrash } from 'react-icons/tb'
 
 import { deleteAuditSink, listAuditSinks, putFileSink, putWebhookSink } from '@shared/api/endpoints/audit'
 import { EmptyState } from '@shared/ui/empty-state/empty-state'
+import { EntityModal } from '@shared/ui/entity-modal/entity-modal'
+import { MetricCard } from '@shared/ui/metrics/metric-card/metric-card'
 import { Page } from '@shared/ui/page/page'
 import { PageHeader } from '@shared/ui/page-header/page-header'
 import { TableCard } from '@shared/ui/table-card/table-card'
@@ -50,53 +53,56 @@ function CreateSinkForm({ onDone }: { onDone: () => void }) {
     })
 
     return (
-        <Card>
-            <Stack gap="sm">
-                <SegmentedControl
-                    data={[
-                        { label: t('auditSinks.typeWebhook'), value: 'webhook' },
-                        { label: t('auditSinks.typeFile'), value: 'file' }
-                    ]}
-                    onChange={(v) => setType(v as 'file' | 'webhook')}
-                    value={type}
-                />
-                <TextInput label={t('auditSinks.sinkName')} onChange={(e) => setName(e.currentTarget.value)} value={name} />
-                {type === 'webhook' ? (
-                    <Group grow>
-                        <TextInput
-                            label={t('auditSinks.url')}
-                            onChange={(e) => setUrl(e.currentTarget.value)}
-                            placeholder={t('auditSinks.urlPlaceholder')}
-                            value={url}
-                        />
-                        <NumberInput label={t('auditSinks.timeoutSec')} onChange={setTimeoutSec} value={timeoutSec} />
-                    </Group>
-                ) : (
-                    <Group grow>
-                        <TextInput
-                            label={t('auditSinks.filePath')}
-                            onChange={(e) => setPath(e.currentTarget.value)}
-                            placeholder={t('auditSinks.filePathPlaceholder')}
-                            value={path}
-                        />
-                        <NumberInput label={t('auditSinks.maxSizeMb')} onChange={setMaxSizeMb} value={maxSizeMb} />
-                    </Group>
-                )}
-                <Button
-                    disabled={!name || (type === 'webhook' ? !url : !path)}
-                    loading={mutation.isPending}
-                    onClick={() => mutation.mutate()}
-                >
-                    {t('auditSinks.saveSink')}
-                </Button>
-            </Stack>
-        </Card>
+        <Stack gap="sm">
+            <Text c="dimmed" size="xs">
+                {t('auditSinks.createHint')}
+            </Text>
+            <SegmentedControl
+                data={[
+                    { label: t('auditSinks.typeWebhook'), value: 'webhook' },
+                    { label: t('auditSinks.typeFile'), value: 'file' }
+                ]}
+                onChange={(v) => setType(v as 'file' | 'webhook')}
+                value={type}
+            />
+            <TextInput autoFocus label={t('auditSinks.sinkName')} onChange={(e) => setName(e.currentTarget.value)} value={name} />
+            {type === 'webhook' ? (
+                <Group grow>
+                    <TextInput
+                        label={t('auditSinks.url')}
+                        onChange={(e) => setUrl(e.currentTarget.value)}
+                        placeholder={t('auditSinks.urlPlaceholder')}
+                        value={url}
+                    />
+                    <NumberInput label={t('auditSinks.timeoutSec')} onChange={setTimeoutSec} value={timeoutSec} />
+                </Group>
+            ) : (
+                <Group grow>
+                    <TextInput
+                        label={t('auditSinks.filePath')}
+                        onChange={(e) => setPath(e.currentTarget.value)}
+                        placeholder={t('auditSinks.filePathPlaceholder')}
+                        value={path}
+                    />
+                    <NumberInput label={t('auditSinks.maxSizeMb')} onChange={setMaxSizeMb} value={maxSizeMb} />
+                </Group>
+            )}
+            <Button
+                disabled={!name || (type === 'webhook' ? !url : !path)}
+                fullWidth
+                leftSection={<TbPlus size={16} />}
+                loading={mutation.isPending}
+                onClick={() => mutation.mutate()}
+            >
+                {t('auditSinks.saveSink')}
+            </Button>
+        </Stack>
     )
 }
 
 export function AuditSinksPage() {
     const { t } = useTranslation()
-    const [creating, setCreating] = useState(false)
+    const [creating, { open: openCreating, close: closeCreating }] = useDisclosure(false)
     const queryClient = useQueryClient()
 
     const { data: sinks, isLoading } = useQuery({ queryKey: ['audit', 'list'], queryFn: listAuditSinks })
@@ -106,16 +112,14 @@ export function AuditSinksPage() {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['audit', 'list'] })
     })
 
+    const errorCount = sinks?.filter((s) => s.errors > 0).length ?? 0
+
     return (
         <Page title="Audit Sinks">
             <Stack gap="lg">
                 <PageHeader
                     action={
-                        <Button
-                            leftSection={<TbPlus size={16} />}
-                            onClick={() => setCreating((c) => !c)}
-                            variant="light"
-                        >
+                        <Button leftSection={<TbPlus size={16} />} onClick={openCreating}>
                             {t('common.new')}
                         </Button>
                     }
@@ -124,14 +128,31 @@ export function AuditSinksPage() {
                     title={t('pages.auditSinks')}
                 />
 
-                {creating && (
+                <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                    <MetricCard
+                        IconComponent={TbFileText}
+                        iconColor="yellow"
+                        isLoading={isLoading}
+                        title={t('common.total')}
+                        value={sinks?.length ?? 0}
+                    />
+                    <MetricCard
+                        IconComponent={TbAlertTriangle}
+                        iconColor={errorCount > 0 ? 'red' : 'gray'}
+                        isLoading={isLoading}
+                        title={t('auditSinks.errors')}
+                        value={errorCount}
+                    />
+                </SimpleGrid>
+
+                <EntityModal color="yellow" icon={TbFileText} onClose={closeCreating} opened={creating} title={t('common.new')}>
                     <CreateSinkForm
                         onDone={() => {
-                            setCreating(false)
+                            closeCreating()
                             queryClient.invalidateQueries({ queryKey: ['audit', 'list'] })
                         }}
                     />
-                )}
+                </EntityModal>
 
                 <TableCard>
                     <Table.Thead>

@@ -2,13 +2,14 @@ import {
     ActionIcon,
     Alert,
     Button,
-    Card,
     Group,
+    SimpleGrid,
     Stack,
     Table,
     Text,
     TextInput
 } from '@mantine/core'
+import { useDisclosure } from '@mantine/hooks'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -18,15 +19,14 @@ import { TbKey, TbPlus, TbTrash } from 'react-icons/tb'
 
 import { createToken, listTokens, revokeToken, Token } from '@shared/api/endpoints/token'
 import { CopyableField } from '@shared/ui/copyable-field/copyable-field'
+import { EntityModal } from '@shared/ui/entity-modal/entity-modal'
+import { EmptyState } from '@shared/ui/empty-state/empty-state'
+import { MetricCard } from '@shared/ui/metrics/metric-card/metric-card'
 import { Page } from '@shared/ui/page/page'
 import { PageHeader } from '@shared/ui/page-header/page-header'
 import { TableCard } from '@shared/ui/table-card/table-card'
 
-function CreateTokenForm({
-    onCreated
-}: {
-    onCreated: (token: Token) => void
-}) {
+function CreateTokenForm({ onCreated }: { onCreated: (token: Token) => void }) {
     const { t } = useTranslation()
     const [displayName, setDisplayName] = useState('')
     const [ttl, setTtl] = useState('')
@@ -55,41 +55,43 @@ function CreateTokenForm({
     })
 
     return (
-        <Card>
-            <Stack gap="sm">
-                <TextInput
-                    label={t('tokens.displayName')}
-                    onChange={(e) => setDisplayName(e.currentTarget.value)}
-                    placeholder={t('tokens.displayNamePlaceholder')}
-                    value={displayName}
-                />
-                <TextInput
-                    label={t('tokens.ttl')}
-                    onChange={(e) => setTtl(e.currentTarget.value)}
-                    placeholder={t('tokens.ttlPlaceholder')}
-                    value={ttl}
-                />
-                <TextInput
-                    label={t('tokens.policiesLabel')}
-                    onChange={(e) => setPolicies(e.currentTarget.value)}
-                    placeholder={t('tokens.policiesPlaceholder')}
-                    value={policies}
-                />
-                <Button
-                    fullWidth
-                    loading={mutation.isPending}
-                    onClick={() => mutation.mutate()}
-                >
-                    {t('tokens.createToken')}
-                </Button>
-            </Stack>
-        </Card>
+        <Stack gap="sm">
+            <Text c="dimmed" size="xs">
+                {t('tokens.createHint')}
+            </Text>
+            <TextInput
+                label={t('tokens.displayName')}
+                onChange={(e) => setDisplayName(e.currentTarget.value)}
+                placeholder={t('tokens.displayNamePlaceholder')}
+                value={displayName}
+            />
+            <TextInput
+                label={t('tokens.ttl')}
+                onChange={(e) => setTtl(e.currentTarget.value)}
+                placeholder={t('tokens.ttlPlaceholder')}
+                value={ttl}
+            />
+            <TextInput
+                label={t('tokens.policiesLabel')}
+                onChange={(e) => setPolicies(e.currentTarget.value)}
+                placeholder={t('tokens.policiesPlaceholder')}
+                value={policies}
+            />
+            <Button
+                fullWidth
+                leftSection={<TbPlus size={16} />}
+                loading={mutation.isPending}
+                onClick={() => mutation.mutate()}
+            >
+                {t('tokens.createToken')}
+            </Button>
+        </Stack>
     )
 }
 
 export function TokensPage() {
     const { t } = useTranslation()
-    const [creating, setCreating] = useState(false)
+    const [creating, { open: openCreating, close: closeCreating }] = useDisclosure(false)
     const [newToken, setNewToken] = useState<null | Token>(null)
     const queryClient = useQueryClient()
 
@@ -120,11 +122,7 @@ export function TokensPage() {
             <Stack gap="lg">
                 <PageHeader
                     action={
-                        <Button
-                            leftSection={<TbPlus size={16} />}
-                            onClick={() => setCreating((c) => !c)}
-                            variant="light"
-                        >
+                        <Button leftSection={<TbPlus size={16} />} onClick={openCreating}>
                             {t('common.new')}
                         </Button>
                     }
@@ -132,15 +130,25 @@ export function TokensPage() {
                     title={t('pages.tokens')}
                 />
 
-                {creating && (
+                <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                    <MetricCard
+                        IconComponent={TbKey}
+                        iconColor="cyan"
+                        isLoading={isLoading}
+                        title={t('common.total')}
+                        value={tokens?.length ?? 0}
+                    />
+                </SimpleGrid>
+
+                <EntityModal color="cyan" icon={TbKey} onClose={closeCreating} opened={creating} title={t('tokens.createToken')}>
                     <CreateTokenForm
                         onCreated={(token) => {
-                            setCreating(false)
+                            closeCreating()
                             setNewToken(token)
                             queryClient.invalidateQueries({ queryKey: ['tokens', 'list'] })
                         }}
                     />
-                )}
+                </EntityModal>
 
                 {newToken && (
                     <Alert
@@ -165,9 +173,7 @@ export function TokensPage() {
                         {!isLoading && (tokens?.length ?? 0) === 0 && (
                             <Table.Tr>
                                 <Table.Td colSpan={2}>
-                                    <Text c="dimmed" size="sm">
-                                        {t('tokens.noTokens')}
-                                    </Text>
+                                    <EmptyState icon={TbKey} label={t('tokens.noTokens')} />
                                 </Table.Td>
                             </Table.Tr>
                         )}
@@ -177,13 +183,15 @@ export function TokensPage() {
                                     <CopyableField maskable size="xs" value={id} />
                                 </Table.Td>
                                 <Table.Td>
-                                    <ActionIcon
-                                        color="red"
-                                        onClick={() => confirmRevoke(id)}
-                                        variant="subtle"
-                                    >
-                                        <TbTrash size={16} />
-                                    </ActionIcon>
+                                    <Group gap="xs" justify="flex-end">
+                                        <ActionIcon
+                                            color="red"
+                                            onClick={() => confirmRevoke(id)}
+                                            variant="subtle"
+                                        >
+                                            <TbTrash size={16} />
+                                        </ActionIcon>
+                                    </Group>
                                 </Table.Td>
                             </Table.Tr>
                         ))}

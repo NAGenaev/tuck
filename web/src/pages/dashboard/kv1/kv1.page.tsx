@@ -11,6 +11,7 @@ import {
     TextInput,
     Textarea
 } from '@mantine/core'
+import { useDisclosure } from '@mantine/hooks'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -20,6 +21,8 @@ import { TbFolder, TbKey, TbPlus, TbTrash } from 'react-icons/tb'
 
 import { deleteKVv1, getKVv1, listKVv1, putKVv1 } from '@shared/api/endpoints/kv'
 import { CopyableField } from '@shared/ui/copyable-field/copyable-field'
+import { EmptyState } from '@shared/ui/empty-state/empty-state'
+import { EntityModal } from '@shared/ui/entity-modal/entity-modal'
 import { Page } from '@shared/ui/page/page'
 import { PageHeader } from '@shared/ui/page-header/page-header'
 import { TableCard } from '@shared/ui/table-card/table-card'
@@ -129,7 +132,7 @@ export function KV1Page() {
     const [prefix, setPrefix] = useState('')
     const [manualPath, setManualPath] = useState('')
     const [selected, setSelected] = useState<null | string>(null)
-    const [writing, setWriting] = useState(false)
+    const [writing, { open: openWriting, close: closeWriting }] = useDisclosure(false)
     const { data: keys, isLoading } = useKVv1List(prefix)
     const queryClient = useQueryClient()
 
@@ -162,11 +165,7 @@ export function KV1Page() {
                             </Anchor>
                         ))}
                     </Breadcrumbs>
-                    <Button
-                        leftSection={<TbPlus size={16} />}
-                        onClick={() => setWriting((w) => !w)}
-                        variant="light"
-                    >
+                    <Button leftSection={<TbPlus size={16} />} onClick={openWriting}>
                         {t('kv.writeSecret')}
                     </Button>
                 </Group>
@@ -186,17 +185,15 @@ export function KV1Page() {
                     </Button>
                 </Group>
 
-                {writing && (
-                    <Card>
-                        <WriteSecretForm
-                            onDone={() => {
-                                setWriting(false)
-                                queryClient.invalidateQueries({ queryKey: ['kv1', 'list', prefix] })
-                            }}
-                            prefix={prefix}
-                        />
-                    </Card>
-                )}
+                <EntityModal color="blue" icon={TbKey} onClose={closeWriting} opened={writing} title={t('kv.writeSecret')}>
+                    <WriteSecretForm
+                        onDone={() => {
+                            closeWriting()
+                            queryClient.invalidateQueries({ queryKey: ['kv1', 'list', prefix] })
+                        }}
+                        prefix={prefix}
+                    />
+                </EntityModal>
 
                 {selected && <SecretDetail onClose={() => setSelected(null)} path={selected} />}
 
@@ -210,9 +207,7 @@ export function KV1Page() {
                         {!isLoading && (keys?.length ?? 0) === 0 && (
                             <Table.Tr>
                                 <Table.Td>
-                                    <Text c="dimmed" size="sm">
-                                        {t('kv.empty')}
-                                    </Text>
+                                    <EmptyState icon={TbKey} label={t('kv.empty')} />
                                 </Table.Td>
                             </Table.Tr>
                         )}

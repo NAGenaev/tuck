@@ -40,6 +40,7 @@
 | 07 | [07-requirements.md](07-requirements.md) | Функциональные и нефункциональные требования к системе |
 | 08 | [08-competitive-analysis.md](08-competitive-analysis.md) | Сравнение с конкурентами (Vault, OpenBao, Infisical и др.) |
 | 09 | [09-market-analysis.md](09-market-analysis.md) | Рыночный анализ, шансы на adoption, план востребованности |
+| 10 | [10-web-ui.md](10-web-ui.md) | Веб-дашборд (web/): стек, локализация, редизайн, что осталось доделать |
 | — | [MANUAL_TESTS.md](MANUAL_TESTS.md) | Ручные тест-кейсы по всем модулям — для локальной проверки |
 | — | [AUDIT.md](AUDIT.md) | Отчёт security-аудита |
 | — | [ROADMAP.md](ROADMAP.md) | История версий (M0–M35) и текущий статус |

@@ -1,7 +1,7 @@
-import { Alert, Button, Group, PasswordInput, SimpleGrid, Stack, Text } from '@mantine/core'
+import { Alert, Button, Card, Group, PasswordInput, RingProgress, SimpleGrid, Stack, Text } from '@mantine/core'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -11,16 +11,18 @@ import {
     TbDatabaseExport,
     TbFileText,
     TbGitCommit,
+    TbKey,
     TbLock,
     TbLockOpen,
     TbNetwork,
     TbRefresh,
     TbShieldLock,
-    TbTag,
-    TbUsers
+    TbTag
 } from 'react-icons/tb'
 
+import { listLeases } from '@shared/api/endpoints/leases'
 import { rotate, seal, snapshot, unseal } from '@shared/api/endpoints/sys'
+import { listTokens } from '@shared/api/endpoints/token'
 import { useHealth } from '@shared/api/hooks/use-health'
 import { useSealStatus } from '@shared/api/hooks/use-seal-status'
 import { formatUptime } from '@shared/utils/format'
@@ -41,6 +43,8 @@ export function StatusPage() {
     const { t } = useTranslation()
     const { data: sealStatus, isLoading: sealLoading } = useSealStatus()
     const { data: health, isLoading: healthLoading } = useHealth()
+    const { data: leases } = useQuery({ queryKey: ['leases', 'list'], queryFn: listLeases })
+    const { data: tokens } = useQuery({ queryKey: ['tokens', 'list'], queryFn: listTokens })
     const [shard, setShard] = useState('')
     const queryClient = useQueryClient()
 
@@ -113,17 +117,35 @@ export function StatusPage() {
                             title={t('status.sealType')}
                             value={sealStatus?.type ?? '—'}
                         />
-                        <MetricCard
-                            IconComponent={TbDatabaseExport}
-                            iconColor="orange"
-                            isLoading={sealLoading}
-                            title={t('status.shards')}
-                            value={
-                                sealStatus
-                                    ? `${sealStatus.received_shards ?? 0} / ${sealStatus.required_shards ?? 0}`
-                                    : '—'
-                            }
-                        />
+                        <Card withBorder>
+                            <Group justify="space-between" wrap="nowrap">
+                                <Stack gap={0}>
+                                    <Text c="dimmed" size="xs">
+                                        {t('status.shards')}
+                                    </Text>
+                                    <Text fw={600} size="lg">
+                                        {sealStatus
+                                            ? `${sealStatus.received_shards ?? 0} / ${sealStatus.required_shards ?? 0}`
+                                            : '—'}
+                                    </Text>
+                                </Stack>
+                                <RingProgress
+                                    label={<TbDatabaseExport size={18} style={{ margin: 'auto' }} />}
+                                    roundCaps
+                                    sections={[
+                                        {
+                                            color: 'orange',
+                                            value:
+                                                sealStatus && sealStatus.required_shards
+                                                    ? ((sealStatus.received_shards ?? 0) / sealStatus.required_shards) * 100
+                                                    : 0
+                                        }
+                                    ]}
+                                    size={64}
+                                    thickness={6}
+                                />
+                            </Group>
+                        </Card>
                     </SimpleGrid>
                 </Stack>
 
@@ -164,8 +186,18 @@ export function StatusPage() {
                 <Stack gap="sm">
                     <SectionTitle>{t('status.activity')}</SectionTitle>
                     <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
-                        <PlaceholderCard IconComponent={TbClockHour4} title={t('status.activeLeases')} />
-                        <PlaceholderCard IconComponent={TbUsers} title={t('status.activeTokens')} />
+                        <MetricCard
+                            IconComponent={TbClockHour4}
+                            iconColor="teal"
+                            title={t('status.activeLeases')}
+                            value={leases?.filter((l) => !l.revoked).length ?? 0}
+                        />
+                        <MetricCard
+                            IconComponent={TbKey}
+                            iconColor="cyan"
+                            title={t('status.activeTokens')}
+                            value={tokens?.length ?? 0}
+                        />
                         <PlaceholderCard IconComponent={TbFileText} title={t('status.recentAuditEvents')} />
                         <PlaceholderCard IconComponent={TbRefresh} title={t('status.replicationLag')} />
                     </SimpleGrid>

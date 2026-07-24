@@ -5,6 +5,7 @@ import {
     Card,
     Checkbox,
     Group,
+    SimpleGrid,
     Stack,
     Table,
     Text,
@@ -23,10 +24,12 @@ import {
     deletePolicy,
     getPolicy,
     listPolicies,
-    Policy,
     PolicyRule,
     putPolicy
 } from '@shared/api/endpoints/policy'
+import { EmptyState } from '@shared/ui/empty-state/empty-state'
+import { EntityModal } from '@shared/ui/entity-modal/entity-modal'
+import { MetricCard } from '@shared/ui/metrics/metric-card/metric-card'
 import { Page } from '@shared/ui/page/page'
 import { TableCard } from '@shared/ui/table-card/table-card'
 
@@ -136,62 +139,65 @@ function PolicyEditor({
         setRules((r) => [...r, { path: '*', capabilities: caps }])
 
     return (
-        <Card>
-            <Stack gap="md">
-                <TextInput
-                    disabled={!isNew}
-                    label={t('common.name')}
-                    onChange={(e) => setPolicyName(e.currentTarget.value)}
-                    value={policyName}
-                />
+        <Stack gap="md">
+            <Text c="dimmed" size="xs">
+                {t('policies.createHint')}
+            </Text>
+            <TextInput
+                autoFocus
+                disabled={!isNew}
+                label={t('common.name')}
+                onChange={(e) => setPolicyName(e.currentTarget.value)}
+                value={policyName}
+            />
 
-                <Group gap="xs">
-                    <Text c="dimmed" size="xs">
-                        {t('policies.quickFill')}
-                    </Text>
-                    {Object.entries(templates).map(([label, caps]) => (
-                        <Button
-                            key={label}
-                            onClick={() => addTemplate(caps)}
-                            size="xs"
-                            variant="subtle"
-                        >
-                            {label}
-                        </Button>
-                    ))}
-                </Group>
-
-                <Stack gap="xs">
-                    {rules.map((rule, i) => (
-                        <RuleRow
-                            key={i}
-                            onChange={(r) => setRules((rs) => rs.map((x, idx) => (idx === i ? r : x)))}
-                            onRemove={() => setRules((rs) => rs.filter((_, idx) => idx !== i))}
-                            rule={rule}
-                        />
-                    ))}
+            <Group gap="xs">
+                <Text c="dimmed" size="xs">
+                    {t('policies.quickFill')}
+                </Text>
+                {Object.entries(templates).map(([label, caps]) => (
                     <Button
-                        onClick={() => setRules((r) => [...r, { path: '', capabilities: [] }])}
+                        key={label}
+                        onClick={() => addTemplate(caps)}
+                        size="xs"
                         variant="subtle"
                     >
-                        {t('policies.addRule')}
+                        {label}
                     </Button>
-                </Stack>
+                ))}
+            </Group>
 
-                <Group justify="flex-end">
-                    <Anchor component="button" onClick={onCancel} size="sm">
-                        {t('common.cancel')}
-                    </Anchor>
-                    <Button
-                        disabled={!policyName}
-                        loading={saveMutation.isPending}
-                        onClick={() => saveMutation.mutate()}
-                    >
-                        {t('policies.savePolicy')}
-                    </Button>
-                </Group>
+            <Stack gap="xs">
+                {rules.map((rule, i) => (
+                    <RuleRow
+                        key={i}
+                        onChange={(r) => setRules((rs) => rs.map((x, idx) => (idx === i ? r : x)))}
+                        onRemove={() => setRules((rs) => rs.filter((_, idx) => idx !== i))}
+                        rule={rule}
+                    />
+                ))}
+                <Button
+                    onClick={() => setRules((r) => [...r, { path: '', capabilities: [] }])}
+                    variant="subtle"
+                >
+                    {t('policies.addRule')}
+                </Button>
             </Stack>
-        </Card>
+
+            <Group justify="flex-end">
+                <Anchor component="button" onClick={onCancel} size="sm">
+                    {t('common.cancel')}
+                </Anchor>
+                <Button
+                    disabled={!policyName}
+                    leftSection={<TbPlus size={16} />}
+                    loading={saveMutation.isPending}
+                    onClick={() => saveMutation.mutate()}
+                >
+                    {t('policies.savePolicy')}
+                </Button>
+            </Group>
+        </Stack>
     )
 }
 
@@ -234,11 +240,7 @@ export function PoliciesPage() {
             <Stack gap="lg">
                 <PageHeader
                     action={
-                        <Button
-                            leftSection={<TbPlus size={16} />}
-                            onClick={() => setCreatingNew(true)}
-                            variant="light"
-                        >
+                        <Button leftSection={<TbPlus size={16} />} onClick={() => setCreatingNew(true)}>
                             {t('common.new')}
                         </Button>
                     }
@@ -247,9 +249,28 @@ export function PoliciesPage() {
                     title={t('pages.policies')}
                 />
 
-                {(creatingNew || editing) && (
-                    <PolicyEditor name={creatingNew ? null : editing} onCancel={closeEditor} onSaved={closeEditor} />
-                )}
+                <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                    <MetricCard
+                        IconComponent={TbShieldCheck}
+                        iconColor="grape"
+                        isLoading={isLoading}
+                        title={t('common.total')}
+                        value={policies?.length ?? 0}
+                    />
+                </SimpleGrid>
+
+                <EntityModal
+                    color="grape"
+                    icon={TbShieldCheck}
+                    onClose={closeEditor}
+                    opened={creatingNew || !!editing}
+                    size="lg"
+                    title={creatingNew ? t('common.new') : (editing ?? '')}
+                >
+                    {(creatingNew || editing) && (
+                        <PolicyEditor name={creatingNew ? null : editing} onCancel={closeEditor} onSaved={closeEditor} />
+                    )}
+                </EntityModal>
 
                 <TableCard>
                     <Table.Thead>
@@ -262,9 +283,7 @@ export function PoliciesPage() {
                         {!isLoading && (policies?.length ?? 0) === 0 && (
                             <Table.Tr>
                                 <Table.Td colSpan={2}>
-                                    <Text c="dimmed" size="sm">
-                                        {t('policies.noPolicies')}
-                                    </Text>
+                                    <EmptyState icon={TbShieldCheck} label={t('policies.noPolicies')} />
                                 </Table.Td>
                             </Table.Tr>
                         )}

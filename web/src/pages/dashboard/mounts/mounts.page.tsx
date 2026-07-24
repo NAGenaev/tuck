@@ -1,8 +1,10 @@
-import { ActionIcon, Badge, Button, Card, Group, Stack, Table, Text, TextInput } from '@mantine/core'
+import { DonutChart } from '@mantine/charts'
+import { ActionIcon, Badge, Button, Card, Group, SimpleGrid, Stack, Table, Text, TextInput } from '@mantine/core'
+import { useDisclosure } from '@mantine/hooks'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TbPlugConnected, TbPlus, TbSettings, TbTrash } from 'react-icons/tb'
 
@@ -14,9 +16,13 @@ import {
     putMountConfig
 } from '@shared/api/endpoints/mounts'
 import { EmptyState } from '@shared/ui/empty-state/empty-state'
+import { EntityModal } from '@shared/ui/entity-modal/entity-modal'
+import { MetricCard } from '@shared/ui/metrics/metric-card/metric-card'
 import { Page } from '@shared/ui/page/page'
 import { PageHeader } from '@shared/ui/page-header/page-header'
 import { TableCard } from '@shared/ui/table-card/table-card'
+
+const CHART_COLORS = ['cyan.6', 'grape.6', 'teal.6', 'orange.6', 'indigo.6', 'pink.6']
 
 function CreateMountForm({ onDone }: { onDone: () => void }) {
     const { t } = useTranslation()
@@ -34,32 +40,40 @@ function CreateMountForm({ onDone }: { onDone: () => void }) {
     })
 
     return (
-        <Card>
-            <Stack gap="sm">
-                <Group grow>
-                    <TextInput
-                        label={t('mounts.path')}
-                        onChange={(e) => setPath(e.currentTarget.value)}
-                        placeholder={t('mounts.pathPlaceholder')}
-                        value={path}
-                    />
-                    <TextInput
-                        label={t('common.type')}
-                        onChange={(e) => setType(e.currentTarget.value)}
-                        placeholder={t('mounts.typePlaceholder')}
-                        value={type}
-                    />
-                </Group>
+        <Stack gap="sm">
+            <Text c="dimmed" size="xs">
+                {t('mounts.createHint')}
+            </Text>
+            <Group grow>
                 <TextInput
-                    label={t('mounts.description')}
-                    onChange={(e) => setDescription(e.currentTarget.value)}
-                    value={description}
+                    autoFocus
+                    label={t('mounts.path')}
+                    onChange={(e) => setPath(e.currentTarget.value)}
+                    placeholder={t('mounts.pathPlaceholder')}
+                    value={path}
                 />
-                <Button disabled={!path || !type} loading={mutation.isPending} onClick={() => mutation.mutate()}>
-                    {t('mounts.registerMount')}
-                </Button>
-            </Stack>
-        </Card>
+                <TextInput
+                    label={t('common.type')}
+                    onChange={(e) => setType(e.currentTarget.value)}
+                    placeholder={t('mounts.typePlaceholder')}
+                    value={type}
+                />
+            </Group>
+            <TextInput
+                label={t('mounts.description')}
+                onChange={(e) => setDescription(e.currentTarget.value)}
+                value={description}
+            />
+            <Button
+                disabled={!path || !type}
+                fullWidth
+                leftSection={<TbPlus size={16} />}
+                loading={mutation.isPending}
+                onClick={() => mutation.mutate()}
+            >
+                {t('mounts.registerMount')}
+            </Button>
+        </Stack>
     )
 }
 
@@ -87,33 +101,28 @@ function TuneForm({ path, onClose }: { onClose: () => void; path: string }) {
     })
 
     return (
-        <Card>
-            <Stack gap="sm">
-                <Text fw={600} size="sm">
-                    {t('mounts.tuneTitle', { path })}
-                </Text>
-                <Text c="dimmed" size="xs">
-                    {t('mounts.currentTuning', { default: formatNs(data?.default_lease_ttl), max: formatNs(data?.max_lease_ttl) })}
-                </Text>
-                <Group grow>
-                    <TextInput
-                        label={t('mounts.defaultLeaseTtl')}
-                        onChange={(e) => setDefaultTtl(e.currentTarget.value)}
-                        placeholder={t('authMethods.ttlPlaceholder1h')}
-                        value={defaultTtl}
-                    />
-                    <TextInput
-                        label={t('mounts.maxLeaseTtl')}
-                        onChange={(e) => setMaxTtl(e.currentTarget.value)}
-                        placeholder={t('tokens.ttlPlaceholder')}
-                        value={maxTtl}
-                    />
-                </Group>
-                <Button loading={mutation.isPending} onClick={() => mutation.mutate()} variant="light">
-                    {t('mounts.saveTuning')}
-                </Button>
-            </Stack>
-        </Card>
+        <Stack gap="sm">
+            <Text c="dimmed" size="xs">
+                {t('mounts.currentTuning', { default: formatNs(data?.default_lease_ttl), max: formatNs(data?.max_lease_ttl) })}
+            </Text>
+            <Group grow>
+                <TextInput
+                    label={t('mounts.defaultLeaseTtl')}
+                    onChange={(e) => setDefaultTtl(e.currentTarget.value)}
+                    placeholder={t('authMethods.ttlPlaceholder1h')}
+                    value={defaultTtl}
+                />
+                <TextInput
+                    label={t('mounts.maxLeaseTtl')}
+                    onChange={(e) => setMaxTtl(e.currentTarget.value)}
+                    placeholder={t('tokens.ttlPlaceholder')}
+                    value={maxTtl}
+                />
+            </Group>
+            <Button fullWidth loading={mutation.isPending} onClick={() => mutation.mutate()}>
+                {t('mounts.saveTuning')}
+            </Button>
+        </Stack>
     )
 }
 
@@ -124,7 +133,7 @@ function formatNs(ns?: number): string {
 
 export function MountsPage() {
     const { t } = useTranslation()
-    const [creating, setCreating] = useState(false)
+    const [creating, { open: openCreating, close: closeCreating }] = useDisclosure(false)
     const [tuning, setTuning] = useState<null | string>(null)
     const queryClient = useQueryClient()
 
@@ -135,16 +144,24 @@ export function MountsPage() {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['mounts', 'list'] })
     })
 
+    const byType = useMemo(() => {
+        const counts = new Map<string, number>()
+        for (const mount of mounts ?? []) {
+            counts.set(mount.type, (counts.get(mount.type) ?? 0) + 1)
+        }
+        return Array.from(counts.entries()).map(([name, value], i) => ({
+            color: CHART_COLORS[i % CHART_COLORS.length],
+            name,
+            value
+        }))
+    }, [mounts])
+
     return (
         <Page title="Mounts">
             <Stack gap="lg">
                 <PageHeader
                     action={
-                        <Button
-                            leftSection={<TbPlus size={16} />}
-                            onClick={() => setCreating((c) => !c)}
-                            variant="light"
-                        >
+                        <Button leftSection={<TbPlus size={16} />} onClick={openCreating}>
                             {t('common.new')}
                         </Button>
                     }
@@ -153,16 +170,51 @@ export function MountsPage() {
                     title={t('pages.mounts')}
                 />
 
-                {creating && (
+                <SimpleGrid cols={{ base: 1, md: 2 }}>
+                    <MetricCard
+                        IconComponent={TbPlugConnected}
+                        iconColor="teal"
+                        isLoading={isLoading}
+                        title={t('common.total')}
+                        value={mounts?.length ?? 0}
+                    />
+                    {byType.length > 0 && (
+                        <Card withBorder>
+                            <Group justify="space-between" wrap="nowrap">
+                                <DonutChart data={byType} size={110} thickness={16} withTooltip />
+                                <Stack gap={4}>
+                                    {byType.map((entry) => (
+                                        <Group gap={6} key={entry.name} wrap="nowrap">
+                                            <Badge color={entry.color} size="xs" variant="filled" w={8} />
+                                            <Text size="xs">
+                                                {entry.name} · {entry.value}
+                                            </Text>
+                                        </Group>
+                                    ))}
+                                </Stack>
+                            </Group>
+                        </Card>
+                    )}
+                </SimpleGrid>
+
+                <EntityModal color="teal" icon={TbPlugConnected} onClose={closeCreating} opened={creating} title={t('mounts.registerMount')}>
                     <CreateMountForm
                         onDone={() => {
-                            setCreating(false)
+                            closeCreating()
                             queryClient.invalidateQueries({ queryKey: ['mounts', 'list'] })
                         }}
                     />
-                )}
+                </EntityModal>
 
-                {tuning && <TuneForm onClose={() => setTuning(null)} path={tuning} />}
+                <EntityModal
+                    color="teal"
+                    icon={TbSettings}
+                    onClose={() => setTuning(null)}
+                    opened={!!tuning}
+                    title={tuning ? t('mounts.tuneTitle', { path: tuning }) : ''}
+                >
+                    {tuning && <TuneForm onClose={() => setTuning(null)} path={tuning} />}
+                </EntityModal>
 
                 <TableCard>
                     <Table.Thead>

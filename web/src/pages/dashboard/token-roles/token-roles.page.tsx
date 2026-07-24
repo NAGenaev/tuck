@@ -2,16 +2,15 @@ import {
     ActionIcon,
     Alert,
     Button,
-    Card,
     Checkbox,
     Group,
     NumberInput,
+    SimpleGrid,
     Stack,
     Table,
-    Text,
-    TextInput,
-    Title
+    TextInput
 } from '@mantine/core'
+import { useDisclosure } from '@mantine/hooks'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -27,6 +26,9 @@ import {
 } from '@shared/api/endpoints/token-roles'
 import { Token } from '@shared/api/endpoints/token'
 import { CopyableField } from '@shared/ui/copyable-field/copyable-field'
+import { EmptyState } from '@shared/ui/empty-state/empty-state'
+import { EntityModal } from '@shared/ui/entity-modal/entity-modal'
+import { MetricCard } from '@shared/ui/metrics/metric-card/metric-card'
 import { Page } from '@shared/ui/page/page'
 import { PageHeader } from '@shared/ui/page-header/page-header'
 import { TableCard } from '@shared/ui/table-card/table-card'
@@ -64,55 +66,54 @@ function RoleForm({ onDone }: { onDone: () => void }) {
     })
 
     return (
-        <Card>
-            <Stack gap="sm">
-                <TextInput label={t('authMethods.roleName')} onChange={(e) => setName(e.currentTarget.value)} value={name} />
+        <Stack gap="sm">
+            <TextInput autoFocus label={t('authMethods.roleName')} onChange={(e) => setName(e.currentTarget.value)} value={name} />
+            <TextInput
+                label={t('tokens.policiesLabel')}
+                onChange={(e) => setPolicies(e.currentTarget.value)}
+                value={policies}
+            />
+            <Group grow>
                 <TextInput
-                    label={t('tokens.policiesLabel')}
-                    onChange={(e) => setPolicies(e.currentTarget.value)}
-                    value={policies}
+                    label={t('tokens.ttl')}
+                    onChange={(e) => setTtl(e.currentTarget.value)}
+                    placeholder={t('authMethods.ttlPlaceholder1h')}
+                    value={ttl}
                 />
-                <Group grow>
-                    <TextInput
-                        label={t('tokens.ttl')}
-                        onChange={(e) => setTtl(e.currentTarget.value)}
-                        placeholder={t('authMethods.ttlPlaceholder1h')}
-                        value={ttl}
-                    />
-                    <TextInput
-                        label={t('cryptoEngines.pki.maxTtl')}
-                        onChange={(e) => setMaxTtl(e.currentTarget.value)}
-                        placeholder={t('tokens.ttlPlaceholder')}
-                        value={maxTtl}
-                    />
-                    <NumberInput
-                        label={t('tokenRoles.maxUses')}
-                        onChange={setMaxUses}
-                        placeholder={t('tokenRoles.maxUsesPlaceholder')}
-                        value={maxUses}
-                    />
-                </Group>
-                <Checkbox
-                    checked={renewable}
-                    label={t('tokenRoles.renewable')}
-                    onChange={(e) => setRenewable(e.currentTarget.checked)}
+                <TextInput
+                    label={t('cryptoEngines.pki.maxTtl')}
+                    onChange={(e) => setMaxTtl(e.currentTarget.value)}
+                    placeholder={t('tokens.ttlPlaceholder')}
+                    value={maxTtl}
                 />
-                <Button
-                    disabled={!name}
-                    fullWidth
-                    loading={mutation.isPending}
-                    onClick={() => mutation.mutate()}
-                >
-                    {t('authMethods.saveRole')}
-                </Button>
-            </Stack>
-        </Card>
+                <NumberInput
+                    label={t('tokenRoles.maxUses')}
+                    onChange={setMaxUses}
+                    placeholder={t('tokenRoles.maxUsesPlaceholder')}
+                    value={maxUses}
+                />
+            </Group>
+            <Checkbox
+                checked={renewable}
+                label={t('tokenRoles.renewable')}
+                onChange={(e) => setRenewable(e.currentTarget.checked)}
+            />
+            <Button
+                disabled={!name}
+                fullWidth
+                leftSection={<TbPlus size={16} />}
+                loading={mutation.isPending}
+                onClick={() => mutation.mutate()}
+            >
+                {t('authMethods.saveRole')}
+            </Button>
+        </Stack>
     )
 }
 
 export function TokenRolesPage() {
     const { t } = useTranslation()
-    const [creating, setCreating] = useState(false)
+    const [creating, { open: openCreating, close: closeCreating }] = useDisclosure(false)
     const [newToken, setNewToken] = useState<Token | null>(null)
     const queryClient = useQueryClient()
 
@@ -137,11 +138,7 @@ export function TokenRolesPage() {
             <Stack gap="lg">
                 <PageHeader
                     action={
-                        <Button
-                            leftSection={<TbPlus size={16} />}
-                            onClick={() => setCreating((c) => !c)}
-                            variant="light"
-                        >
+                        <Button leftSection={<TbPlus size={16} />} onClick={openCreating}>
                             {t('common.new')}
                         </Button>
                     }
@@ -150,14 +147,24 @@ export function TokenRolesPage() {
                     title={t('pages.tokenRoles')}
                 />
 
-                {creating && (
+                <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                    <MetricCard
+                        IconComponent={TbUserCog}
+                        iconColor="indigo"
+                        isLoading={isLoading}
+                        title={t('common.total')}
+                        value={roles?.length ?? 0}
+                    />
+                </SimpleGrid>
+
+                <EntityModal color="indigo" icon={TbUserCog} onClose={closeCreating} opened={creating} title={t('authMethods.newRole')}>
                     <RoleForm
                         onDone={() => {
-                            setCreating(false)
+                            closeCreating()
                             queryClient.invalidateQueries({ queryKey: ['token-roles', 'list'] })
                         }}
                     />
-                )}
+                </EntityModal>
 
                 {newToken && (
                     <Alert
@@ -182,9 +189,7 @@ export function TokenRolesPage() {
                         {!isLoading && (roles?.length ?? 0) === 0 && (
                             <Table.Tr>
                                 <Table.Td colSpan={2}>
-                                    <Text c="dimmed" size="sm">
-                                        {t('authMethods.noRoles')}
-                                    </Text>
+                                    <EmptyState icon={TbUserCog} label={t('authMethods.noRoles')} />
                                 </Table.Td>
                             </Table.Tr>
                         )}

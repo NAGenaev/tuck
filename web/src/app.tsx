@@ -8,6 +8,7 @@ import '@fontsource/montserrat/700.css'
 import '@fontsource/montserrat/800.css'
 import '@fontsource/fira-mono/400.css'
 import '@mantine/core/styles.css'
+import '@mantine/charts/styles.css'
 import '@mantine/notifications/styles.css'
 import './global.css'
 

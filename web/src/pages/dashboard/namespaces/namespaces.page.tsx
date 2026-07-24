@@ -1,4 +1,5 @@
-import { ActionIcon, Button, Group, Stack, Table, Text, TextInput } from '@mantine/core'
+import { ActionIcon, Button, SimpleGrid, Stack, Table, Text, TextInput } from '@mantine/core'
+import { useDisclosure } from '@mantine/hooks'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -7,6 +8,9 @@ import { useTranslation } from 'react-i18next'
 import { TbBoxMultiple, TbPlus, TbTrash } from 'react-icons/tb'
 
 import { createNamespace, deleteNamespace, listNamespaces } from '@shared/api/endpoints/namespace'
+import { EmptyState } from '@shared/ui/empty-state/empty-state'
+import { EntityModal } from '@shared/ui/entity-modal/entity-modal'
+import { MetricCard } from '@shared/ui/metrics/metric-card/metric-card'
 import { Page } from '@shared/ui/page/page'
 import { PageHeader } from '@shared/ui/page-header/page-header'
 import { TableCard } from '@shared/ui/table-card/table-card'
@@ -14,6 +18,7 @@ import { TableCard } from '@shared/ui/table-card/table-card'
 export function NamespacesPage() {
     const { t } = useTranslation()
     const [name, setName] = useState('')
+    const [creating, { open: openCreating, close: closeCreating }] = useDisclosure(false)
     const queryClient = useQueryClient()
 
     const { data: namespaces, isLoading } = useQuery({
@@ -25,6 +30,7 @@ export function NamespacesPage() {
         mutationFn: () => createNamespace(name),
         onSuccess: () => {
             setName('')
+            closeCreating()
             queryClient.invalidateQueries({ queryKey: ['namespaces', 'list'] })
             notifications.show({ color: 'teal', message: t('namespaces.createdMessage'), title: t('common.created') })
         },
@@ -42,24 +48,50 @@ export function NamespacesPage() {
     return (
         <Page title="Namespaces">
             <Stack gap="lg">
-                <PageHeader color="grape" icon={TbBoxMultiple} title={t('pages.namespaces')} />
+                <PageHeader
+                    action={
+                        <Button leftSection={<TbPlus size={16} />} onClick={openCreating}>
+                            {t('common.new')}
+                        </Button>
+                    }
+                    color="grape"
+                    icon={TbBoxMultiple}
+                    title={t('pages.namespaces')}
+                />
 
-                <Group>
-                    <TextInput
-                        onChange={(e) => setName(e.currentTarget.value)}
-                        placeholder={t('namespaces.namePlaceholder')}
-                        style={{ flex: 1 }}
-                        value={name}
+                <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                    <MetricCard
+                        IconComponent={TbBoxMultiple}
+                        iconColor="grape"
+                        isLoading={isLoading}
+                        title={t('common.total')}
+                        value={namespaces?.length ?? 0}
                     />
-                    <Button
-                        disabled={!name}
-                        leftSection={<TbPlus size={16} />}
-                        loading={createMutation.isPending}
-                        onClick={() => createMutation.mutate()}
-                    >
-                        {t('common.create')}
-                    </Button>
-                </Group>
+                </SimpleGrid>
+
+                <EntityModal color="grape" icon={TbBoxMultiple} onClose={closeCreating} opened={creating} title={t('common.new')}>
+                    <Stack gap="sm">
+                        <Text c="dimmed" size="xs">
+                            {t('namespaces.createHint')}
+                        </Text>
+                        <TextInput
+                            autoFocus
+                            label={t('common.name')}
+                            onChange={(e) => setName(e.currentTarget.value)}
+                            placeholder={t('namespaces.namePlaceholder')}
+                            value={name}
+                        />
+                        <Button
+                            disabled={!name}
+                            fullWidth
+                            leftSection={<TbPlus size={16} />}
+                            loading={createMutation.isPending}
+                            onClick={() => createMutation.mutate()}
+                        >
+                            {t('common.create')}
+                        </Button>
+                    </Stack>
+                </EntityModal>
 
                 <TableCard>
                     <Table.Thead>
@@ -72,9 +104,7 @@ export function NamespacesPage() {
                         {!isLoading && (namespaces?.length ?? 0) === 0 && (
                             <Table.Tr>
                                 <Table.Td colSpan={2}>
-                                    <Text c="dimmed" size="sm">
-                                        {t('namespaces.noNamespaces')}
-                                    </Text>
+                                    <EmptyState icon={TbBoxMultiple} label={t('namespaces.noNamespaces')} />
                                 </Table.Td>
                             </Table.Tr>
                         )}

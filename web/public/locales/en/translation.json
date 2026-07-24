@@ -79,7 +79,9 @@
     "generateFailed": "Generate failed",
     "copyNowWarning": "Copy this now — it won't be shown again",
     "areYouSure": "Are you sure?",
-    "comingSoon": "Coming soon"
+    "comingSoon": "Coming soon",
+    "total": "Total",
+    "createNew": "Create new"
   },
   "status": {
     "seal": "Seal",
@@ -154,7 +156,8 @@
     "revokeConfirm": "The token and its children will be immediately revoked.",
     "copyNowTitle": "Copy this token now — it won't be shown again",
     "token": "Token",
-    "noTokens": "No tokens"
+    "noTokens": "No tokens",
+    "createHint": "Tokens authenticate API requests. Attach policies to control what this token can access."
   },
   "policies": {
     "quickFill": "Quick-fill:",
@@ -168,7 +171,8 @@
     "deleteConfirm": "This deletes policy \"{{name}}\". Tokens using it will lose those grants.",
     "deletedMessage": "Policy deleted",
     "noPolicies": "No policies",
-    "pathPlaceholder": "secret/data/*"
+    "pathPlaceholder": "secret/data/*",
+    "createHint": "Policies grant capabilities (read/write/delete/list) on specific paths. Attach them to tokens or auth roles."
   },
   "authMethods": {
     "roleName": "Role name",
@@ -392,7 +396,8 @@
     "deleteTitle": "Delete namespace?",
     "deleteConfirm": "This deletes namespace \"{{name}}\" and everything in it.",
     "createdMessage": "Namespace created",
-    "deletedMessage": "Namespace deleted"
+    "deletedMessage": "Namespace deleted",
+    "createHint": "Namespaces isolate secrets, policies, and auth methods into separate tenants."
   },
   "tokenRoles": {
     "maxUses": "Max uses",
@@ -413,7 +418,8 @@
     "details": "Details",
     "errors": "Errors",
     "deleteSinkTitle": "Delete sink?",
-    "deleteSinkConfirm": "This removes audit sink \"{{name}}\"."
+    "deleteSinkConfirm": "This removes audit sink \"{{name}}\".",
+    "createHint": "Audit sinks receive a copy of every request Tuck processes — useful for compliance and debugging."
   },
   "cluster": {
     "joinNode": "Join node",
@@ -452,7 +458,8 @@
     "accessor": "Accessor",
     "unmountTitle": "Unmount?",
     "unmountConfirm": "This unmounts \"{{path}}\" and its data.",
-    "unmount": "Unmount"
+    "unmount": "Unmount",
+    "createHint": "Mount a new secrets engine at a custom path. Existing engines are unaffected."
   },
   "plugins": {
     "command": "Command",
@@ -466,7 +473,8 @@
     "allTypes": "All types",
     "version": "Version",
     "deletePluginTitle": "Delete plugin?",
-    "deletePluginConfirm": "This deregisters plugin \"{{name}}\"."
+    "deletePluginConfirm": "This deregisters plugin \"{{name}}\".",
+    "createHint": "Register an external plugin binary. Tuck verifies its SHA256 checksum before loading it."
   },
   "replication": {
     "mode": "Mode",

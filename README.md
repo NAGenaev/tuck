@@ -1,7 +1,7 @@
 # Tuck — Система управления секретами
 
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
-[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Release](https://img.shields.io/badge/release-v1.35.0-green)](https://github.com/NAGenaev/tuck/releases)
 
 Tuck — специализированная система управления секретами (криптографическими ключами, учётными данными и конфиденциальными параметрами конфигурации), разработанная для функционирования в среде Kubernetes. Система реализована в виде единого исполняемого модуля без внешних зависимостей и обеспечивает централизованное хранение, разграничение доступа и автоматизированную ротацию секретов.
@@ -88,7 +88,7 @@ Tuck — специализированная система управлени�
 | Шифрование | AES-256-GCM (конвертное) |
 | Транспортный протокол | HTTPS (TLS 1.2+, ECDSA P-256 или пользовательский сертификат) |
 | HTTP API | 194 эндпоинта, спецификация OpenAPI 3.0 |
-| Лицензия | MIT |
+| Лицензия | Apache-2.0 (за исключением `web/` — AGPL-3.0, см. ниже) |
 
 ---
 
@@ -454,4 +454,6 @@ go build ./cmd/tuck-injector
 
 ## 11. Лицензия
 
-MIT. Подробности — в файле [LICENSE](LICENSE).
+Apache-2.0. Подробности — в файле [LICENSE](LICENSE).
+
+Исключение: директория [`web/`](web/) (веб-интерфейс, форк UI-каркаса из [Remnawave](https://github.com/remnawave/frontend)) распространяется отдельно под **AGPL-3.0-only** — см. [`web/LICENSE-AGPL-3.0`](web/LICENSE-AGPL-3.0) и [`web/NOTICE`](web/NOTICE).

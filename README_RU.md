@@ -355,3 +355,5 @@ go build ./cmd/tuck-agent
 ## Лицензия
 
 Apache-2.0. Смотрите [LICENSE](LICENSE).
+
+Исключение: директория [`web/`](web/) (веб-интерфейс, форк UI-каркаса из [Remnawave](https://github.com/remnawave/frontend)) распространяется отдельно под **AGPL-3.0-only** — см. [`web/LICENSE-AGPL-3.0`](web/LICENSE-AGPL-3.0) и [`web/NOTICE`](web/NOTICE).

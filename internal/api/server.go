@@ -85,7 +85,8 @@ func (s *Server) StartLimiterCleanup(ctx context.Context) {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
-	// Embedded web dashboard — served at /ui/, root redirects there
+	// Embedded web dashboard — a React SPA forked from Remnawave's UI shell
+	// (AGPL-3.0-only — see web/NOTICE), served at /ui/, root redirects there.
 	mux.Handle("/ui/", http.StripPrefix("/ui", ui.Handler()))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {

@@ -17,3 +17,10 @@ testdata/*
 
 # IDE / agent local config
 .claude/
+
+# Web UI — built by `npm run build` in web/, not committed
+web/node_modules/
+web/.env
+web/*.tsbuildinfo
+internal/ui/assets/*
+!internal/ui/assets/.gitkeep

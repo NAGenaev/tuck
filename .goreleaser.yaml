@@ -4,6 +4,7 @@ project_name: tuck
 
 before:
   hooks:
+    - sh -c "cd web && npm ci && npm run build"
     - go mod tidy
     - go generate ./...
 

@@ -1,0 +1,74 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Forked from github.com/remnawave/frontend (commit 9d671520067f73b2beb96c282f2ce2ff7b7a9a00). */
+.navBar {
+    height: 100%;
+    align-items: stretch;
+    gap: 4px;
+}
+
+.navItem {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 100%;
+    padding-inline: 12px;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1));
+    background-color: transparent;
+    border-radius: 0;
+    transition:
+        color 0.15s ease,
+        background-color 0.15s ease;
+}
+
+.navItem:hover,
+.navItem:focus-visible,
+.navItem[data-expanded] {
+    color: light-dark(var(--mantine-color-black), var(--mantine-color-white));
+    background-color: light-dark(var(--mantine-color-gray-0), rgb(255, 255, 255, 0.03));
+}
+
+.navItemActive:hover,
+.navItemActive:focus-visible,
+.navItemActive[data-expanded] {
+    color: var(--mantine-color-cyan-4);
+}
+
+.navItemActive {
+    color: var(--mantine-color-cyan-4);
+    text-shadow:
+        0.25px 0 currentColor,
+        -0.25px 0 currentColor;
+}
+
+.navItemActive::after {
+    content: '';
+    position: absolute;
+    inset-inline: 8px;
+    bottom: 0;
+    height: 2px;
+    border-radius: 2px 2px 0 0;
+    background: var(--mantine-color-cyan-4);
+}
+
+.icon {
+    display: inline-flex;
+    align-items: center;
+    color: currentColor;
+}
+
+.icon svg {
+    display: block;
+    width: 18px;
+    height: 18px;
+}
+
+.caret {
+    opacity: 0.45;
+}
+
+.menuItemActive .icon {
+    color: var(--mantine-color-cyan-4);
+}

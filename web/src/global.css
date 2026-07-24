@@ -1,0 +1,44 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Forked from github.com/remnawave/frontend (commit 9d671520067f73b2beb96c282f2ce2ff7b7a9a00), trimmed for Tuck. */
+html,
+body {
+    min-height: 100vh;
+}
+
+.root {
+    height: 100vh;
+
+    @supports (padding: env(safe-area-inset-top)) {
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+            env(safe-area-inset-left);
+    }
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(22, 27, 35, 0.6);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #0d9488 0%, #06b6d4 100%);
+    border-radius: 4px;
+    border: 1px solid rgba(22, 27, 35, 0.8);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #14b8a6 0%, #22d3ee 100%);
+}
+
+::-webkit-scrollbar-corner {
+    background: rgba(22, 27, 35, 0.6);
+}
+
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #0d9488 rgba(22, 27, 35, 0.6);
+}

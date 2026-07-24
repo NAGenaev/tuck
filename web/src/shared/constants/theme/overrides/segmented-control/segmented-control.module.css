@@ -1,0 +1,26 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Forked from github.com/remnawave/frontend (commit 9d671520067f73b2beb96c282f2ce2ff7b7a9a00). */
+.root {
+    background-color: var(--mantine-color-default);
+}
+
+.indicator {
+    background: color-mix(in srgb, var(--mantine-primary-color-6) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--mantine-primary-color-6) 30%, transparent);
+    box-shadow: none;
+}
+
+.label {
+    color: var(--mantine-color-dimmed);
+    font-weight: 500;
+    transition: color 150ms ease;
+}
+
+.label:hover {
+    color: var(--mantine-color-text);
+}
+
+.label[data-active],
+.label[data-active]:hover {
+    color: var(--mantine-primary-color-4);
+}

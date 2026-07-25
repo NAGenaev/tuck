@@ -4,6 +4,7 @@ import { listRequest } from '../list'
 export interface DBConfig {
     plugin_name: string
     connection_url: string
+    database?: string
     max_open_conns?: number
 }
 

@@ -2,10 +2,12 @@ package core
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
 
+	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
 	"github.com/NAGenaev/tuck/internal/physical"
 	"github.com/NAGenaev/tuck/internal/policy"
 	"github.com/NAGenaev/tuck/internal/seal"
@@ -392,6 +394,23 @@ func TestEnforceAccess_RevokedTokenDenied(t *testing.T) {
 	}
 }
 
+// TestEnforceAccess_MissingPolicyIsDenied guards against a token whose policy
+// was deleted after issuance (or was misspelled at creation) causing a 500
+// via a wrapped "resolve policies" error instead of a clean permission
+// denial — the API layer only maps core.ErrUnauthorized to 403, so any other
+// error type here surfaces as a 500 to the caller.
+func TestEnforceAccess_MissingPolicyIsDenied(t *testing.T) {
+	c, _ := newTestCore(t)
+	ctx := context.Background()
+
+	tok, _ := c.CreateToken(ctx, "ghost-policy", []string{"does-not-exist"}, time.Hour)
+
+	err := c.EnforceAccess(ctx, tok.ID, "secret/anything", policy.CapRead)
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("EnforceAccess with missing policy = %v, want ErrUnauthorized", err)
+	}
+}
+
 // --- Policy CRUD ---
 
 func TestPolicyCRUD(t *testing.T) {
@@ -561,5 +580,83 @@ func TestSealed_FalseAfterStart(t *testing.T) {
 	c, _ := newTestCore(t)
 	if c.Sealed() {
 		t.Error("Sealed() = true after Start, want false")
+	}
+}
+
+// TestRotateKey_DevSeal guards against the bug where RotateKey always failed
+// for the Dev seal: RotateKey calls seal.Init() again to mint a new root key,
+// but Dev.Init() used to refuse whenever its key file already existed —
+// which is always true past first boot. Also verifies existing secrets
+// remain readable after the barrier DEK is re-wrapped under the new key.
+func TestRotateKey_DevSeal(t *testing.T) {
+	c, _ := newTestCore(t)
+	ctx := context.Background()
+
+	if err := c.PutSecret(ctx, "", "rotate-test", []byte("before-rotate")); err != nil {
+		t.Fatalf("PutSecret: %v", err)
+	}
+
+	if _, err := c.RotateKey(ctx); err != nil {
+		t.Fatalf("RotateKey: %v", err)
+	}
+
+	val, ok, err := c.GetSecret(ctx, "", "rotate-test")
+	if err != nil {
+		t.Fatalf("GetSecret after rotate: %v", err)
+	}
+	if !ok || string(val) != "before-rotate" {
+		t.Fatalf("secret after rotate = %q, ok=%v, want %q, true", val, ok, "before-rotate")
+	}
+
+	// Rotating a second time must also succeed (not just the first re-init).
+	if _, err := c.RotateKey(ctx); err != nil {
+		t.Fatalf("second RotateKey: %v", err)
+	}
+}
+
+// --- Kubernetes auth ---
+
+type fakeReviewer struct{ username string }
+
+func (f *fakeReviewer) Review(string) (*k8sauth.ReviewResult, error) {
+	return &k8sauth.ReviewResult{Authenticated: true, Username: f.username}, nil
+}
+
+// TestLoginK8s_ZeroTTLFallsBackToOneHour guards against a Kubernetes auth
+// role with no TTL configured minting an eternal token — token.Generate
+// leaves ExpiresAt at its zero value when ttl <= 0, which IsExpired()
+// documents as "never expires". LoginK8s must apply the same 1h fallback
+// AppRole/JWT/GitHub/LDAP already do instead of passing role.TTL straight
+// through.
+func TestLoginK8s_ZeroTTLFallsBackToOneHour(t *testing.T) {
+	c := NewWithK8s(physical.NewInMem(), seal.NewDev(filepath.Join(t.TempDir(), "rootkey")),
+		&fakeReviewer{username: "system:serviceaccount:default:my-sa"})
+	ctx := context.Background()
+	if _, err := c.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	if err := c.CreateK8sRole(ctx, &k8sauth.K8sRole{
+		Namespace:      "default",
+		ServiceAccount: "my-sa",
+		Policies:       []string{"default"},
+		// TTL left unset (zero value).
+	}); err != nil {
+		t.Fatalf("CreateK8sRole: %v", err)
+	}
+
+	tok, err := c.LoginK8s(ctx, "irrelevant-sa-jwt")
+	if err != nil {
+		t.Fatalf("LoginK8s: %v", err)
+	}
+	if tok.IsExpired() {
+		t.Fatal("token reports expired immediately — TTL fallback not applied correctly")
+	}
+	if tok.ExpiresAt.IsZero() {
+		t.Fatal("token.ExpiresAt is zero — role TTL<=0 minted an eternal token instead of falling back to 1h")
+	}
+	wantAround := time.Now().Add(time.Hour)
+	if diff := tok.ExpiresAt.Sub(wantAround); diff > time.Minute || diff < -time.Minute {
+		t.Fatalf("token.ExpiresAt = %v, want ~1h from now (%v)", tok.ExpiresAt, wantAround)
 	}
 }

@@ -94,6 +94,13 @@ server:
     initialDelaySeconds: 10
     periodSeconds: 15
 
+  rbac:
+    # -- Grant the server's ServiceAccount cluster-wide permission to create
+    # TokenReviews. Required for the Kubernetes auth method (server verifies
+    # pod ServiceAccount tokens via the TokenReview API). Disable only if
+    # Kubernetes auth is not used.
+    create: true
+
   readinessProbe:
     httpGet:
       path: /v1/sys/ready

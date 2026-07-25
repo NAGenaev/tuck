@@ -15,9 +15,10 @@ import (
 // --- fake IAM client ---
 
 type fakeIAMClient struct {
-	mu    sync.Mutex
-	users map[string]bool
-	keys  map[string]string // keyID -> secret
+	mu             sync.Mutex
+	users          map[string]bool
+	keys           map[string]string // keyID -> secret
+	failDeleteUser bool
 }
 
 func newFakeIAM() *fakeIAMClient {
@@ -59,6 +60,9 @@ func (f *fakeIAMClient) DeleteAccessKey(_ context.Context, _, keyID string) erro
 func (f *fakeIAMClient) DeleteUser(_ context.Context, username string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.failDeleteUser {
+		return errors.New("simulated AWS API failure")
+	}
 	delete(f.users, username)
 	return nil
 }
@@ -288,6 +292,48 @@ func TestRevokeIAMUserLease(t *testing.T) {
 	// Idempotent second revoke.
 	if err := e.RevokeLease(ctx, res.LeaseID); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestRevokeLeaseFailurePreservesCredential guards against silently marking
+// a lease revoked when the underlying IAM user deletion actually fails —
+// previously the error was swallowed and the lease was marked Revoked=true
+// regardless, leaking the live credential with no way to detect or retry.
+func TestRevokeLeaseFailurePreservesCredential(t *testing.T) {
+	e, iamFake, _ := makeEngine(t)
+	ctx := context.Background()
+
+	_ = e.PutRole(ctx, &dynaws.Role{
+		Name:           "svc",
+		CredentialType: dynaws.CredTypeIAMUser,
+	})
+	res, err := e.GenerateCreds(ctx, "svc")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	iamFake.failDeleteUser = true
+	if err := e.RevokeLease(ctx, res.LeaseID); err == nil {
+		t.Fatal("want error when IAM DeleteUser fails, got nil")
+	}
+	if iamFake.userCount() != 1 {
+		t.Fatalf("want IAM user to remain after failed revoke, got count %d", iamFake.userCount())
+	}
+	lease, err := e.GetLease(ctx, res.LeaseID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lease.Revoked {
+		t.Fatal("want lease.Revoked to stay false after failed revoke")
+	}
+
+	// Now let it succeed and confirm the retry actually cleans up.
+	iamFake.failDeleteUser = false
+	if err := e.RevokeLease(ctx, res.LeaseID); err != nil {
+		t.Fatal(err)
+	}
+	if iamFake.userCount() != 0 {
+		t.Fatalf("want 0 IAM users after successful retry, got %d", iamFake.userCount())
 	}
 }
 

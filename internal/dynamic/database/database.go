@@ -41,24 +41,44 @@ const (
 	defaultMaxTTL     = 24 * time.Hour
 
 	// DefaultCreationStatementsPostgres is a safe template for PostgreSQL.
-	DefaultCreationStatementsPostgres = `CREATE USER "{{username}}" WITH PASSWORD '{{password}}' VALID UNTIL '{{expiry}}'; GRANT CONNECT ON DATABASE {{database}} TO "{{username}}";`
+	DefaultCreationStatementsPostgres = `CREATE USER "{{username}}" WITH PASSWORD '{{password}}' VALID UNTIL '{{expiry}}'; GRANT CONNECT ON DATABASE "{{database}}" TO "{{username}}";`
 	// DefaultRevocationStatementsPostgres revokes and drops the user.
 	DefaultRevocationStatementsPostgres = `REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM "{{username}}"; DROP USER IF EXISTS "{{username}}";`
 	// DefaultCreationStatementsMySQL is a safe template for MySQL.
-	DefaultCreationStatementsMySQL = `CREATE USER '{{username}}'@'%' IDENTIFIED BY '{{password}}'; GRANT SELECT ON {{database}}.* TO '{{username}}'@'%';`
+	DefaultCreationStatementsMySQL = `CREATE USER '{{username}}'@'%' IDENTIFIED BY '{{password}}'; GRANT SELECT ON ` + "`{{database}}`" + `.* TO '{{username}}'@'%';`
 	// DefaultRevocationStatementsMySQL drops the MySQL user.
 	DefaultRevocationStatementsMySQL = `DROP USER IF EXISTS '{{username}}'@'%';`
 )
 
 // Config holds a named database connection.
 type Config struct {
+	// Name is Tuck's own identifier for this connection config (the {name} in
+	// PUT /v1/database/config/{name}) — an arbitrary label, not necessarily a
+	// real database name and not guaranteed to be a valid SQL identifier.
 	Name          string `json:"name"`
 	// PluginName is "postgresql" or "mysql".
 	PluginName    string `json:"plugin_name"`
 	// ConnectionURL is the DSN (may contain {{username}} and {{password}} for rotation).
 	ConnectionURL string `json:"connection_url"`
+	// Database is the real database name substituted for {{database}} in
+	// creation/revocation statements (e.g. "GRANT CONNECT ON DATABASE
+	// {{database}}"). Falls back to Name if unset, for backward
+	// compatibility — but Name may contain characters (like '-') that are
+	// invalid as an unquoted SQL identifier and may not match any actual
+	// database, so set this explicitly whenever the two differ.
+	Database      string `json:"database,omitempty"`
 	// MaxOpenConns defaults to 5.
 	MaxOpenConns  int    `json:"max_open_conns,omitempty"`
+}
+
+// databaseName returns the real database name to use for {{database}}
+// template substitution: cfg.Database if set, else cfg.Name for backward
+// compatibility with configs created before this field existed.
+func (cfg *Config) databaseName() string {
+	if cfg.Database != "" {
+		return cfg.Database
+	}
+	return cfg.Name
 }
 
 // Role defines how credentials are generated for a named database.
@@ -231,7 +251,7 @@ func (m *Manager) GenerateCreds(ctx context.Context, roleName string) (*Credenti
 		"{{username}}": username,
 		"{{password}}": password,
 		"{{expiry}}":   expiresAt.Format(time.RFC3339),
-		"{{database}}": cfg.Name,
+		"{{database}}": cfg.databaseName(),
 	})
 
 	if err := execStatements(ctx, db, stmts); err != nil {
@@ -318,23 +338,28 @@ func (m *Manager) RevokeExpired(ctx context.Context) error {
 func (m *Manager) revokeLease(ctx context.Context, lease *Lease) error {
 	cfg, err := m.GetConfig(ctx, lease.DBName)
 	if err != nil {
-		// Config deleted — just remove the lease record.
+		// Config deleted — nothing left to revoke against, just remove the lease record.
 		return m.b.Delete(ctx, leasesKey+lease.ID)
 	}
 	role, _ := m.GetRole(ctx, lease.RoleName)
 
-	var stmts string
 	if role != nil && role.RevocationStatements != "" {
-		stmts = renderTemplate(role.RevocationStatements, map[string]string{
+		stmts := renderTemplate(role.RevocationStatements, map[string]string{
 			"{{username}}": lease.Username,
-			"{{database}}": cfg.Name,
+			"{{database}}": cfg.databaseName(),
 		})
-	}
-	if stmts != "" {
-		if db, err := m.openDB(cfg); err == nil {
-			_ = execStatements(ctx, db, stmts)
+		db, err := m.openDB(cfg)
+		if err != nil {
+			return fmt.Errorf("revoke lease %s: open db: %w", lease.ID, err)
+		}
+		if err := execStatements(ctx, db, stmts); err != nil {
+			return fmt.Errorf("revoke lease %s: %w", lease.ID, err)
 		}
 	}
+	// Only delete the lease record once revocation has actually succeeded
+	// (or there were no revocation statements to run) — a failed revoke
+	// must leave the lease in place so it can be retried instead of
+	// silently reporting success while the credential is still live.
 	return m.b.Delete(ctx, leasesKey+lease.ID)
 }
 

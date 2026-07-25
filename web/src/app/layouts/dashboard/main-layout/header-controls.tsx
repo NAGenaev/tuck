@@ -15,6 +15,7 @@ import { useHealth } from '@shared/api/hooks/use-health'
 import { useSealStatus } from '@shared/api/hooks/use-seal-status'
 import { useLogout } from '@shared/hooks/use-auth'
 import { LanguageSwitcher } from '@shared/ui/language-switcher/language-switcher'
+import { NamespaceSwitcher } from '@shared/ui/namespace-switcher/namespace-switcher'
 
 const TUCK_REPO_URL = 'https://github.com/NAGenaev/tuck'
 
@@ -49,6 +50,8 @@ export function HeaderControls() {
                     {fullscreen ? <TbMinimize size={18} /> : <TbMaximize size={18} />}
                 </ActionIcon>
             </Tooltip>
+
+            <NamespaceSwitcher />
 
             <LanguageSwitcher />
 

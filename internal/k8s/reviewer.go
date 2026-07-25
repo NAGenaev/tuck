@@ -21,5 +21,5 @@ type K8sRole struct {
 	Namespace      string        `json:"namespace"`
 	ServiceAccount string        `json:"service_account"`
 	Policies       []string      `json:"policies"`
-	TTL            time.Duration `json:"ttl"` // 0 = token never expires
+	TTL            time.Duration `json:"ttl"` // 0 = falls back to a 1h token TTL (see Core.LoginK8s)
 }

@@ -120,6 +120,30 @@ func TestLogin_SuccessGroupMatch(t *testing.T) {
 	}
 }
 
+// TestLogin_ZeroTTLFallsBackToOneHour guards against a role with no TTL
+// configured minting an eternal token: token.Generate leaves ExpiresAt at
+// its zero value when ttl <= 0, which IsExpired() documents as "never
+// expires" — so an unset role TTL must be given a real default here, the
+// same way AppRole/JWT/GitHub already do.
+func TestLogin_ZeroTTLFallsBackToOneHour(t *testing.T) {
+	users := sampleUsers()
+	conn := newFakeConn("cn=svc,dc=test", "svcpass", users)
+	cfg := sampleCfg()
+
+	roles := []*authlda.Role{
+		{Name: "admin-role", Groups: []string{"admin"}, Policies: []string{"admin-policy"}}, // TTL unset
+	}
+
+	auth := authlda.NewAuthenticator(cfg, authlda.WithDialer(dialFactory(conn)))
+	result, err := auth.Login(context.Background(), roles, "alice", "alicepass")
+	if err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	if result.TTL != time.Hour {
+		t.Errorf("TTL with unset role TTL = %v, want 1h fallback, not eternal", result.TTL)
+	}
+}
+
 // TestLogin_SuccessUserMatch verifies that a direct username match in a role works.
 func TestLogin_SuccessUserMatch(t *testing.T) {
 	users := sampleUsers()

@@ -40,7 +40,7 @@ function useKVv2List(prefix: string) {
     return useQuery({ queryKey: ['kv2', 'list', prefix], queryFn: () => listKVv2(prefix) })
 }
 
-function WriteSecretForm({ prefix, onDone }: { prefix: string; onDone: () => void }) {
+function WriteSecretForm({ prefix, onDone }: { prefix: string; onDone: (path: string) => void }) {
     const { t } = useTranslation()
     const [name, setName] = useState('')
     const [value, setValue] = useState('')
@@ -51,13 +51,14 @@ function WriteSecretForm({ prefix, onDone }: { prefix: string; onDone: () => voi
         if (!name) return
         setIsSaving(true)
         try {
-            await putKVv2(`${prefix}${name}`, value, cas === '' ? undefined : Number(cas))
+            const path = `${prefix}${name}`
+            await putKVv2(path, value, cas === '' ? undefined : Number(cas))
             notifications.show({
                 color: 'teal',
-                message: t('kv.wroteMessage', { path: `${prefix}${name}` }),
+                message: t('kv.wroteMessage', { path }),
                 title: t('common.saved')
             })
-            onDone()
+            onDone(path)
         } catch (err: unknown) {
             const status = (err as { response?: { status?: number } })?.response?.status
             notifications.show({
@@ -305,9 +306,14 @@ export function KV2Page() {
 
                 <EntityModal color="blue" icon={TbFolders} onClose={closeWriting} opened={writing} title={t('kv.writeSecret')}>
                     <WriteSecretForm
-                        onDone={() => {
+                        onDone={(path) => {
                             closeWriting()
                             queryClient.invalidateQueries({ queryKey: ['kv2', 'list', prefix] })
+                            // Also refresh an already-open SecretDetail panel for this
+                            // same path — otherwise it keeps showing the pre-write
+                            // version/value until manually closed and reopened.
+                            queryClient.invalidateQueries({ queryKey: ['kv2', 'get', path] })
+                            queryClient.invalidateQueries({ queryKey: ['kv2', 'meta', path] })
                         }}
                         prefix={prefix}
                     />

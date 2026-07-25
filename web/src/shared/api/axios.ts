@@ -30,7 +30,12 @@ instance.interceptors.request.use((config) => {
 instance.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+        // 401 = not authenticated (invalid/expired token) -> drop the session.
+        // 403 = authenticated but not authorized for this specific action ->
+        // let the caller handle it (toast, hide widget); do NOT log out, or
+        // any token with a policy short of root gets kicked out of the
+        // dashboard the moment it hits a single restricted endpoint.
+        if (error.response && error.response.status === 401) {
             logoutEvents.emit()
         }
         return Promise.reject(error)

@@ -117,6 +117,49 @@ func TestRenderTemplate(t *testing.T) {
 	}
 }
 
+// TestConfig_DatabaseName guards against {{database}} being conflated with
+// cfg.Name (Tuck's own identifier for the connection config, an arbitrary
+// label that may contain characters invalid as a SQL identifier, like '-',
+// and need not match any real database). Database, when set, must take
+// precedence; Name is only a fallback for configs predating this field.
+func TestConfig_DatabaseName(t *testing.T) {
+	withOverride := &Config{Name: "qa-postgres", Database: "myapp"}
+	if got := withOverride.databaseName(); got != "myapp" {
+		t.Errorf("databaseName() with override = %q, want %q", got, "myapp")
+	}
+
+	fallback := &Config{Name: "myapp"}
+	if got := fallback.databaseName(); got != "myapp" {
+		t.Errorf("databaseName() fallback = %q, want %q", got, "myapp")
+	}
+}
+
+// TestDefaultCreationStatements_QuoteDatabaseIdentifier guards against the
+// default Postgres/MySQL creation templates producing a SQL syntax error
+// when the database name contains characters that are invalid as an
+// unquoted identifier (e.g. a hyphen) — {{username}} was already quoted,
+// {{database}} was not.
+func TestDefaultCreationStatements_QuoteDatabaseIdentifier(t *testing.T) {
+	pg := renderTemplate(DefaultCreationStatementsPostgres, map[string]string{
+		"{{username}}": "tuck_app_123",
+		"{{password}}": "s3cr3t",
+		"{{expiry}}":   "2025-01-01T00:00:00Z",
+		"{{database}}": "qa-postgres",
+	})
+	if !containsAll(pg, `"qa-postgres"`) {
+		t.Fatalf("Postgres creation statement does not quote the database identifier: %q", pg)
+	}
+
+	mysql := renderTemplate(DefaultCreationStatementsMySQL, map[string]string{
+		"{{username}}": "tuck_app_123",
+		"{{password}}": "s3cr3t",
+		"{{database}}": "qa-mysql",
+	})
+	if !containsAll(mysql, "`qa-mysql`") {
+		t.Fatalf("MySQL creation statement does not quote the database identifier: %q", mysql)
+	}
+}
+
 func TestSanitize(t *testing.T) {
 	if got := sanitize("role-name; DROP TABLE"); got != "rolename DROP TABLE" {
 		// hyphens and semicolons stripped

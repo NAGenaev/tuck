@@ -391,6 +391,36 @@ func TestNamespaceCRUD(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("get deleted namespace status = %d, want 404", resp.StatusCode)
 	}
+
+	// Requests carrying X-Tuck-Namespace for the now-deleted namespace must
+	// be rejected, not silently served against the orphaned storage prefix —
+	// previously requireToken never checked that the namespace still exists.
+	resp, err = http.DefaultClient.Do(authedNsReq(t, http.MethodGet, ts.URL+"/v1/secret/shared", "", rootTok, "dev"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("read via deleted namespace status = %d, want 404", resp.StatusCode)
+	}
+	resp, err = http.DefaultClient.Do(authedNsReq(t, http.MethodPut, ts.URL+"/v1/secret/shared", "resurrected", rootTok, "dev"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("write via deleted namespace status = %d, want 404", resp.StatusCode)
+	}
+
+	// A namespace name that was never created at all must be rejected too.
+	resp, err = http.DefaultClient.Do(authedNsReq(t, http.MethodGet, ts.URL+"/v1/secret/shared", "", rootTok, "never-existed"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("read via nonexistent namespace status = %d, want 404", resp.StatusCode)
+	}
 }
 
 func TestTokenRoleRoundTrip(t *testing.T) {

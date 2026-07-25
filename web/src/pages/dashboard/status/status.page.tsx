@@ -43,8 +43,8 @@ export function StatusPage() {
     const { t } = useTranslation()
     const { data: sealStatus, isLoading: sealLoading } = useSealStatus()
     const { data: health, isLoading: healthLoading } = useHealth()
-    const { data: leases } = useQuery({ queryKey: ['leases', 'list'], queryFn: listLeases })
-    const { data: tokens } = useQuery({ queryKey: ['tokens', 'list'], queryFn: listTokens })
+    const { data: leases, isError: leasesError } = useQuery({ queryKey: ['leases', 'list'], queryFn: listLeases })
+    const { data: tokens, isError: tokensError } = useQuery({ queryKey: ['tokens', 'list'], queryFn: listTokens })
     const [shard, setShard] = useState('')
     const queryClient = useQueryClient()
 
@@ -190,20 +190,20 @@ export function StatusPage() {
                             IconComponent={TbClockHour4}
                             iconColor="teal"
                             title={t('status.activeLeases')}
-                            value={leases?.filter((l) => !l.revoked).length ?? 0}
+                            value={leasesError ? '—' : (leases?.filter((l) => !l.revoked).length ?? 0)}
                         />
                         <MetricCard
                             IconComponent={TbKey}
                             iconColor="cyan"
                             title={t('status.activeTokens')}
-                            value={tokens?.length ?? 0}
+                            value={tokensError ? '—' : (tokens?.length ?? 0)}
                         />
                         <PlaceholderCard IconComponent={TbFileText} title={t('status.recentAuditEvents')} />
                         <PlaceholderCard IconComponent={TbRefresh} title={t('status.replicationLag')} />
                     </SimpleGrid>
                 </Stack>
 
-                {sealStatus?.sealed && (
+                {sealStatus?.sealed && sealStatus.type === 'shamir' && (
                     <Alert color="yellow" title={t('status.serverSealed')} variant="light">
                         <Stack gap="sm">
                             <PasswordInput
@@ -217,6 +217,21 @@ export function StatusPage() {
                                 w="fit-content"
                             >
                                 {t('status.submitShard')}
+                            </Button>
+                        </Stack>
+                    </Alert>
+                )}
+
+                {sealStatus?.sealed && sealStatus.type !== 'shamir' && (
+                    <Alert color="yellow" title={t('status.serverSealed')} variant="light">
+                        <Stack gap="sm">
+                            <Text size="sm">{t('status.autoUnsealHint')}</Text>
+                            <Button
+                                loading={unsealMutation.isPending}
+                                onClick={() => unsealMutation.mutate('')}
+                                w="fit-content"
+                            >
+                                {t('status.unseal')}
                             </Button>
                         </Stack>
                     </Alert>

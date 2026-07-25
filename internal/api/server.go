@@ -12,6 +12,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/barrier"
 	"github.com/NAGenaev/tuck/internal/core"
 	"github.com/NAGenaev/tuck/internal/metrics"
+	"github.com/NAGenaev/tuck/internal/namespace"
 	physraft "github.com/NAGenaev/tuck/internal/physical/raft"
 	"github.com/NAGenaev/tuck/internal/ratelimit"
 	"github.com/NAGenaev/tuck/internal/sysconfig"
@@ -417,7 +418,11 @@ func (s *Server) requireToken(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		ctx := context.WithValue(r.Context(), tokenCtxKey, id)
-		if ns := r.Header.Get("X-Tuck-Namespace"); ns != "" {
+		if ns := r.Header.Get("X-Tuck-Namespace"); ns != "" && ns != namespace.RootNamespace {
+			if _, err := s.core.GetNamespace(r.Context(), ns); err != nil {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "namespace not found"})
+				return
+			}
 			ctx = context.WithValue(ctx, nsCtxKey, ns)
 		}
 		next(w, r.WithContext(ctx))

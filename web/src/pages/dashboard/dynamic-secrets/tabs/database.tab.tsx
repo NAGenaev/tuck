@@ -24,10 +24,15 @@ function ConfigForm({ onDone }: { onDone: () => void }) {
     const [name, setName] = useState('')
     const [pluginName, setPluginName] = useState('postgresql')
     const [connectionUrl, setConnectionUrl] = useState('')
+    const [database, setDatabase] = useState('')
 
     const mutation = useMutation({
         mutationFn: () =>
-            putDBConfig(name, { plugin_name: pluginName, connection_url: connectionUrl }),
+            putDBConfig(name, {
+                plugin_name: pluginName,
+                connection_url: connectionUrl,
+                database: database || undefined
+            }),
         onSuccess: () => {
             notifications.show({
                 color: 'teal',
@@ -58,6 +63,13 @@ function ConfigForm({ onDone }: { onDone: () => void }) {
                     onChange={(e) => setConnectionUrl(e.currentTarget.value)}
                     placeholder={t('dynamicSecrets.database.connectionUrlPlaceholder')}
                     value={connectionUrl}
+                />
+                <TextInput
+                    description={t('dynamicSecrets.database.databaseNameHint')}
+                    label={t('dynamicSecrets.database.databaseName')}
+                    onChange={(e) => setDatabase(e.currentTarget.value)}
+                    placeholder={name || t('dynamicSecrets.database.configName')}
+                    value={database}
                 />
                 <Button
                     disabled={!name || !connectionUrl}

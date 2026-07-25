@@ -309,13 +309,20 @@ func (e *Engine) RevokeLease(ctx context.Context, id string) error {
 		return nil
 	}
 	if lease.CredentialType == CredTypeServiceAccountKey && lease.GCPKeyName != "" {
-		cfg, cfgErr := e.GetConfig(ctx)
-		if cfgErr == nil {
-			if adminClient, clientErr := e.newAdmin(cfg); clientErr == nil {
-				_ = adminClient.DeleteKey(ctx, lease.GCPKeyName)
-			}
+		cfg, err := e.GetConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("revoke lease %s: load gcp config: %w", id, err)
+		}
+		adminClient, err := e.newAdmin(cfg)
+		if err != nil {
+			return fmt.Errorf("revoke lease %s: admin client: %w", id, err)
+		}
+		if err := adminClient.DeleteKey(ctx, lease.GCPKeyName); err != nil {
+			return fmt.Errorf("revoke lease %s: delete service account key: %w", id, err)
 		}
 	}
+	// Only mark the lease revoked once the key has actually been deleted —
+	// a failed revoke must not be reported as success.
 	lease.Revoked = true
 	return e.put(ctx, leasesKey+id, lease)
 }

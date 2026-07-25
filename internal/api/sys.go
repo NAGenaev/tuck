@@ -2,10 +2,8 @@ package api
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 
-	"github.com/NAGenaev/tuck/internal/core"
 	"github.com/NAGenaev/tuck/internal/policy"
 )
 
@@ -49,27 +47,23 @@ func (s *Server) getSealStatus(w http.ResponseWriter, r *http.Request) {
 // For Shamir seals: accepts one base64url-encoded shard at a time. Returns the
 // current progress until the threshold is met, at which point sealed=false.
 //
-// For auto-unseal seals (dev, transit): returns 400 — those seals unseal
-// automatically at startup.
+// For auto-unseal seals (dev, transit, KMS): the request body may be empty —
+// the seal already knows how to produce its own root key, so no shard is
+// needed. This lets an operator who called POST /v1/sys/seal bring an
+// auto-unseal instance back up without restarting the process.
 func (s *Server) postUnseal(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 
 	var req unsealRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
-		return
-	}
-	if req.Key == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing field: key"})
-		return
+	if r.ContentLength != 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
+			return
+		}
 	}
 
 	complete, err := s.core.UnsealShard(r.Context(), req.Key)
 	if err != nil {
-		if errors.Is(err, core.ErrSealNotInteractive) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-			return
-		}
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}

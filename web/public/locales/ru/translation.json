@@ -29,7 +29,10 @@
     "exitFullscreen": "Выйти из полноэкранного режима",
     "source": "Исходный код на GitHub",
     "logout": "Выйти",
-    "language": "Язык"
+    "language": "Язык",
+    "namespace": "Namespace: {{namespace}}",
+    "namespaceSwitch": "Переключить namespace",
+    "rootNamespace": "root"
   },
   "pages": {
     "status": "Статус",
@@ -101,6 +104,8 @@
     "serverSealed": "Сервер запечатан",
     "unsealKeyShard": "Шард ключа распечатывания",
     "submitShard": "Отправить шард",
+    "autoUnsealHint": "Этот тип печати распечатывается автоматически — шард ключа не нужен, просто подтвердите.",
+    "unseal": "Распечатать",
     "downloadSnapshot": "Скачать снапшот",
     "rotateKey": "Сменить ключ",
     "rotateConfirm": "Сменить ключ шифрования? Это перешифрует ключ шифрования данных.",
@@ -172,7 +177,8 @@
     "deletedMessage": "Политика удалена",
     "noPolicies": "Нет политик",
     "pathPlaceholder": "secret/data/*",
-    "createHint": "Политики дают права (read/write/delete/list) на определённые пути. Привяжите их к токенам или ролям аутентификации."
+    "createHint": "Политики дают права (read/write/delete/list) на определённые пути. Привяжите их к токенам или ролям аутентификации.",
+    "globHint": "* соответствует только одному сегменту пути; ** — рекурсивно, через /. Для «всё внутри этого пути» используйте **."
   },
   "authMethods": {
     "roleName": "Имя роли",
@@ -250,6 +256,8 @@
         "pluginNamePlaceholder": "postgresql",
         "connectionUrl": "URL подключения",
         "connectionUrlPlaceholder": "postgresql://<username>:<password>@host:5432/db",
+        "databaseName": "Имя базы данных",
+        "databaseNameHint": "Настоящее имя базы данных на сервере, подставляется вместо плейсхолдера database в SQL-выражениях создания/отзыва. По умолчанию — имя конфигурации выше, если оставить пустым; задайте явно, если имя конфигурации не является валидным SQL-идентификатором (например, содержит «-») или не совпадает с реальной базой.",
         "dbNameLabel": "Имя конфигурации (db_name)",
         "creationStatements": "SQL-выражения создания",
         "creationStatementsPlaceholder": "CREATE ROLE ... WITH LOGIN PASSWORD '<password>'"

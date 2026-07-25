@@ -38,12 +38,15 @@ import { TableCard } from '@shared/ui/table-card/table-card'
 // this as an integer bitmask; there is no "sudo" capability, only these five.
 const CAPS = ['read', 'write', 'delete', 'list', 'deny']
 
-function useTemplates(): Record<string, string[]> {
+function useTemplates(): Record<string, { caps: string[]; path: string }> {
     const { t } = useTranslation()
     return {
-        [t('policies.readOnly')]: ['read', 'list'],
-        [t('policies.readWrite')]: ['read', 'write', 'list'],
-        [t('policies.admin')]: ['read', 'write', 'delete', 'list']
+        [t('policies.readOnly')]: { caps: ['read', 'list'], path: '*' },
+        [t('policies.readWrite')]: { caps: ['read', 'write', 'list'], path: '*' },
+        // Recursive glob: an "Admin" preset scoped to a single path segment
+        // (the old '*') grants nothing on any nested secret, which silently
+        // misrepresents the scope of access being handed out.
+        [t('policies.admin')]: { caps: ['read', 'write', 'delete', 'list'], path: '**' }
     }
 }
 
@@ -135,8 +138,8 @@ function PolicyEditor({
         onError: () => notifications.show({ color: 'red', message: t('common.saveFailed'), title: t('common.error') })
     })
 
-    const addTemplate = (caps: string[]) =>
-        setRules((r) => [...r, { path: '*', capabilities: caps }])
+    const addTemplate = (caps: string[], path: string) =>
+        setRules((r) => [...r, { path, capabilities: caps }])
 
     return (
         <Stack gap="md">
@@ -155,10 +158,10 @@ function PolicyEditor({
                 <Text c="dimmed" size="xs">
                     {t('policies.quickFill')}
                 </Text>
-                {Object.entries(templates).map(([label, caps]) => (
+                {Object.entries(templates).map(([label, tpl]) => (
                     <Button
                         key={label}
-                        onClick={() => addTemplate(caps)}
+                        onClick={() => addTemplate(tpl.caps, tpl.path)}
                         size="xs"
                         variant="subtle"
                     >
@@ -166,6 +169,9 @@ function PolicyEditor({
                     </Button>
                 ))}
             </Group>
+            <Text c="dimmed" size="xs">
+                {t('policies.globHint')}
+            </Text>
 
             <Stack gap="xs">
                 {rules.map((rule, i) => (

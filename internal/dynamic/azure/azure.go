@@ -250,13 +250,20 @@ func (e *Engine) RevokeLease(ctx context.Context, id string) error {
 		return nil
 	}
 	if lease.KeyID != "" && lease.ApplicationObjectID != "" {
-		cfg, cfgErr := e.GetConfig(ctx)
-		if cfgErr == nil {
-			if graphClient, clientErr := e.newGraph(cfg); clientErr == nil {
-				_ = graphClient.RemovePassword(ctx, lease.ApplicationObjectID, lease.KeyID)
-			}
+		cfg, err := e.GetConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("revoke lease %s: load azure config: %w", id, err)
+		}
+		graphClient, err := e.newGraph(cfg)
+		if err != nil {
+			return fmt.Errorf("revoke lease %s: graph client: %w", id, err)
+		}
+		if err := graphClient.RemovePassword(ctx, lease.ApplicationObjectID, lease.KeyID); err != nil {
+			return fmt.Errorf("revoke lease %s: remove password credential: %w", id, err)
 		}
 	}
+	// Only mark the lease revoked once the credential has actually been
+	// removed — a failed revoke must not be reported as success.
 	lease.Revoked = true
 	return e.put(ctx, leasesKey+id, lease)
 }

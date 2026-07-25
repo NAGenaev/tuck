@@ -157,7 +157,10 @@ func TestPostSeal_SealsThenStatusReflects(t *testing.T) {
 
 // TestPostUnseal_DevSealReturns400 verifies that POST /v1/sys/unseal returns
 // 400 when the active seal is not SharableUnseal.
-func TestPostUnseal_DevSealReturns400(t *testing.T) {
+// TestPostUnseal_DevSealIgnoresKey confirms an auto-unseal seal (Dev) accepts
+// POST /v1/sys/unseal without needing a real shard — the key field, if any,
+// is simply ignored since Dev can always produce its own root key.
+func TestPostUnseal_DevSealIgnoresKey(t *testing.T) {
 	ts, _, _ := newTestServer(t)
 
 	body := `{"key":"dGVzdA"}`
@@ -166,12 +169,12 @@ func TestPostUnseal_DevSealReturns400(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("POST unseal on dev seal: status = %d, want 400", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("POST unseal on dev seal: status = %d, want 200", resp.StatusCode)
 	}
 }
 
-// TestPostUnseal_MissingKey returns 400 for empty key field.
+// TestPostUnseal_MissingKey succeeds with an empty body for an auto-unseal seal.
 func TestPostUnseal_MissingKey(t *testing.T) {
 	ts, _, _ := newTestServer(t)
 	resp, err := http.Post(ts.URL+"/v1/sys/unseal", "application/json", bytes.NewBufferString(`{}`))
@@ -179,8 +182,49 @@ func TestPostUnseal_MissingKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("POST unseal with no key: status = %d, want 400", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("POST unseal with no key: status = %d, want 200", resp.StatusCode)
+	}
+}
+
+// TestPostUnseal_DevSealResealAndUnseal guards against the bug where sealing a
+// Dev (or other auto-unseal) instance at runtime left no way to bring it back
+// up short of restarting the process — auto-unseal previously only ran once,
+// inside Core.Start.
+func TestPostUnseal_DevSealResealAndUnseal(t *testing.T) {
+	ts, c, rootTok := newTestServer(t)
+
+	c.Seal()
+	if !c.Sealed() {
+		t.Fatal("expected core to be sealed after Seal()")
+	}
+
+	// While sealed, protected endpoints must be rejected.
+	resp, err := http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/secret/anything", "", rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("read while sealed status = %d, want 503", resp.StatusCode)
+	}
+
+	resp, err = http.Post(ts.URL+"/v1/sys/unseal", "application/json", bytes.NewBufferString(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("unseal after reseal status = %d, body = %s", resp.StatusCode, body)
+	}
+	var result map[string]any
+	_ = json.Unmarshal(body, &result)
+	if sealed, _ := result["sealed"].(bool); sealed {
+		t.Fatalf("unseal response still reports sealed=true: %s", body)
+	}
+	if c.Sealed() {
+		t.Fatal("core still sealed after auto-unseal")
 	}
 }
 

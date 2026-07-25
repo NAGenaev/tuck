@@ -14,14 +14,14 @@ import (
 
 type putK8sRoleReq struct {
 	Policies []string `json:"policies"`
-	TTL      string   `json:"ttl"` // e.g. "24h", "" = never expires
+	TTL      string   `json:"ttl"` // e.g. "24h"; "" falls back to a 1h token TTL, not an eternal one
 }
 
 type k8sRoleResp struct {
 	Namespace      string   `json:"namespace"`
 	ServiceAccount string   `json:"service_account"`
 	Policies       []string `json:"policies"`
-	TTL            string   `json:"ttl"` // "24h0m0s" or "" if no expiry
+	TTL            string   `json:"ttl"` // "24h0m0s", or "" if the role itself has no TTL configured (logins still get the 1h default)
 }
 
 // loginK8s exchanges a Kubernetes ServiceAccount JWT for a Tuck token.

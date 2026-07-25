@@ -47,6 +47,9 @@ spec:
                   name: {{ .Values.operator.tokenSecretName }}
                   key: token
                   optional: true
+          ports:
+            - name: health
+              containerPort: 8081
           resources:
             {{- toYaml .Values.operator.resources | nindent 12 }}
           securityContext:

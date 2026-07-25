@@ -339,25 +339,37 @@ func (e *Engine) RevokeLease(ctx context.Context, id string) error {
 		return nil
 	}
 	if lease.CredentialType == CredTypeIAMUser && lease.Username != "" {
-		cfg, cfgErr := e.GetConfig(ctx)
-		role, roleErr := e.GetRole(ctx, lease.Role)
-		if cfgErr == nil {
-			if iamClient, iamErr := e.newIAM(cfg); iamErr == nil {
-				if lease.AccessKeyID != "" {
-					_ = iamClient.DeleteAccessKey(ctx, lease.Username, lease.AccessKeyID)
-				}
-				if roleErr == nil {
-					for _, arn := range role.PolicyARNs {
-						_ = iamClient.DetachUserPolicy(ctx, lease.Username, arn)
-					}
-					if role.PolicyDocument != "" {
-						_ = iamClient.DeleteUserPolicy(ctx, lease.Username, "tuck-inline")
-					}
-				}
-				_ = iamClient.DeleteUser(ctx, lease.Username)
+		cfg, err := e.GetConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("revoke lease %s: load aws config: %w", id, err)
+		}
+		iamClient, err := e.newIAM(cfg)
+		if err != nil {
+			return fmt.Errorf("revoke lease %s: iam client: %w", id, err)
+		}
+		if lease.AccessKeyID != "" {
+			if err := iamClient.DeleteAccessKey(ctx, lease.Username, lease.AccessKeyID); err != nil {
+				return fmt.Errorf("revoke lease %s: delete access key: %w", id, err)
 			}
 		}
+		if role, roleErr := e.GetRole(ctx, lease.Role); roleErr == nil {
+			for _, arn := range role.PolicyARNs {
+				if err := iamClient.DetachUserPolicy(ctx, lease.Username, arn); err != nil {
+					return fmt.Errorf("revoke lease %s: detach policy %s: %w", id, arn, err)
+				}
+			}
+			if role.PolicyDocument != "" {
+				if err := iamClient.DeleteUserPolicy(ctx, lease.Username, "tuck-inline"); err != nil {
+					return fmt.Errorf("revoke lease %s: delete inline policy: %w", id, err)
+				}
+			}
+		}
+		if err := iamClient.DeleteUser(ctx, lease.Username); err != nil {
+			return fmt.Errorf("revoke lease %s: delete iam user: %w", id, err)
+		}
 	}
+	// Only mark the lease revoked once the IAM user/credential has actually
+	// been torn down — a failed revoke must not be reported as success.
 	lease.Revoked = true
 	return e.put(ctx, leasesKey+id, lease)
 }

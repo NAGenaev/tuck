@@ -343,6 +343,12 @@ func (a *Authenticator) Login(ctx context.Context, roles []*Role, username, pass
 	if len(policies) == 0 {
 		return nil, ErrNoRole
 	}
+	// A role TTL <= 0 must not silently mean "never expires" (token.Generate
+	// leaves ExpiresAt at its zero value in that case) — fall back to the
+	// same default AppRole/JWT/GitHub already apply.
+	if ttl <= 0 {
+		ttl = time.Hour
+	}
 
 	return &LoginResult{UserDN: userDN, Username: username, Policies: policies, TTL: ttl, Groups: userGroups}, nil
 }

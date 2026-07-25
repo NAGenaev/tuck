@@ -58,10 +58,6 @@ var (
 	// shard collection (e.g. ShamirSeal). The server remains running; callers
 	// should poll SealStatus and surface POST /v1/sys/unseal to operators.
 	ErrNeedsUnseal = errors.New("core: seal requires manual unseal — supply shards via /v1/sys/unseal")
-
-	// ErrSealNotInteractive is returned by UnsealShard when the active seal
-	// does not implement SharableUnseal (e.g. Dev or Transit seals).
-	ErrSealNotInteractive = errors.New("core: active seal does not support interactive shard unseal")
 )
 
 // SealStatusInfo is returned by Core.SealStatus and exposed via
@@ -276,12 +272,15 @@ func (c *Core) WAL() *replication.WAL { return c.wal }
 // have been collected the barrier is unsealed automatically. Returns true when
 // the barrier is now open.
 //
-// Returns an error if the active seal does not implement SharableUnseal, if
-// the shard is malformed, or if a duplicate shard is provided.
+// For auto-unseal seals (Dev, Transit, KMS) the share argument is ignored and
+// the barrier is unsealed immediately by asking the seal for its key. Without
+// this, an operator who calls POST /v1/sys/seal on an auto-unseal instance
+// would have no way to bring it back up short of restarting the process,
+// since auto-unseal only otherwise runs once, in Core.Start.
 func (c *Core) UnsealShard(ctx context.Context, share string) (bool, error) {
 	su, ok := c.seal.(seal.SharableUnseal)
 	if !ok {
-		return false, ErrSealNotInteractive
+		return c.autoUnseal(ctx)
 	}
 
 	c.unsealMu.Lock()
@@ -310,6 +309,29 @@ func (c *Core) UnsealShard(ctx context.Context, share string) (bool, error) {
 	clear(rootKey)
 	_ = c.LoadAuditSinks(unsealCtx)
 	c.unsealCtx = nil // release the stored context
+	return true, nil
+}
+
+// autoUnseal unseals the barrier directly via a non-interactive seal (Dev,
+// Transit, KMS), which can always produce the root key on demand. Always
+// returns true on success since there is no shard threshold to reach.
+func (c *Core) autoUnseal(ctx context.Context) (bool, error) {
+	c.unsealMu.Lock()
+	defer c.unsealMu.Unlock()
+
+	if !c.barrier.IsSealed() {
+		return true, nil
+	}
+	key, err := c.seal.Unseal()
+	if err != nil {
+		return false, fmt.Errorf("seal unseal: %w", err)
+	}
+	if err := c.barrier.Unseal(ctx, key); err != nil {
+		clear(key)
+		return false, fmt.Errorf("barrier unseal: %w", err)
+	}
+	clear(key)
+	_ = c.LoadAuditSinks(ctx)
 	return true, nil
 }
 
@@ -381,7 +403,10 @@ func (c *Core) EnforceAccess(ctx context.Context, tokenID, logicalPath string, c
 	}
 	policies, err := c.resolvePolicies(ctx, tok.Namespace, tok.Policies)
 	if err != nil {
-		return fmt.Errorf("resolve policies: %w", err)
+		// A token referencing a policy that no longer exists (e.g. deleted
+		// after the token was issued) grants no access — treat exactly like
+		// any other denial (403), not an internal error (500).
+		return ErrUnauthorized
 	}
 	if !policy.Allowed(policies, logicalPath, cap) {
 		return ErrUnauthorized
@@ -689,7 +714,14 @@ func (c *Core) LoginK8s(ctx context.Context, saToken string) (*token.Token, erro
 		}
 		return nil, fmt.Errorf("get k8s role: %w", err)
 	}
-	tok, err := c.CreateToken(ctx, "k8s:"+namespace+"/"+sa, role.Policies, role.TTL, WithRenewable(0))
+	// A role TTL <= 0 must not silently mean "never expires" — match the
+	// same fallback AppRole/JWT/GitHub already apply, so an unset TTL degrades
+	// to a sane default instead of minting an eternal token.
+	ttl := role.TTL
+	if ttl <= 0 {
+		ttl = time.Hour
+	}
+	tok, err := c.CreateToken(ctx, "k8s:"+namespace+"/"+sa, role.Policies, ttl, WithRenewable(0))
 	if err != nil {
 		return nil, err
 	}

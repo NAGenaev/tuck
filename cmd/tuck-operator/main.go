@@ -6,6 +6,7 @@ import (
 	"context"
 	"flag"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -35,6 +36,8 @@ func main() {
 		"namespace in which to create the leader election Lease")
 	leaderID := flag.String("leader-id", "",
 		"unique identity for this replica in leader election (default: hostname)")
+	healthAddr := flag.String("health-addr", ":8081",
+		"address to serve the /healthz liveness endpoint on")
 
 	flag.Parse()
 
@@ -59,6 +62,8 @@ func main() {
 	defer stop()
 
 	slog.Info("operator: starting", "tuck", *tuckAddr, "k8s", *k8sAPI, "namespace", *namespace, "leaderElect", *leaderElect)
+
+	startHealthServer(ctx, *healthAddr)
 
 	if *leaderElect {
 		elector, err := operator.NewLeaderElector(kubeClient, operator.LeaderConfig{
@@ -86,4 +91,28 @@ func main() {
 		}
 	}
 	slog.Info("operator: shutdown complete")
+}
+
+// startHealthServer serves a liveness endpoint on addr. The Helm chart's
+// operator deployment probes http://:8081/healthz; without a listener there,
+// kubelet kills the container on every liveness check and the pod
+// crash-loops forever. Liveness only needs "is the process alive and
+// serving", so this always returns 200 once the goroutine is running.
+func startHealthServer(ctx context.Context, addr string) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	srv := &http.Server{Addr: addr, Handler: mux}
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("operator: health server failed", "err", err)
+			os.Exit(1)
+		}
+	}()
+	go func() {
+		<-ctx.Done()
+		_ = srv.Close()
+	}()
 }

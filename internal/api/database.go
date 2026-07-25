@@ -11,7 +11,10 @@ import (
 )
 
 // PUT /v1/database/config/{name}
-// Body: {"plugin_name":"postgresql","connection_url":"postgres://...","max_open_conns":5}
+// Body: {"plugin_name":"postgresql","connection_url":"postgres://...","database":"myapp","max_open_conns":5}
+// "database" is the real database name substituted for {{database}} in
+// creation/revocation statements; if omitted it falls back to {name}, which
+// may not be a valid SQL identifier (e.g. contains '-') or match a real DB.
 func (s *Server) putDBConfig(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {

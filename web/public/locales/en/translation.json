@@ -29,7 +29,10 @@
     "exitFullscreen": "Exit fullscreen",
     "source": "Source on GitHub",
     "logout": "Log out",
-    "language": "Language"
+    "language": "Language",
+    "namespace": "Namespace: {{namespace}}",
+    "namespaceSwitch": "Switch namespace",
+    "rootNamespace": "root"
   },
   "pages": {
     "status": "Status",
@@ -101,6 +104,8 @@
     "serverSealed": "Server is sealed",
     "unsealKeyShard": "Unseal key shard",
     "submitShard": "Submit shard",
+    "autoUnsealHint": "This seal type unseals automatically — no key shard is needed, just confirm.",
+    "unseal": "Unseal",
     "downloadSnapshot": "Download snapshot",
     "rotateKey": "Rotate key",
     "rotateConfirm": "Rotate the encryption key? This re-wraps the data encryption key.",
@@ -172,7 +177,8 @@
     "deletedMessage": "Policy deleted",
     "noPolicies": "No policies",
     "pathPlaceholder": "secret/data/*",
-    "createHint": "Policies grant capabilities (read/write/delete/list) on specific paths. Attach them to tokens or auth roles."
+    "createHint": "Policies grant capabilities (read/write/delete/list) on specific paths. Attach them to tokens or auth roles.",
+    "globHint": "* matches one path segment only; ** matches recursively across / — use ** for \"everything under this path\"."
   },
   "authMethods": {
     "roleName": "Role name",
@@ -250,6 +256,8 @@
         "pluginNamePlaceholder": "postgresql",
         "connectionUrl": "Connection URL",
         "connectionUrlPlaceholder": "postgresql://<username>:<password>@host:5432/db",
+        "databaseName": "Database name",
+        "databaseNameHint": "The real database name inside the server, substituted into the database placeholder in creation/revocation statements. Defaults to the config name above if left blank — set this explicitly if the config name isn't a valid SQL identifier (e.g. contains '-') or doesn't match a real database.",
         "dbNameLabel": "Config name (db_name)",
         "creationStatements": "Creation statements",
         "creationStatementsPlaceholder": "CREATE ROLE ... WITH LOGIN PASSWORD '<password>'"

@@ -29,10 +29,13 @@ func (d *Dev) Type() string { return "dev" }
 
 // Init generates a fresh root key, writes it to disk, and returns it wrapped
 // in an InitResult. Shares is always nil for the dev seal.
+//
+// Init overwrites any existing key file. This is safe: Core.Start only calls
+// Init on genuine first boot (guarded by barrier.Initialized), and Core.RotateKey
+// deliberately calls Init again to generate a new key before re-wrapping the
+// barrier's DEK under it (barrier.Rekey). All other Seal implementations
+// (Shamir, Transit, KMS) behave the same way for the same reason.
 func (d *Dev) Init() (*InitResult, error) {
-	if _, err := os.Stat(d.path); err == nil {
-		return nil, fmt.Errorf("dev seal: key file %q already exists", d.path)
-	}
 	key := make([]byte, rootKeySize)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
 		return nil, err

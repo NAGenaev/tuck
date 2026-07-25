@@ -132,7 +132,7 @@ export function KubernetesTab() {
                         <TextInput
                             label={t('tokens.ttl')}
                             onChange={(e) => setTtl(e.currentTarget.value)}
-                            placeholder={t('tokens.ttlPlaceholder')}
+                            placeholder={t('authMethods.ttlPlaceholder1h')}
                             value={ttl}
                         />
                         <Button loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>

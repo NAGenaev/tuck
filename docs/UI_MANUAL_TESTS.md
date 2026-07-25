@@ -370,3 +370,29 @@ Mounts: создание/удаление кастомного mount с явны
 - При отладке обнаружен tight-loop событий `MODIFIED`/`update status: 409` у оператора (десятки повторов в секунду) при конфликте resourceVersion на обновлении статуса TuckSecret — не блокирует функциональность (sync всё равно происходит), но похоже на отсутствие backoff/retry-задержки при конфликте статуса.
 
 Тестовый кластер оставлен развёрнутым (Helm-релиз `tuck` в namespace `tuck`, минимальные тестовые сущности — политики, namespace `frontend-test`, TuckSecret CR — не удалялись).
+
+## UI-консистентность: паттерн «таблица + модалка» везде (2026-07-26)
+
+Третий пункт плана после тестов и багфиксов: единый UI-паттерн (уже применённый ранее к auth-methods, KV v1/v2, policies, tokens, token-roles, namespaces, mounts, plugins, audit-sinks) распространён на последние страницы, где создание сущности всё ещё было инлайн-формой, тогглящейся локальным `useState`, а не модалкой:
+
+| Страница/вкладка | Что изменилось |
+|---|---|
+| `crypto-engines/tabs/pki.tab.tsx` | Форма создания роли → `EntityModal` (иконка `TbCertificate`, цвет orange), добавлены `MetricCard` (счётчик ролей) и `EmptyState`. `CAForm`/`IssueForm`/revoke-карточка оставлены как есть — это разовые административные действия, а не элементы списка. |
+| `crypto-engines/tabs/transit.tab.tsx` | Форма создания ключа → `EntityModal` (`TbLockSquare`, indigo) + `MetricCard`/`EmptyState`. `KeyOperations` (encrypt/decrypt/sign/verify для выбранного ключа) не тронута. |
+| `crypto-engines/tabs/ssh.tab.tsx` | Форма создания роли → `EntityModal` (`TbKey`, teal) + `MetricCard`/`EmptyState`. `CAForm`/`SignForm` оставлены. |
+| `crypto-engines/tabs/totp.tab.tsx` | Форма создания ключа → `EntityModal` (`TbShieldLock`, grape) + `MetricCard`/`EmptyState`. Alert с секретом (копируется один раз) сохранён внутри модалки — закрытие модалки не происходит, пока пользователь не нажмёт «Готово». |
+| `dynamic-secrets/tabs/aws.tab.tsx` | Форма создания роли → `EntityModal` (`TbBrandAws`, orange) + `MetricCard`/`EmptyState`. `ConfigForm` (IAM-креды) оставлена как персистентная конфигурация интеграции. |
+| `dynamic-secrets/tabs/azure.tab.tsx` | То же самое, `TbBrandAzure`, blue. |
+| `dynamic-secrets/tabs/gcp.tab.tsx` | То же самое, `TbBrandGoogle`, red. |
+| `dynamic-secrets/tabs/database.tab.tsx` | Два независимых списка (`connections` и `roles`) — каждый получил свою `EntityModal`/`MetricCard`/`EmptyState` (`TbDatabase`, cyan для connections, grape для roles). |
+| `dynamic-secrets/tabs/leases.tab.tsx` | Read-only агрегированный список (lease создаётся косвенно через `generateCreds` на других вкладках) — модалка не нужна, добавлен только `EmptyState` (`TbClockHour4`) вместо голого текста. |
+| `cluster/cluster.page.tsx` | `JoinForm` добавляет узел в список серверов ниже — перенесена в `EntityModal` (`TbServer2`, grape) с кнопкой «+» вместо постоянно видимой карточки. |
+
+**Осознанно не тронуто** (паттерн не подходит по природе данных):
+- Конфиг-формы соединений (Postgres/AWS/Azure/GCP «Config») — это настройка всей интеграции целиком, не создание элемента списка; остаются постоянно видимыми карточками.
+- `auth-methods/tabs/kubernetes.tab.tsx` — у Tuck нет list-эндпоинта для Kubernetes-ролей, только точечный lookup по namespace+ServiceAccount; таблицу показывать не из чего.
+- `replication.page.tsx` — переключатель режима (primary/secondary/disabled) плюс read-only WAL-журнал; это не список создаваемых сущностей.
+
+**Проверка**: `npx tsc --noEmit` и `npm run build` чисто; пересобран Go-бинарник сервера с новым UI (embed), образ перезалит в тестовый кластер, визуально проверены через браузер PKI/TOTP/Database/AWS/Leases/Cluster — везде корректно работают модалки, счётчики и пустые состояния; вкладка Database дынамик-секретов корректно показала реальные `qa-postgres`/`qa-role`, оставшиеся от интеграционных тестов. `go build ./...` и `go test ./... -short` (бэкенд не менялся) — чисто.
+
+Закоммичено как `689648c` (`feat(web): extend modal+table entity pattern to remaining engine tabs`), не запушено.

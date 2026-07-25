@@ -6,17 +6,19 @@ import {
     Group,
     PasswordInput,
     Select,
+    SimpleGrid,
     Stack,
     Table,
     Text,
     TextInput
 } from '@mantine/core'
+import { useDisclosure } from '@mantine/hooks'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { TbBolt, TbPlus, TbTrash } from 'react-icons/tb'
+import { TbBolt, TbBrandAws, TbPlus, TbTrash } from 'react-icons/tb'
 
 import {
     AWSCreds,
@@ -28,6 +30,9 @@ import {
     putAWSRole
 } from '@shared/api/endpoints/dynamic-aws'
 import { CopyableField } from '@shared/ui/copyable-field/copyable-field'
+import { EmptyState } from '@shared/ui/empty-state/empty-state'
+import { EntityModal } from '@shared/ui/entity-modal/entity-modal'
+import { MetricCard } from '@shared/ui/metrics/metric-card/metric-card'
 import { TableCard } from '@shared/ui/table-card/table-card'
 
 function ConfigForm() {
@@ -114,45 +119,48 @@ function RoleForm({ onDone }: { onDone: () => void }) {
     })
 
     return (
-        <Card>
-            <Stack gap="sm">
-                <TextInput label={t('authMethods.roleName')} onChange={(e) => setName(e.currentTarget.value)} value={name} />
-                <Select
-                    data={['iam_user', 'assumed_role']}
-                    label={t('dynamicSecrets.credentialType')}
-                    onChange={(v) => setCredType((v as 'assumed_role' | 'iam_user') ?? 'iam_user')}
-                    value={credType}
-                />
-                <TextInput
-                    label={credType === 'iam_user' ? t('dynamicSecrets.aws.policyArnsLabel') : t('dynamicSecrets.aws.roleArnsLabel')}
-                    onChange={(e) => setArns(e.currentTarget.value)}
-                    value={arns}
-                />
-                <TextInput
-                    label={t('dynamicSecrets.defaultTtl')}
-                    onChange={(e) => setDefaultTtl(e.currentTarget.value)}
-                    placeholder={t('authMethods.ttlPlaceholder1h')}
-                    value={defaultTtl}
-                />
-                <Button
-                    disabled={!name}
-                    loading={mutation.isPending}
-                    onClick={() => mutation.mutate()}
-                >
-                    {t('authMethods.saveRole')}
-                </Button>
-            </Stack>
-        </Card>
+        <Stack gap="sm">
+            <TextInput
+                autoFocus
+                label={t('authMethods.roleName')}
+                onChange={(e) => setName(e.currentTarget.value)}
+                value={name}
+            />
+            <Select
+                data={['iam_user', 'assumed_role']}
+                label={t('dynamicSecrets.credentialType')}
+                onChange={(v) => setCredType((v as 'assumed_role' | 'iam_user') ?? 'iam_user')}
+                value={credType}
+            />
+            <TextInput
+                label={credType === 'iam_user' ? t('dynamicSecrets.aws.policyArnsLabel') : t('dynamicSecrets.aws.roleArnsLabel')}
+                onChange={(e) => setArns(e.currentTarget.value)}
+                value={arns}
+            />
+            <TextInput
+                label={t('dynamicSecrets.defaultTtl')}
+                onChange={(e) => setDefaultTtl(e.currentTarget.value)}
+                placeholder={t('authMethods.ttlPlaceholder1h')}
+                value={defaultTtl}
+            />
+            <Button
+                disabled={!name}
+                loading={mutation.isPending}
+                onClick={() => mutation.mutate()}
+            >
+                {t('authMethods.saveRole')}
+            </Button>
+        </Stack>
     )
 }
 
 export function AWSTab() {
     const { t } = useTranslation()
-    const [creatingRole, setCreatingRole] = useState(false)
+    const [creatingRole, { open: openCreatingRole, close: closeCreatingRole }] = useDisclosure(false)
     const [creds, setCreds] = useState<AWSCreds | null>(null)
     const queryClient = useQueryClient()
 
-    const { data: roles } = useQuery({ queryKey: ['aws', 'roles'], queryFn: listAWSRoles })
+    const { data: roles, isLoading } = useQuery({ queryKey: ['aws', 'roles'], queryFn: listAWSRoles })
 
     const deleteRoleMutation = useMutation({
         mutationFn: deleteAWSRole,
@@ -165,25 +173,36 @@ export function AWSTab() {
     })
 
     return (
-        <Stack gap="lg">
+        <Stack gap="md">
             <ConfigForm />
 
             <Group justify="space-between">
                 <Text fw={700} size="sm">
                     {t('authMethods.rolesTitle')}
                 </Text>
-                <Button leftSection={<TbPlus size={16} />} onClick={() => setCreatingRole((c) => !c)} variant="light">
+                <Button leftSection={<TbPlus size={16} />} onClick={openCreatingRole}>
                     {t('authMethods.newRole')}
                 </Button>
             </Group>
-            {creatingRole && (
+
+            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                <MetricCard
+                    IconComponent={TbBrandAws}
+                    iconColor="orange"
+                    isLoading={isLoading}
+                    title={t('common.total')}
+                    value={roles?.length ?? 0}
+                />
+            </SimpleGrid>
+
+            <EntityModal color="orange" icon={TbBrandAws} onClose={closeCreatingRole} opened={creatingRole} title={t('authMethods.newRole')}>
                 <RoleForm
                     onDone={() => {
-                        setCreatingRole(false)
+                        closeCreatingRole()
                         queryClient.invalidateQueries({ queryKey: ['aws', 'roles'] })
                     }}
                 />
-            )}
+            </EntityModal>
 
             {creds && (
                 <Alert color="yellow" onClose={() => setCreds(null)} title={t('dynamicSecrets.generatedCredentials')} variant="light" withCloseButton>
@@ -205,12 +224,10 @@ export function AWSTab() {
                     </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                    {(roles?.length ?? 0) === 0 && (
+                    {!isLoading && (roles?.length ?? 0) === 0 && (
                         <Table.Tr>
                             <Table.Td colSpan={2}>
-                                <Text c="dimmed" size="sm">
-                                    {t('authMethods.noRoles')}
-                                </Text>
+                                <EmptyState icon={TbBrandAws} label={t('authMethods.noRoles')} />
                             </Table.Td>
                         </Table.Tr>
                     )}

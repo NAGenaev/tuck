@@ -3,9 +3,10 @@ import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { TbRefresh, TbTrash } from 'react-icons/tb'
+import { TbClockHour4, TbRefresh, TbTrash } from 'react-icons/tb'
 
 import { listLeases, renewLease, revokeLease } from '@shared/api/endpoints/leases'
+import { EmptyState } from '@shared/ui/empty-state/empty-state'
 import { TableCard } from '@shared/ui/table-card/table-card'
 
 export function LeasesTab() {
@@ -55,9 +56,7 @@ export function LeasesTab() {
                     {!isLoading && (leases?.length ?? 0) === 0 && (
                         <Table.Tr>
                             <Table.Td colSpan={5}>
-                                <Text c="dimmed" size="sm">
-                                    {t('dynamicSecrets.leases.noActiveLeases')}
-                                </Text>
+                                <EmptyState icon={TbClockHour4} label={t('dynamicSecrets.leases.noActiveLeases')} />
                             </Table.Td>
                         </Table.Tr>
                     )}

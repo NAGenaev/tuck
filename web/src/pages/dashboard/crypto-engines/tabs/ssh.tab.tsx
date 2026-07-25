@@ -1,4 +1,5 @@
-import { ActionIcon, Alert, Button, Card, Group, Select, Stack, Table, Text, TextInput, Textarea } from '@mantine/core'
+import { ActionIcon, Alert, Button, Card, Group, Select, SimpleGrid, Stack, Table, Text, TextInput, Textarea } from '@mantine/core'
+import { useDisclosure } from '@mantine/hooks'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -15,6 +16,9 @@ import {
     SignedCert
 } from '@shared/api/endpoints/ssh'
 import { CopyableField } from '@shared/ui/copyable-field/copyable-field'
+import { EmptyState } from '@shared/ui/empty-state/empty-state'
+import { EntityModal } from '@shared/ui/entity-modal/entity-modal'
+import { MetricCard } from '@shared/ui/metrics/metric-card/metric-card'
 import { TableCard } from '@shared/ui/table-card/table-card'
 
 function CAForm() {
@@ -70,39 +74,42 @@ function RoleForm({ onDone }: { onDone: () => void }) {
     })
 
     return (
-        <Card>
-            <Stack gap="sm">
-                <TextInput label={t('authMethods.roleName')} onChange={(e) => setName(e.currentTarget.value)} value={name} />
-                <TextInput
-                    label={t('cryptoEngines.ssh.allowedUsers')}
-                    onChange={(e) => setAllowedUsers(e.currentTarget.value)}
-                    placeholder={t('cryptoEngines.ssh.allowedUsersPlaceholder')}
-                    value={allowedUsers}
+        <Stack gap="sm">
+            <TextInput
+                autoFocus
+                label={t('authMethods.roleName')}
+                onChange={(e) => setName(e.currentTarget.value)}
+                value={name}
+            />
+            <TextInput
+                label={t('cryptoEngines.ssh.allowedUsers')}
+                onChange={(e) => setAllowedUsers(e.currentTarget.value)}
+                placeholder={t('cryptoEngines.ssh.allowedUsersPlaceholder')}
+                value={allowedUsers}
+            />
+            <Group grow>
+                <Select
+                    data={['user', 'host']}
+                    label={t('cryptoEngines.ssh.certType')}
+                    onChange={(v) => setCertType((v as 'host' | 'user') ?? 'user')}
+                    value={certType}
                 />
-                <Group grow>
-                    <Select
-                        data={['user', 'host']}
-                        label={t('cryptoEngines.ssh.certType')}
-                        onChange={(v) => setCertType((v as 'host' | 'user') ?? 'user')}
-                        value={certType}
-                    />
-                    <TextInput
-                        label={t('cryptoEngines.pki.maxTtl')}
-                        onChange={(e) => setMaxTtl(e.currentTarget.value)}
-                        placeholder={t('cryptoEngines.pki.maxTtlPlaceholder')}
-                        value={maxTtl}
-                    />
-                </Group>
-                <Button
-                    disabled={!name}
-                    fullWidth
-                    loading={mutation.isPending}
-                    onClick={() => mutation.mutate()}
-                >
-                    {t('authMethods.saveRole')}
-                </Button>
-            </Stack>
-        </Card>
+                <TextInput
+                    label={t('cryptoEngines.pki.maxTtl')}
+                    onChange={(e) => setMaxTtl(e.currentTarget.value)}
+                    placeholder={t('cryptoEngines.pki.maxTtlPlaceholder')}
+                    value={maxTtl}
+                />
+            </Group>
+            <Button
+                disabled={!name}
+                fullWidth
+                loading={mutation.isPending}
+                onClick={() => mutation.mutate()}
+            >
+                {t('authMethods.saveRole')}
+            </Button>
+        </Stack>
     )
 }
 
@@ -143,11 +150,11 @@ function SignForm({ role }: { role: string }) {
 
 export function SSHTab() {
     const { t } = useTranslation()
-    const [creatingRole, setCreatingRole] = useState(false)
+    const [creatingRole, { open: openCreatingRole, close: closeCreatingRole }] = useDisclosure(false)
     const [signingRole, setSigningRole] = useState<null | string>(null)
     const queryClient = useQueryClient()
 
-    const { data: roles } = useQuery({ queryKey: ['ssh', 'roles'], queryFn: listSSHRoles })
+    const { data: roles, isLoading } = useQuery({ queryKey: ['ssh', 'roles'], queryFn: listSSHRoles })
 
     const deleteMutation = useMutation({
         mutationFn: deleteSSHRole,
@@ -155,25 +162,36 @@ export function SSHTab() {
     })
 
     return (
-        <Stack gap="lg">
+        <Stack gap="md">
             <CAForm />
 
             <Group justify="space-between">
                 <Text fw={700} size="sm">
                     {t('authMethods.rolesTitle')}
                 </Text>
-                <Button leftSection={<TbPlus size={16} />} onClick={() => setCreatingRole((c) => !c)} variant="light">
+                <Button leftSection={<TbPlus size={16} />} onClick={openCreatingRole}>
                     {t('authMethods.newRole')}
                 </Button>
             </Group>
-            {creatingRole && (
+
+            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                <MetricCard
+                    IconComponent={TbKey}
+                    iconColor="teal"
+                    isLoading={isLoading}
+                    title={t('common.total')}
+                    value={roles?.length ?? 0}
+                />
+            </SimpleGrid>
+
+            <EntityModal color="teal" icon={TbKey} onClose={closeCreatingRole} opened={creatingRole} title={t('authMethods.newRole')}>
                 <RoleForm
                     onDone={() => {
-                        setCreatingRole(false)
+                        closeCreatingRole()
                         queryClient.invalidateQueries({ queryKey: ['ssh', 'roles'] })
                     }}
                 />
-            )}
+            </EntityModal>
 
             <TableCard>
                 <Table.Thead>
@@ -183,12 +201,10 @@ export function SSHTab() {
                     </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                    {(roles?.length ?? 0) === 0 && (
+                    {!isLoading && (roles?.length ?? 0) === 0 && (
                         <Table.Tr>
                             <Table.Td colSpan={2}>
-                                <Text c="dimmed" size="sm">
-                                    {t('authMethods.noRoles')}
-                                </Text>
+                                <EmptyState icon={TbKey} label={t('authMethods.noRoles')} />
                             </Table.Td>
                         </Table.Tr>
                     )}

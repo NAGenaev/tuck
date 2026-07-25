@@ -1,13 +1,15 @@
-import { ActionIcon, Badge, Button, Card, Group, SimpleGrid, Stack, Table, Text, TextInput } from '@mantine/core'
+import { ActionIcon, Badge, Button, Group, SimpleGrid, Stack, Table, TextInput } from '@mantine/core'
+import { useDisclosure } from '@mantine/hooks'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { TbCrown, TbServer2, TbTrash } from 'react-icons/tb'
+import { TbCrown, TbPlus, TbServer2, TbTrash } from 'react-icons/tb'
 
 import { getClusterStatus, joinCluster, removeClusterNode } from '@shared/api/endpoints/cluster'
 import { EmptyState } from '@shared/ui/empty-state/empty-state'
+import { EntityModal } from '@shared/ui/entity-modal/entity-modal'
 import { MetricCard } from '@shared/ui/metrics/metric-card/metric-card'
 import { Page } from '@shared/ui/page/page'
 import { PageHeader } from '@shared/ui/page-header/page-header'
@@ -28,36 +30,25 @@ function JoinForm({ onDone }: { onDone: () => void }) {
     })
 
     return (
-        <Card>
-            <Stack gap="sm">
-                <Text fw={600} size="sm">
-                    {t('cluster.joinNode')}
-                </Text>
-                <Group grow>
-                    <TextInput label={t('cluster.nodeId')} onChange={(e) => setNodeId(e.currentTarget.value)} value={nodeId} />
-                    <TextInput
-                        label={t('cluster.raftAddress')}
-                        onChange={(e) => setRaftAddr(e.currentTarget.value)}
-                        placeholder={t('cluster.raftAddressPlaceholder')}
-                        value={raftAddr}
-                    />
-                </Group>
-                <Button
-                    disabled={!nodeId || !raftAddr}
-                    loading={mutation.isPending}
-                    onClick={() => mutation.mutate()}
-                    variant="light"
-                >
-                    {t('cluster.join')}
-                </Button>
-            </Stack>
-        </Card>
+        <Stack gap="sm">
+            <TextInput autoFocus label={t('cluster.nodeId')} onChange={(e) => setNodeId(e.currentTarget.value)} value={nodeId} />
+            <TextInput
+                label={t('cluster.raftAddress')}
+                onChange={(e) => setRaftAddr(e.currentTarget.value)}
+                placeholder={t('cluster.raftAddressPlaceholder')}
+                value={raftAddr}
+            />
+            <Button disabled={!nodeId || !raftAddr} loading={mutation.isPending} onClick={() => mutation.mutate()}>
+                {t('cluster.join')}
+            </Button>
+        </Stack>
     )
 }
 
 export function ClusterPage() {
     const { t } = useTranslation()
     const queryClient = useQueryClient()
+    const [joining, { open: openJoining, close: closeJoining }] = useDisclosure(false)
 
     const { data: status, isLoading } = useQuery({
         queryKey: ['cluster', 'status'],
@@ -87,6 +78,12 @@ export function ClusterPage() {
             <Stack gap="lg">
                 <PageHeader color="grape" icon={TbServer2} title={t('pages.cluster')} />
 
+                <Group justify="flex-end">
+                    <Button leftSection={<TbPlus size={16} />} onClick={openJoining}>
+                        {t('cluster.joinNode')}
+                    </Button>
+                </Group>
+
                 <SimpleGrid cols={{ base: 1, sm: 3 }}>
                     <MetricCard
                         IconComponent={TbCrown}
@@ -111,7 +108,14 @@ export function ClusterPage() {
                     />
                 </SimpleGrid>
 
-                <JoinForm onDone={() => queryClient.invalidateQueries({ queryKey: ['cluster', 'status'] })} />
+                <EntityModal color="grape" icon={TbServer2} onClose={closeJoining} opened={joining} title={t('cluster.joinNode')}>
+                    <JoinForm
+                        onDone={() => {
+                            closeJoining()
+                            queryClient.invalidateQueries({ queryKey: ['cluster', 'status'] })
+                        }}
+                    />
+                </EntityModal>
 
                 <TableCard>
                     <Table.Thead>

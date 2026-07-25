@@ -1,10 +1,11 @@
-import { ActionIcon, Button, Card, Group, Select, Stack, Table, Text, TextInput, Textarea } from '@mantine/core'
+import { ActionIcon, Button, Card, Group, Select, SimpleGrid, Stack, Table, Text, TextInput, Textarea } from '@mantine/core'
+import { useDisclosure } from '@mantine/hooks'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { TbPlus, TbRefresh, TbTrash } from 'react-icons/tb'
+import { TbLockSquare, TbPlus, TbRefresh, TbTrash } from 'react-icons/tb'
 
 import {
     createTransitKey,
@@ -19,6 +20,9 @@ import {
 } from '@shared/api/endpoints/transit'
 import { fromBase64Url, toBase64Url } from '@shared/utils/base64url'
 import { CopyableField } from '@shared/ui/copyable-field/copyable-field'
+import { EmptyState } from '@shared/ui/empty-state/empty-state'
+import { EntityModal } from '@shared/ui/entity-modal/entity-modal'
+import { MetricCard } from '@shared/ui/metrics/metric-card/metric-card'
 import { TableCard } from '@shared/ui/table-card/table-card'
 
 const KEY_TYPES: TransitKeyType[] = ['aes256-gcm96', 'ecdsa-p256', 'ed25519', 'rsa-2048', 'rsa-4096']
@@ -42,20 +46,23 @@ function CreateKeyForm({ onDone }: { onDone: () => void }) {
     })
 
     return (
-        <Card>
-            <Stack gap="sm">
-                <TextInput label={t('cryptoEngines.keyName')} onChange={(e) => setName(e.currentTarget.value)} value={name} />
-                <Select
-                    data={KEY_TYPES}
-                    label={t('common.type')}
-                    onChange={(v) => setType((v as TransitKeyType) ?? 'aes256-gcm96')}
-                    value={type}
-                />
-                <Button disabled={!name} loading={mutation.isPending} onClick={() => mutation.mutate()}>
-                    {t('cryptoEngines.createKey')}
-                </Button>
-            </Stack>
-        </Card>
+        <Stack gap="sm">
+            <TextInput
+                autoFocus
+                label={t('cryptoEngines.keyName')}
+                onChange={(e) => setName(e.currentTarget.value)}
+                value={name}
+            />
+            <Select
+                data={KEY_TYPES}
+                label={t('common.type')}
+                onChange={(v) => setType((v as TransitKeyType) ?? 'aes256-gcm96')}
+                value={type}
+            />
+            <Button disabled={!name} loading={mutation.isPending} onClick={() => mutation.mutate()}>
+                {t('cryptoEngines.createKey')}
+            </Button>
+        </Stack>
     )
 }
 
@@ -140,11 +147,11 @@ function KeyOperations({ name }: { name: string }) {
 
 export function TransitTab() {
     const { t } = useTranslation()
-    const [creating, setCreating] = useState(false)
+    const [creating, { open: openCreating, close: closeCreating }] = useDisclosure(false)
     const [selected, setSelected] = useState<null | string>(null)
     const queryClient = useQueryClient()
 
-    const { data: keys } = useQuery({ queryKey: ['transit', 'keys'], queryFn: listTransitKeys })
+    const { data: keys, isLoading } = useQuery({ queryKey: ['transit', 'keys'], queryFn: listTransitKeys })
 
     const deleteMutation = useMutation({
         mutationFn: deleteTransitKey,
@@ -161,20 +168,31 @@ export function TransitTab() {
     })
 
     return (
-        <Stack gap="lg">
+        <Stack gap="md">
             <Group justify="flex-end">
-                <Button leftSection={<TbPlus size={16} />} onClick={() => setCreating((c) => !c)} variant="light">
+                <Button leftSection={<TbPlus size={16} />} onClick={openCreating}>
                     {t('cryptoEngines.newKey')}
                 </Button>
             </Group>
-            {creating && (
+
+            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                <MetricCard
+                    IconComponent={TbLockSquare}
+                    iconColor="indigo"
+                    isLoading={isLoading}
+                    title={t('common.total')}
+                    value={keys?.length ?? 0}
+                />
+            </SimpleGrid>
+
+            <EntityModal color="indigo" icon={TbLockSquare} onClose={closeCreating} opened={creating} title={t('cryptoEngines.newKey')}>
                 <CreateKeyForm
                     onDone={() => {
-                        setCreating(false)
+                        closeCreating()
                         queryClient.invalidateQueries({ queryKey: ['transit', 'keys'] })
                     }}
                 />
-            )}
+            </EntityModal>
 
             {selected && <KeyOperations name={selected} />}
 
@@ -186,12 +204,10 @@ export function TransitTab() {
                     </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                    {(keys?.length ?? 0) === 0 && (
+                    {!isLoading && (keys?.length ?? 0) === 0 && (
                         <Table.Tr>
                             <Table.Td colSpan={2}>
-                                <Text c="dimmed" size="sm">
-                                    {t('cryptoEngines.noKeys')}
-                                </Text>
+                                <EmptyState icon={TbLockSquare} label={t('cryptoEngines.noKeys')} />
                             </Table.Td>
                         </Table.Tr>
                     )}

@@ -5,17 +5,19 @@ import {
     Card,
     Group,
     PasswordInput,
+    SimpleGrid,
     Stack,
     Table,
     Text,
     TextInput
 } from '@mantine/core'
+import { useDisclosure } from '@mantine/hooks'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { TbBolt, TbPlus, TbTrash } from 'react-icons/tb'
+import { TbBolt, TbBrandAzure, TbPlus, TbTrash } from 'react-icons/tb'
 
 import {
     AzureCreds,
@@ -26,6 +28,9 @@ import {
     putAzureRole
 } from '@shared/api/endpoints/dynamic-azure'
 import { CopyableField } from '@shared/ui/copyable-field/copyable-field'
+import { EmptyState } from '@shared/ui/empty-state/empty-state'
+import { EntityModal } from '@shared/ui/entity-modal/entity-modal'
+import { MetricCard } from '@shared/ui/metrics/metric-card/metric-card'
 import { TableCard } from '@shared/ui/table-card/table-card'
 
 function ConfigForm() {
@@ -96,40 +101,43 @@ function RoleForm({ onDone }: { onDone: () => void }) {
     })
 
     return (
-        <Card>
-            <Stack gap="sm">
-                <TextInput label={t('authMethods.roleName')} onChange={(e) => setName(e.currentTarget.value)} value={name} />
-                <TextInput
-                    label={t('dynamicSecrets.azure.appObjectId')}
-                    onChange={(e) => setAppObjectId(e.currentTarget.value)}
-                    value={appObjectId}
-                />
-                <TextInput label={t('dynamicSecrets.azure.appId')} onChange={(e) => setAppId(e.currentTarget.value)} value={appId} />
-                <TextInput
-                    label={t('dynamicSecrets.defaultTtl')}
-                    onChange={(e) => setDefaultTtl(e.currentTarget.value)}
-                    placeholder={t('authMethods.ttlPlaceholder1h')}
-                    value={defaultTtl}
-                />
-                <Button
-                    disabled={!name || !appObjectId || !appId}
-                    loading={mutation.isPending}
-                    onClick={() => mutation.mutate()}
-                >
-                    {t('authMethods.saveRole')}
-                </Button>
-            </Stack>
-        </Card>
+        <Stack gap="sm">
+            <TextInput
+                autoFocus
+                label={t('authMethods.roleName')}
+                onChange={(e) => setName(e.currentTarget.value)}
+                value={name}
+            />
+            <TextInput
+                label={t('dynamicSecrets.azure.appObjectId')}
+                onChange={(e) => setAppObjectId(e.currentTarget.value)}
+                value={appObjectId}
+            />
+            <TextInput label={t('dynamicSecrets.azure.appId')} onChange={(e) => setAppId(e.currentTarget.value)} value={appId} />
+            <TextInput
+                label={t('dynamicSecrets.defaultTtl')}
+                onChange={(e) => setDefaultTtl(e.currentTarget.value)}
+                placeholder={t('authMethods.ttlPlaceholder1h')}
+                value={defaultTtl}
+            />
+            <Button
+                disabled={!name || !appObjectId || !appId}
+                loading={mutation.isPending}
+                onClick={() => mutation.mutate()}
+            >
+                {t('authMethods.saveRole')}
+            </Button>
+        </Stack>
     )
 }
 
 export function AzureTab() {
     const { t } = useTranslation()
-    const [creatingRole, setCreatingRole] = useState(false)
+    const [creatingRole, { open: openCreatingRole, close: closeCreatingRole }] = useDisclosure(false)
     const [creds, setCreds] = useState<AzureCreds | null>(null)
     const queryClient = useQueryClient()
 
-    const { data: roles } = useQuery({ queryKey: ['azure', 'roles'], queryFn: listAzureRoles })
+    const { data: roles, isLoading } = useQuery({ queryKey: ['azure', 'roles'], queryFn: listAzureRoles })
 
     const deleteRoleMutation = useMutation({
         mutationFn: deleteAzureRole,
@@ -142,25 +150,36 @@ export function AzureTab() {
     })
 
     return (
-        <Stack gap="lg">
+        <Stack gap="md">
             <ConfigForm />
 
             <Group justify="space-between">
                 <Text fw={700} size="sm">
                     {t('authMethods.rolesTitle')}
                 </Text>
-                <Button leftSection={<TbPlus size={16} />} onClick={() => setCreatingRole((c) => !c)} variant="light">
+                <Button leftSection={<TbPlus size={16} />} onClick={openCreatingRole}>
                     {t('authMethods.newRole')}
                 </Button>
             </Group>
-            {creatingRole && (
+
+            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                <MetricCard
+                    IconComponent={TbBrandAzure}
+                    iconColor="blue"
+                    isLoading={isLoading}
+                    title={t('common.total')}
+                    value={roles?.length ?? 0}
+                />
+            </SimpleGrid>
+
+            <EntityModal color="blue" icon={TbBrandAzure} onClose={closeCreatingRole} opened={creatingRole} title={t('authMethods.newRole')}>
                 <RoleForm
                     onDone={() => {
-                        setCreatingRole(false)
+                        closeCreatingRole()
                         queryClient.invalidateQueries({ queryKey: ['azure', 'roles'] })
                     }}
                 />
-            )}
+            </EntityModal>
 
             {creds && (
                 <Alert color="yellow" onClose={() => setCreds(null)} title={t('dynamicSecrets.generatedCredentials')} variant="light" withCloseButton>
@@ -179,12 +198,10 @@ export function AzureTab() {
                     </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                    {(roles?.length ?? 0) === 0 && (
+                    {!isLoading && (roles?.length ?? 0) === 0 && (
                         <Table.Tr>
                             <Table.Td colSpan={2}>
-                                <Text c="dimmed" size="sm">
-                                    {t('authMethods.noRoles')}
-                                </Text>
+                                <EmptyState icon={TbBrandAzure} label={t('authMethods.noRoles')} />
                             </Table.Td>
                         </Table.Tr>
                     )}

@@ -3,6 +3,8 @@
 /tuck.exe
 /tuck-operator
 /tuck-operator.exe
+/tuckcsi
+/tuckcsi.exe
 *.exe
 
 # Local dev data — NEVER commit secrets or root keys

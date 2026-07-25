@@ -1,13 +1,17 @@
-import { ActionIcon, Button, Card, Group, Stack, Table, Text, TextInput } from '@mantine/core'
+import { ActionIcon, Button, Group, SimpleGrid, Stack, Table, Text, TextInput } from '@mantine/core'
+import { useDisclosure } from '@mantine/hooks'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { TbPlus, TbTrash } from 'react-icons/tb'
+import { TbBrandGithub, TbPlus, TbTrash } from 'react-icons/tb'
 
 import { deleteGitHubRole, listGitHubRoles, putGitHubRole } from '@shared/api/endpoints/auth-github'
 import { humanToNs } from '@shared/utils/duration'
+import { EmptyState } from '@shared/ui/empty-state/empty-state'
+import { EntityModal } from '@shared/ui/entity-modal/entity-modal'
+import { MetricCard } from '@shared/ui/metrics/metric-card/metric-card'
 import { TableCard } from '@shared/ui/table-card/table-card'
 
 function RoleForm({ onDone }: { onDone: () => void }) {
@@ -43,58 +47,57 @@ function RoleForm({ onDone }: { onDone: () => void }) {
     })
 
     return (
-        <Card>
-            <Stack gap="sm">
-                <Text c="dimmed" size="xs">
-                    {t('authMethods.github.bindNote')}
-                </Text>
-                <TextInput label={t('authMethods.roleName')} onChange={(e) => setName(e.currentTarget.value)} value={name} />
-                <Group grow>
-                    <TextInput
-                        label={t('authMethods.github.repository')}
-                        onChange={(e) => setRepository(e.currentTarget.value)}
-                        placeholder={t('authMethods.github.repositoryPlaceholder')}
-                        value={repository}
-                    />
-                    <TextInput
-                        label={t('authMethods.github.repositoryOwner')}
-                        onChange={(e) => setRepoOwner(e.currentTarget.value)}
-                        value={repoOwner}
-                    />
-                    <TextInput
-                        label={t('authMethods.github.ref')}
-                        onChange={(e) => setRef(e.currentTarget.value)}
-                        placeholder={t('authMethods.github.refPlaceholder')}
-                        value={ref}
-                    />
-                </Group>
+        <Stack gap="sm">
+            <Text c="dimmed" size="xs">
+                {t('authMethods.github.bindNote')}
+            </Text>
+            <TextInput autoFocus label={t('authMethods.roleName')} onChange={(e) => setName(e.currentTarget.value)} value={name} />
+            <Group grow>
                 <TextInput
-                    label={t('tokens.policiesLabel')}
-                    onChange={(e) => setPolicies(e.currentTarget.value)}
-                    value={policies}
+                    label={t('authMethods.github.repository')}
+                    onChange={(e) => setRepository(e.currentTarget.value)}
+                    placeholder={t('authMethods.github.repositoryPlaceholder')}
+                    value={repository}
                 />
                 <TextInput
-                    label={t('tokens.ttl')}
-                    onChange={(e) => setTtl(e.currentTarget.value)}
-                    placeholder={t('authMethods.ttlPlaceholder1h')}
-                    value={ttl}
+                    label={t('authMethods.github.repositoryOwner')}
+                    onChange={(e) => setRepoOwner(e.currentTarget.value)}
+                    value={repoOwner}
                 />
-                <Button
-                    disabled={!name}
-                    fullWidth
-                    loading={mutation.isPending}
-                    onClick={() => mutation.mutate()}
-                >
-                    {t('authMethods.saveRole')}
-                </Button>
-            </Stack>
-        </Card>
+                <TextInput
+                    label={t('authMethods.github.ref')}
+                    onChange={(e) => setRef(e.currentTarget.value)}
+                    placeholder={t('authMethods.github.refPlaceholder')}
+                    value={ref}
+                />
+            </Group>
+            <TextInput
+                label={t('tokens.policiesLabel')}
+                onChange={(e) => setPolicies(e.currentTarget.value)}
+                value={policies}
+            />
+            <TextInput
+                label={t('tokens.ttl')}
+                onChange={(e) => setTtl(e.currentTarget.value)}
+                placeholder={t('authMethods.ttlPlaceholder1h')}
+                value={ttl}
+            />
+            <Button
+                disabled={!name}
+                fullWidth
+                leftSection={<TbPlus size={16} />}
+                loading={mutation.isPending}
+                onClick={() => mutation.mutate()}
+            >
+                {t('authMethods.saveRole')}
+            </Button>
+        </Stack>
     )
 }
 
 export function GitHubTab() {
     const { t } = useTranslation()
-    const [creating, setCreating] = useState(false)
+    const [creating, { open: openCreating, close: closeCreating }] = useDisclosure(false)
     const queryClient = useQueryClient()
 
     const { data: roles, isLoading } = useQuery({ queryKey: ['github', 'roles'], queryFn: listGitHubRoles })
@@ -109,23 +112,30 @@ export function GitHubTab() {
 
     return (
         <Stack gap="md">
-            <Group justify="space-between">
-                <Text fw={700} size="sm">
-                    {t('authMethods.rolesTitle')}
-                </Text>
-                <Button leftSection={<TbPlus size={16} />} onClick={() => setCreating((c) => !c)} variant="light">
+            <Group justify="flex-end">
+                <Button leftSection={<TbPlus size={16} />} onClick={openCreating}>
                     {t('authMethods.newRole')}
                 </Button>
             </Group>
 
-            {creating && (
+            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                <MetricCard
+                    IconComponent={TbBrandGithub}
+                    iconColor="dark"
+                    isLoading={isLoading}
+                    title={t('common.total')}
+                    value={roles?.length ?? 0}
+                />
+            </SimpleGrid>
+
+            <EntityModal color="dark" icon={TbBrandGithub} onClose={closeCreating} opened={creating} title={t('authMethods.newRole')}>
                 <RoleForm
                     onDone={() => {
-                        setCreating(false)
+                        closeCreating()
                         queryClient.invalidateQueries({ queryKey: ['github', 'roles'] })
                     }}
                 />
-            )}
+            </EntityModal>
 
             <TableCard>
                 <Table.Thead>
@@ -138,9 +148,7 @@ export function GitHubTab() {
                     {!isLoading && (roles?.length ?? 0) === 0 && (
                         <Table.Tr>
                             <Table.Td colSpan={2}>
-                                <Text c="dimmed" size="sm">
-                                    {t('authMethods.noRoles')}
-                                </Text>
+                                <EmptyState icon={TbBrandGithub} label={t('authMethods.noRoles')} />
                             </Table.Td>
                         </Table.Tr>
                     )}

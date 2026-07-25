@@ -1,10 +1,10 @@
-import { ActionIcon, Button, Card, Group, Stack, Text, TextInput } from '@mantine/core'
+import { ActionIcon, Button, Card, Group, Stack, Text, TextInput, ThemeIcon } from '@mantine/core'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { TbTrash } from 'react-icons/tb'
+import { TbCube, TbTrash } from 'react-icons/tb'
 
 import { deleteK8sRole, getK8sRole, K8sRole, putK8sRole } from '@shared/api/endpoints/auth-k8s'
 
@@ -60,9 +60,14 @@ export function KubernetesTab() {
         <Stack gap="md">
             <Card>
                 <Stack gap="sm">
-                    <Text fw={600} size="sm">
-                        {t('authMethods.kubernetes.lookupOrCreate')}
-                    </Text>
+                    <Group gap="sm">
+                        <ThemeIcon color="blue" radius="md" size={32} variant="light">
+                            <TbCube size={18} />
+                        </ThemeIcon>
+                        <Text fw={600} size="sm">
+                            {t('authMethods.kubernetes.lookupOrCreate')}
+                        </Text>
+                    </Group>
                     <Text c="dimmed" size="xs">
                         {t('authMethods.kubernetes.noListEndpointNote')}
                     </Text>
@@ -93,9 +98,14 @@ export function KubernetesTab() {
                 <Card>
                     <Stack gap="sm">
                         <Group justify="space-between">
-                            <Text fw={600} size="sm">
-                                {found ? t('authMethods.kubernetes.editRole') : t('authMethods.kubernetes.roleNotFoundCreate')}
-                            </Text>
+                            <Group gap="sm">
+                                <ThemeIcon color="blue" radius="md" size={32} variant="light">
+                                    <TbCube size={18} />
+                                </ThemeIcon>
+                                <Text fw={600} size="sm">
+                                    {found ? t('authMethods.kubernetes.editRole') : t('authMethods.kubernetes.roleNotFoundCreate')}
+                                </Text>
+                            </Group>
                             {found && (
                                 <ActionIcon
                                     color="red"

@@ -4,17 +4,19 @@ import {
     Card,
     Group,
     PasswordInput,
+    SimpleGrid,
     Stack,
     Table,
     Text,
     TextInput
 } from '@mantine/core'
+import { useDisclosure } from '@mantine/hooks'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { TbPlus, TbTrash } from 'react-icons/tb'
+import { TbAddressBook, TbPlus, TbTrash } from 'react-icons/tb'
 
 import {
     deleteLDAPRole,
@@ -23,6 +25,9 @@ import {
     putLDAPConfig,
     putLDAPRole
 } from '@shared/api/endpoints/auth-ldap'
+import { EmptyState } from '@shared/ui/empty-state/empty-state'
+import { EntityModal } from '@shared/ui/entity-modal/entity-modal'
+import { MetricCard } from '@shared/ui/metrics/metric-card/metric-card'
 import { TableCard } from '@shared/ui/table-card/table-card'
 
 function ConfigForm() {
@@ -142,45 +147,45 @@ function RoleForm({ onDone }: { onDone: () => void }) {
     })
 
     return (
-        <Card>
-            <Stack gap="sm">
-                <TextInput
-                    label={t('authMethods.roleName')}
-                    onChange={(e) => setName(e.currentTarget.value)}
-                    value={name}
-                />
-                <TextInput
-                    label={t('authMethods.ldap.groupsLabel')}
-                    onChange={(e) => setGroups(e.currentTarget.value)}
-                    value={groups}
-                />
-                <TextInput
-                    label={t('tokens.policiesLabel')}
-                    onChange={(e) => setPolicies(e.currentTarget.value)}
-                    value={policies}
-                />
-                <TextInput
-                    label={t('tokens.ttl')}
-                    onChange={(e) => setTtl(e.currentTarget.value)}
-                    placeholder={t('authMethods.ttlPlaceholder1h')}
-                    value={ttl}
-                />
-                <Button
-                    disabled={!name}
-                    fullWidth
-                    loading={mutation.isPending}
-                    onClick={() => mutation.mutate()}
-                >
-                    {t('authMethods.saveRole')}
-                </Button>
-            </Stack>
-        </Card>
+        <Stack gap="sm">
+            <TextInput
+                autoFocus
+                label={t('authMethods.roleName')}
+                onChange={(e) => setName(e.currentTarget.value)}
+                value={name}
+            />
+            <TextInput
+                label={t('authMethods.ldap.groupsLabel')}
+                onChange={(e) => setGroups(e.currentTarget.value)}
+                value={groups}
+            />
+            <TextInput
+                label={t('tokens.policiesLabel')}
+                onChange={(e) => setPolicies(e.currentTarget.value)}
+                value={policies}
+            />
+            <TextInput
+                label={t('tokens.ttl')}
+                onChange={(e) => setTtl(e.currentTarget.value)}
+                placeholder={t('authMethods.ttlPlaceholder1h')}
+                value={ttl}
+            />
+            <Button
+                disabled={!name}
+                fullWidth
+                leftSection={<TbPlus size={16} />}
+                loading={mutation.isPending}
+                onClick={() => mutation.mutate()}
+            >
+                {t('authMethods.saveRole')}
+            </Button>
+        </Stack>
     )
 }
 
 export function LDAPTab() {
     const { t } = useTranslation()
-    const [creating, setCreating] = useState(false)
+    const [creating, { open: openCreating, close: closeCreating }] = useDisclosure(false)
     const queryClient = useQueryClient()
 
     const { data: roles, isLoading } = useQuery({ queryKey: ['ldap', 'roles'], queryFn: listLDAPRoles })
@@ -197,23 +202,33 @@ export function LDAPTab() {
         <Stack gap="md">
             <ConfigForm />
 
+            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                <MetricCard
+                    IconComponent={TbAddressBook}
+                    iconColor="indigo"
+                    isLoading={isLoading}
+                    title={t('common.total')}
+                    value={roles?.length ?? 0}
+                />
+            </SimpleGrid>
+
             <Group justify="space-between">
                 <Text fw={700} size="sm">
                     {t('authMethods.rolesTitle')}
                 </Text>
-                <Button leftSection={<TbPlus size={16} />} onClick={() => setCreating((c) => !c)} variant="light">
+                <Button leftSection={<TbPlus size={16} />} onClick={openCreating}>
                     {t('authMethods.newRole')}
                 </Button>
             </Group>
 
-            {creating && (
+            <EntityModal color="indigo" icon={TbAddressBook} onClose={closeCreating} opened={creating} title={t('authMethods.newRole')}>
                 <RoleForm
                     onDone={() => {
-                        setCreating(false)
+                        closeCreating()
                         queryClient.invalidateQueries({ queryKey: ['ldap', 'roles'] })
                     }}
                 />
-            )}
+            </EntityModal>
 
             <TableCard>
                 <Table.Thead>
@@ -226,9 +241,7 @@ export function LDAPTab() {
                     {!isLoading && (roles?.length ?? 0) === 0 && (
                         <Table.Tr>
                             <Table.Td colSpan={2}>
-                                <Text c="dimmed" size="sm">
-                                    {t('authMethods.noRoles')}
-                                </Text>
+                                <EmptyState icon={TbAddressBook} label={t('authMethods.noRoles')} />
                             </Table.Td>
                         </Table.Tr>
                     )}

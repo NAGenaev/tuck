@@ -5,17 +5,19 @@ import {
     Button,
     Card,
     Group,
+    SimpleGrid,
     Stack,
     Table,
     Text,
     TextInput
 } from '@mantine/core'
+import { useDisclosure } from '@mantine/hooks'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { TbPlus, TbTrash } from 'react-icons/tb'
+import { TbKey, TbPlus, TbTrash } from 'react-icons/tb'
 
 import {
     AppRoleRole,
@@ -27,6 +29,9 @@ import {
     SecretID
 } from '@shared/api/endpoints/auth-approle'
 import { CopyableField } from '@shared/ui/copyable-field/copyable-field'
+import { EmptyState } from '@shared/ui/empty-state/empty-state'
+import { EntityModal } from '@shared/ui/entity-modal/entity-modal'
+import { MetricCard } from '@shared/ui/metrics/metric-card/metric-card'
 import { TableCard } from '@shared/ui/table-card/table-card'
 
 function RoleForm({ onDone }: { onDone: () => void }) {
@@ -58,42 +63,42 @@ function RoleForm({ onDone }: { onDone: () => void }) {
     })
 
     return (
-        <Card>
-            <Stack gap="sm">
+        <Stack gap="sm">
+            <TextInput
+                autoFocus
+                label={t('authMethods.roleName')}
+                onChange={(e) => setName(e.currentTarget.value)}
+                value={name}
+            />
+            <TextInput
+                label={t('tokens.policiesLabel')}
+                onChange={(e) => setPolicies(e.currentTarget.value)}
+                value={policies}
+            />
+            <Group grow>
                 <TextInput
-                    label={t('authMethods.roleName')}
-                    onChange={(e) => setName(e.currentTarget.value)}
-                    value={name}
+                    label={t('authMethods.approle.tokenTtl')}
+                    onChange={(e) => setTokenTtl(e.currentTarget.value)}
+                    placeholder={t('authMethods.ttlPlaceholder1h')}
+                    value={tokenTtl}
                 />
                 <TextInput
-                    label={t('tokens.policiesLabel')}
-                    onChange={(e) => setPolicies(e.currentTarget.value)}
-                    value={policies}
+                    label={t('authMethods.approle.secretIdTtl')}
+                    onChange={(e) => setSecretIdTtl(e.currentTarget.value)}
+                    placeholder={t('tokens.ttlPlaceholder')}
+                    value={secretIdTtl}
                 />
-                <Group grow>
-                    <TextInput
-                        label={t('authMethods.approle.tokenTtl')}
-                        onChange={(e) => setTokenTtl(e.currentTarget.value)}
-                        placeholder={t('authMethods.ttlPlaceholder1h')}
-                        value={tokenTtl}
-                    />
-                    <TextInput
-                        label={t('authMethods.approle.secretIdTtl')}
-                        onChange={(e) => setSecretIdTtl(e.currentTarget.value)}
-                        placeholder={t('tokens.ttlPlaceholder')}
-                        value={secretIdTtl}
-                    />
-                </Group>
-                <Button
-                    disabled={!name}
-                    fullWidth
-                    loading={mutation.isPending}
-                    onClick={() => mutation.mutate()}
-                >
-                    {t('authMethods.saveRole')}
-                </Button>
-            </Stack>
-        </Card>
+            </Group>
+            <Button
+                disabled={!name}
+                fullWidth
+                leftSection={<TbPlus size={16} />}
+                loading={mutation.isPending}
+                onClick={() => mutation.mutate()}
+            >
+                {t('authMethods.saveRole')}
+            </Button>
+        </Stack>
     )
 }
 
@@ -134,7 +139,7 @@ function RoleDetail({ name, onClose }: { name: string; onClose: () => void }) {
 
 export function AppRoleTab() {
     const { t } = useTranslation()
-    const [creating, setCreating] = useState(false)
+    const [creating, { open: openCreating, close: closeCreating }] = useDisclosure(false)
     const [selected, setSelected] = useState<null | string>(null)
     const queryClient = useQueryClient()
 
@@ -154,19 +159,29 @@ export function AppRoleTab() {
     return (
         <Stack gap="md">
             <Group justify="flex-end">
-                <Button leftSection={<TbPlus size={16} />} onClick={() => setCreating((c) => !c)} variant="light">
+                <Button leftSection={<TbPlus size={16} />} onClick={openCreating}>
                     {t('authMethods.newRole')}
                 </Button>
             </Group>
 
-            {creating && (
+            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                <MetricCard
+                    IconComponent={TbKey}
+                    iconColor="cyan"
+                    isLoading={isLoading}
+                    title={t('common.total')}
+                    value={roles?.length ?? 0}
+                />
+            </SimpleGrid>
+
+            <EntityModal color="cyan" icon={TbKey} onClose={closeCreating} opened={creating} title={t('authMethods.newRole')}>
                 <RoleForm
                     onDone={() => {
-                        setCreating(false)
+                        closeCreating()
                         queryClient.invalidateQueries({ queryKey: ['approle', 'list'] })
                     }}
                 />
-            )}
+            </EntityModal>
 
             {selected && <RoleDetail name={selected} onClose={() => setSelected(null)} />}
 
@@ -181,9 +196,7 @@ export function AppRoleTab() {
                     {!isLoading && (roles?.length ?? 0) === 0 && (
                         <Table.Tr>
                             <Table.Td colSpan={2}>
-                                <Text c="dimmed" size="sm">
-                                    {t('authMethods.noRoles')}
-                                </Text>
+                                <EmptyState icon={TbKey} label={t('authMethods.noRoles')} />
                             </Table.Td>
                         </Table.Tr>
                     )}

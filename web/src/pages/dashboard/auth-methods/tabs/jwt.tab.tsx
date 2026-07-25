@@ -1,10 +1,11 @@
-import { ActionIcon, Button, Card, Group, Stack, Table, Text, TextInput } from '@mantine/core'
+import { ActionIcon, Button, Card, Group, SimpleGrid, Stack, Table, Text, TextInput } from '@mantine/core'
+import { useDisclosure } from '@mantine/hooks'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { TbPlus, TbTrash } from 'react-icons/tb'
+import { TbPlus, TbTrash, TbUserCog } from 'react-icons/tb'
 
 import {
     deleteJWTRole,
@@ -14,6 +15,9 @@ import {
     putJWTConfig,
     putJWTRole
 } from '@shared/api/endpoints/auth-jwt'
+import { EmptyState } from '@shared/ui/empty-state/empty-state'
+import { EntityModal } from '@shared/ui/entity-modal/entity-modal'
+import { MetricCard } from '@shared/ui/metrics/metric-card/metric-card'
 import { TableCard } from '@shared/ui/table-card/table-card'
 
 function ConfigForm() {
@@ -103,47 +107,47 @@ function RoleForm({ onDone }: { onDone: () => void }) {
     })
 
     return (
-        <Card>
-            <Stack gap="sm">
+        <Stack gap="sm">
+            <TextInput
+                autoFocus
+                label={t('authMethods.roleName')}
+                onChange={(e) => setName(e.currentTarget.value)}
+                value={name}
+            />
+            <TextInput
+                label={t('tokens.policiesLabel')}
+                onChange={(e) => setPolicies(e.currentTarget.value)}
+                value={policies}
+            />
+            <Group grow>
                 <TextInput
-                    label={t('authMethods.roleName')}
-                    onChange={(e) => setName(e.currentTarget.value)}
-                    value={name}
+                    label={t('authMethods.jwt.boundSubject')}
+                    onChange={(e) => setBoundSubject(e.currentTarget.value)}
+                    value={boundSubject}
                 />
                 <TextInput
-                    label={t('tokens.policiesLabel')}
-                    onChange={(e) => setPolicies(e.currentTarget.value)}
-                    value={policies}
+                    label={t('tokens.ttl')}
+                    onChange={(e) => setTtl(e.currentTarget.value)}
+                    placeholder={t('authMethods.ttlPlaceholder1h')}
+                    value={ttl}
                 />
-                <Group grow>
-                    <TextInput
-                        label={t('authMethods.jwt.boundSubject')}
-                        onChange={(e) => setBoundSubject(e.currentTarget.value)}
-                        value={boundSubject}
-                    />
-                    <TextInput
-                        label={t('tokens.ttl')}
-                        onChange={(e) => setTtl(e.currentTarget.value)}
-                        placeholder={t('authMethods.ttlPlaceholder1h')}
-                        value={ttl}
-                    />
-                </Group>
-                <Button
-                    disabled={!name}
-                    fullWidth
-                    loading={mutation.isPending}
-                    onClick={() => mutation.mutate()}
-                >
-                    {t('authMethods.saveRole')}
-                </Button>
-            </Stack>
-        </Card>
+            </Group>
+            <Button
+                disabled={!name}
+                fullWidth
+                leftSection={<TbPlus size={16} />}
+                loading={mutation.isPending}
+                onClick={() => mutation.mutate()}
+            >
+                {t('authMethods.saveRole')}
+            </Button>
+        </Stack>
     )
 }
 
 export function JWTTab() {
     const { t } = useTranslation()
-    const [creating, setCreating] = useState(false)
+    const [creating, { open: openCreating, close: closeCreating }] = useDisclosure(false)
     const queryClient = useQueryClient()
 
     const { data: roles, isLoading } = useQuery({ queryKey: ['jwt', 'roles'], queryFn: listJWTRoles })
@@ -160,23 +164,33 @@ export function JWTTab() {
         <Stack gap="md">
             <ConfigForm />
 
+            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                <MetricCard
+                    IconComponent={TbUserCog}
+                    iconColor="cyan"
+                    isLoading={isLoading}
+                    title={t('common.total')}
+                    value={roles?.length ?? 0}
+                />
+            </SimpleGrid>
+
             <Group justify="space-between">
                 <Text fw={700} size="sm">
                     {t('authMethods.rolesTitle')}
                 </Text>
-                <Button leftSection={<TbPlus size={16} />} onClick={() => setCreating((c) => !c)} variant="light">
+                <Button leftSection={<TbPlus size={16} />} onClick={openCreating}>
                     {t('authMethods.newRole')}
                 </Button>
             </Group>
 
-            {creating && (
+            <EntityModal color="cyan" icon={TbUserCog} onClose={closeCreating} opened={creating} title={t('authMethods.newRole')}>
                 <RoleForm
                     onDone={() => {
-                        setCreating(false)
+                        closeCreating()
                         queryClient.invalidateQueries({ queryKey: ['jwt', 'roles'] })
                     }}
                 />
-            )}
+            </EntityModal>
 
             <TableCard>
                 <Table.Thead>
@@ -189,9 +203,7 @@ export function JWTTab() {
                     {!isLoading && (roles?.length ?? 0) === 0 && (
                         <Table.Tr>
                             <Table.Td colSpan={2}>
-                                <Text c="dimmed" size="sm">
-                                    {t('authMethods.noRoles')}
-                                </Text>
+                                <EmptyState icon={TbUserCog} label={t('authMethods.noRoles')} />
                             </Table.Td>
                         </Table.Tr>
                     )}

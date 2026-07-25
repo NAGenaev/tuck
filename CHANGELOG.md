@@ -11,6 +11,34 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [1.37.0] — 2026-07-25
+
+### Added
+
+- **Web dashboard**: форк UI-шелла Remnawave в полноценный билингвальный (RU/EN) React + Vite + Mantine дашборд взамен прежнего статического HTML/JS UI. Создание сущностей переведено на модальные окна, добавлены stat cards и графики на страницах обзора.
+- **Rate limiting**: рейт-лимитеры подключены к полному циклу обработки запроса, добавлены интеграционные тесты.
+- **Fuzz-тесты**: barrier, transit, kvv2.
+- **Покрытие тестами**: 28 e2e-тестов (Transit/TOTP/SSH), 10 e2e-тестов (JWT/OIDC), 13 unit-тестов (config.Load), 9 e2e-тестов (LDAP), 25 unit-тестов (core), 16 интеграционных e2e-тестов (AppRole/KVv2/cubbyhole/wrapping/PKI/token lifecycle).
+- **Docs**: `docs/` и `docs2/` объединены в единое дерево документации, добавлен `MANUAL_TESTS.md`.
+
+### Fixed
+
+- Токены логина всех auth-методов теперь renewable по умолчанию.
+
+### Changed
+
+- Вкладки auth-методов (AppRole, JWT, LDAP, GitHub Actions, Kubernetes) приведены к единому паттерну EntityModal/MetricCard/EmptyState для визуальной консистентности.
+
+---
+
+## [1.36.0] — 2026-06-20
+
+### Changed
+
+- Миграция на golangci-lint v2, устранены все errcheck/staticcheck нарушения в prod- и test-коде (в частности `defer resp.Body.Close()` по всему проекту).
+
+---
+
 ## [1.35.0] — 2026-06-20
 
 ### Added

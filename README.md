@@ -2,7 +2,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v1.35.0-green)](https://github.com/NAGenaev/tuck/releases)
+[![Release](https://img.shields.io/badge/release-v1.37.0-green)](https://github.com/NAGenaev/tuck/releases)
 
 Tuck — специализированная система управления секретами (криптографическими ключами, учётными данными и конфиденциальными параметрами конфигурации), разработанная для функционирования в среде Kubernetes. Система реализована в виде единого исполняемого модуля без внешних зависимостей и обеспечивает централизованное хранение, разграничение доступа и автоматизированную ротацию секретов.
 

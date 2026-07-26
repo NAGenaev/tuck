@@ -5,6 +5,8 @@
 **Tools:** `govulncheck`, `gosec`, `go vet`, manual review  
 **Result: PASS — 0 open findings**
 
+> **Refreshed 2026-07-26** (v1.37.0 + same-day work, ~1.5 months and ~90 commits after the pass above) — see [§7](#7-refresh-pass-2026-07-26) for what changed. Still PASS, 0 open findings, but two real issues (one dependency CVE pair, one missing HTTP timeout) had crept in since June and are fixed as of this refresh. This is a self-review refresh to keep the codebase audit-ready, not a substitute for the external audit still recommended in §6.
+
 ---
 
 ## 1. Vulnerability scan (govulncheck)
@@ -157,3 +159,57 @@ is ready for **v1.0-rc** tagging and external security review.
 3. Token ID hashing (SEC-1 fix) — forward-secrecy properties
 4. ACL policy engine — bypass edge cases in glob matching
 5. Rate limiter — bypass via IPv6 or proxy headers
+
+---
+
+## 7. Refresh pass (2026-07-26)
+
+**Scope:** v1.37.0 + same-day commits (`1d44570`, `b98f769`, `28e9415`) — CSI live-refresh, Terraform provider AWS/GCP/Azure resources, and 3 integration-test side-finding fixes from earlier the same day. Re-ran the same tool set as §1–3 against current `main`, ahead of the still-open recommendation in §6 to get an external audit. Both new issues found are fixed as of this entry.
+
+### 7.1 Vulnerability scan (govulncheck)
+
+```
+govulncheck ./...
+```
+
+**Before:** 2 reachable vulnerabilities (both accumulated since the June pass, not introduced by this session's own changes):
+
+| ID | Package | Fixed in |
+|----|---------|---------|
+| GO-2026-5970 | golang.org/x/text (infinite loop on invalid input, reachable via `internal/dynamic/azure`) | v0.39.0 |
+| GO-2026-5856 | crypto/tls (Encrypted Client Hello privacy leak) | go1.25.12 |
+
+**Fix:** `go get golang.org/x/text@v0.39.0`; toolchain bumped `go1.25.11` → `go1.25.12` in `go.mod`.
+
+**After:** `No vulnerabilities found.` (2 further vulnerabilities remain in the dependency tree — `go-ntlmssp`, `x/net/dns/dnsmessage`, `x/crypto/openpgp` — but govulncheck's call-graph analysis confirms none are reachable from Tuck's own code; monitored, not fixed.)
+
+The separate `contrib/terraform-provider-tuck` Go module (not part of the main `govulncheck ./...` scope above — it's its own `go.mod`) had drifted much further: **31 reachable vulnerabilities**, `go 1.22.0` / `toolchain go1.23.4`, `terraform-plugin-framework v1.13.0`. Fixed by bumping to `go 1.25.12` and `go get -u ./...` (`terraform-plugin-framework` → v1.19.0 and its whole dependency tree). `govulncheck ./...` in that module now also reports `No vulnerabilities found.`
+
+### 7.2 Static analysis (gosec)
+
+```
+gosec -severity medium -exclude-generated ./...
+```
+
+**Before:** 2 findings.
+
+| Rule | Location | Disposition | Rationale |
+|------|----------|-------------|-----------|
+| G704 (SSRF) | `cmd/tuckcli/main.go:864` (`vaultClient.do`, the `tuckcli migrate` Vault-import helper) | Accepted, re-annotated | Same accepted pattern as the `tuckcli`/`pkg/client` entries in §2 — CLI tool, user supplies the Vault address via `--vault-addr`. gosec's taint-sink detection now lands one line later (on `v.http.Do`, not `http.NewRequest`) than when §2 was written; the existing `#nosec G704` comment didn't cover the new sink line. Added a second annotation on the actual sink. |
+| G112 (Slowloris) | `cmd/tuck-operator/main.go:107` (`startHealthServer`) | **Fixed** | The operator's `/healthz` liveness listener had no `ReadHeaderTimeout`, leaving it open to slow-header resource exhaustion. Added `ReadHeaderTimeout: 5 * time.Second}`. |
+
+**After:** `Issues: 0` (verified both with the audit's own `-severity medium -exclude-generated` invocation and CI's actual `-exclude=G104,G704,G706` invocation).
+
+### 7.3 Go vet / test suite
+
+`go vet ./...` and `go test ./... -short` (whole repo): clean, all green, both before and after the fixes above (the fixes touched only a dependency version and one `http.Server` field — no behavioral change to verify beyond the existing suite passing).
+
+### 7.4 CI fallout from the toolchain bump
+
+Bumping `go.mod`'s `go` directive to `1.25.12` (§7.1) broke the pinned `golangci-lint@v2.1.6` in CI's `lint` job outright — that binary was built with `go1.23.4`, and golangci-lint refuses to run at all against a module targeting a newer Go language version than it was itself built with (`can't load config: the Go language version ... is lower than the targeted Go version`). Confirmed locally, then fixed by re-pinning to `v2.12.2` (built with `go1.25.12`). Also ran the newly-working linter against the full repo for the first time in this pass and fixed the 5 issues it found — 4 pre-existing (`errcheck`/`ineffassign` in `internal/api/integration_e2e_test.go` and `internal/api/ratelimit_test.go`), 1 introduced earlier the same session (`staticcheck` De Morgan's-law suggestion in the Postgres revocation-statement test added in commit `79eef53`).
+
+Separately: `contrib/terraform-provider-tuck` — the module that had drifted to 31 vulnerabilities (§7.1) — turned out to have **no CI coverage at all**; `.github/workflows/ci.yml`'s `test`/`lint`/`security` jobs only ever touch the root module. That's very likely *why* it drifted that far unnoticed. Added a `terraform-provider` CI job (build + vet + `govulncheck`, scoped to `contrib/terraform-provider-tuck`) so this doesn't silently recur. Also added a weekly `schedule: cron` trigger to the whole workflow (Mondays 06:00 UTC), so CVE-only drift — new vulnerabilities published against code that hasn't changed — gets caught even in weeks with no commits, rather than only at the next push.
+
+### 7.5 Takeaway
+
+Nothing found this pass was introduced by this session's own feature work (CSI refresh, Terraform resources) — the security-relevant issues were pre-existing drift: dependency CVEs published after the June scan, and a pre-existing missing timeout that gosec's rule set already covered in June but evidently didn't fire then (possibly a gosec version difference between passes; not reinvestigated further since the fix is trivial and unconditionally correct regardless of why it wasn't flagged in June). The real signal here is operational, not code-quality: **dependency drift accumulates within about six weeks even on a project this size**, and accumulates *fastest* in whatever isn't wired into CI — `contrib/terraform-provider-tuck` had zero CI coverage and drifted to 31 vulnerabilities before anyone looked; the root module, which CI does check, only drifted 2. Fixed the proximate issues (§7.1–7.3) and, more importantly, the structural gaps that let them accumulate unnoticed (§7.4): CI now covers the Terraform provider module too, runs on a weekly schedule regardless of commit activity, and uses a `golangci-lint` build that won't silently stop working the next time `go.mod`'s Go version moves. None of this replaces the external audit still recommended in §6 — it just means the codebase that audit eventually looks at will have fewer of these self-inflicted, easily-avoidable gaps in it.

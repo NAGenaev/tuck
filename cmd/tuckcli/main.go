@@ -856,12 +856,12 @@ func newVaultClient(addr, token string, insecure bool) *vaultClient {
 }
 
 func (v *vaultClient) do(method, apiPath string) (*http.Response, error) {
-	req, err := http.NewRequest(method, v.addr+apiPath, nil) // #nosec G704
+	req, err := http.NewRequest(method, v.addr+apiPath, nil) // #nosec G704 — CLI tool, user supplies the Vault address via --vault-addr
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("X-Vault-Token", v.token)
-	return v.http.Do(req)
+	return v.http.Do(req) // #nosec G704 — same request built above; gosec's taint sink lands here
 }
 
 func (v *vaultClient) listKeys(apiPath string) ([]string, error) {

@@ -11,8 +11,9 @@
 ### 2.1. Предварительные условия
 
 - Go 1.25+
+- Node.js 22+ (для сборки веб-панели в `web/`)
 - Docker Desktop (для интеграционных тестов с Minikube)
-- `golangci-lint`: `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`
+- `golangci-lint` v2 (конфиг `.golangci.yml` — формата v2, `golangci-lint` v1 его не поймёт): `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`
 
 ### 2.2. Локальная сборка
 
@@ -29,34 +30,58 @@ go test ./...
 # Сборка бинарного файла сервера
 go build -o bin/tuck ./cmd/tuck
 
-# Запуск сервера в режиме разработки
-./bin/tuck --seal-type=dev --addr=127.0.0.1:8200
+# Запуск сервера в режиме разработки (dev-seal, распечатан сразу, порт 8200 — всё значения по умолчанию)
+./bin/tuck
+
+# Сборка и запуск веб-панели отдельно (порт 3333, проксирует /v1, /v2 и т.д. на :8200)
+cd web && npm ci && npm run dev
 ```
 
 ### 2.3. Структура проекта
 
 ```
 cmd/tuck/             Бинарный файл сервера
-cmd/tuck-operator/    Бинарный файл оператора Kubernetes
+cmd/tuck-operator/    Бинарный файл оператора Kubernetes (CRD-синхронизация TuckSecret)
+cmd/tuckcsi/          Бинарный файл CSI-драйвера (монтирование секретов в под)
+cmd/tuck-injector/    Webhook-инжектор секретов в под как sidecar
+cmd/tuck-agent/       Агент для внешних (не-k8s) процессов
 cmd/tuckcli/          CLI-клиент
 internal/
   api/                HTTP-обработчики и маршрутизация
   audit/              Журнал аудита с цепочкой хэшей
+  auth/               Методы аутентификации (AppRole, LDAP, JWT/OIDC, GitHub)
   barrier/            Криптографический барьер AES-256-GCM
   core/               Бизнес-логика (секреты, токены, политики)
+  csi/                Реализация CSI Node-плагина
+  cubbyhole/          Изолированное хранилище на токен
+  dynamic/            Движки динамических секретов: database, aws, gcp, azure, pki, ssh, totp, transit
+  identity/           Сущности/группы identity-модели
+  injector/           Логика webhook-инжектора
   k8s/                Аутентификация Kubernetes TokenReview
+  kvsecret/           KV v1
+  kvv2/               KV v2 (версионирование)
+  lease/              Общий реестр lease для динамических секретов
   metrics/            Метрики Prometheus
+  mount/              Управление точками монтирования движков
+  namespace/          Мультитенантные namespace
   operator/           CRD-контроллер и выбор лидера
-  physical/           Физические бэкенды хранения (bbolt, in-memory)
+  physical/           Физические бэкенды хранения (bbolt, in-memory, raft)
+  plugin/             Каталог внешних плагинов
   policy/             ACL на основе glob-масок путей
-  ratelimit/          Token bucket на IP-адрес
+  ratelimit/          Token bucket на IP-адрес/токен
+  replication/        Primary/secondary репликация и WAL
   seal/               Бэкенды снятия печати (dev, shamir, transit, kms)
   shamir/             Разделение секрета в GF(256)
+  sysconfig/          Системная конфигурация (rate-limit и др.), сохраняемая через API
   tlsutil/            Вспомогательные функции TLS
   token/              Хранилище токенов
-  ui/                 Встроенная веб-панель управления
-deploy/               Kubernetes-манифесты и CRD
-docs/                 Архитектура, модель угроз, эксплуатация
+  ui/                 Встроенная сборка веб-панели (embed)
+  wrapping/           Response wrapping (одноразовая передача секрета)
+pkg/client/           Go SDK
+contrib/terraform-provider-tuck/  Terraform-провайдер
+web/                  Веб-панель (React/Vite/Mantine, см. docs/10-web-ui.md)
+deploy/               Kubernetes-манифесты, Helm-чарт, CRD
+docs/                 Архитектура, модель угроз, эксплуатация, гайды
 ```
 
 ---
@@ -121,4 +146,4 @@ test(operator): add UpdateStatus mock to controller test
 
 ## 6. Лицензионные условия
 
-Внося вклад в проект, участник соглашается с тем, что его материалы распространяются на условиях [лицензии MIT](LICENSE).
+Внося вклад в проект, участник соглашается с тем, что его материалы распространяются на условиях [лицензии Apache-2.0](LICENSE).

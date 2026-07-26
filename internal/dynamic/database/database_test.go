@@ -227,7 +227,7 @@ func TestDefaultRevocationStatementsPostgres_RevokesConnectAndOwnedObjects(t *te
 	if revokeIdx == -1 || dropOwnedIdx == -1 || dropUserIdx == -1 {
 		t.Fatalf("expected REVOKE CONNECT, DROP OWNED BY and DROP USER statements, got %v", stmts)
 	}
-	if !(revokeIdx < dropOwnedIdx && dropOwnedIdx < dropUserIdx) {
+	if revokeIdx >= dropOwnedIdx || dropOwnedIdx >= dropUserIdx {
 		t.Fatalf("expected order REVOKE CONNECT, DROP OWNED BY, DROP USER, got %v", stmts)
 	}
 }

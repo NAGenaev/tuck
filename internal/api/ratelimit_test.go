@@ -25,7 +25,7 @@ func TestSysconfigRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /v1/sys/config status = %d, want 200", resp.StatusCode)
 	}
@@ -161,7 +161,7 @@ func TestRateLimitTokenIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	_ = c // suppress unused warning
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create second token: status = %d, want 201", resp.StatusCode)

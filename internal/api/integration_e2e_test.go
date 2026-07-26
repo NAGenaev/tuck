@@ -183,7 +183,7 @@ func TestKVv2Versioning(t *testing.T) {
 		var resp struct {
 			Version int `json:"version"`
 		}
-		json.Unmarshal(body, &resp)
+		_ = json.Unmarshal(body, &resp)
 		return resp.Version
 	}
 
@@ -717,7 +717,7 @@ func TestKVv2Destroy(t *testing.T) {
 	}
 
 	// Attempt to undelete (must fail — already destroyed).
-	status, _ = doJSON(t, ts, http.MethodPost, "/v2/secret/undelete/destroy/key",
+	_, _ = doJSON(t, ts, http.MethodPost, "/v2/secret/undelete/destroy/key",
 		`{"versions":[1]}`, root)
 	// Undelete on destroyed version should either 422 or succeed silently but still 404 on read.
 	// Either way, reading v1 must return 404/410.

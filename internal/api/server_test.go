@@ -215,6 +215,31 @@ func TestPolicyManagement(t *testing.T) {
 	}
 }
 
+// TestPolicyManagement_RejectsUnrecognizedCapability is a regression test:
+// "update" (Vault's name for the same capability Tuck calls "write") used to
+// silently parse to zero capabilities with a 204 success response, producing
+// a rule that granted nothing — a trap for anyone porting Vault policies or
+// making a typo, discovered when a policy written this way during live
+// testing turned out to deny everything once engine-level enforcement was
+// added (see TestACLEnforcement_UnprivilegedTokenDeniedAcrossEngines).
+func TestPolicyManagement_RejectsUnrecognizedCapability(t *testing.T) {
+	ts, _, rootTok := newTestServer(t)
+
+	body := `{"rules":[{"path":"transit/encrypt/mykey","capabilities":["update"]}]}`
+	resp, err := http.DefaultClient.Do(authedReq(t, http.MethodPut, ts.URL+"/v1/policy/bad-caps", body, rootTok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("put policy with \"update\" capability: status = %d, want 400; body: %s", resp.StatusCode, respBody)
+	}
+	if !strings.Contains(string(respBody), "update") {
+		t.Errorf("error body = %s, want it to name the offending capability", respBody)
+	}
+}
+
 func TestACLEnforcement(t *testing.T) {
 	ts, _, rootTok := newTestServer(t)
 

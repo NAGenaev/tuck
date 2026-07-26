@@ -3,6 +3,8 @@ package api
 import (
 	"io"
 	"net/http"
+
+	"github.com/NAGenaev/tuck/internal/policy"
 )
 
 // clusterBackend is the optional interface implemented by Raft backends.
@@ -27,6 +29,10 @@ func (s *Server) cluster() (clusterBackend, bool) {
 
 // getClusterStatus handles GET /v1/sys/cluster.
 func (s *Server) getClusterStatus(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "sys/cluster", policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	cb, ok := s.cluster()
 	if !ok {
 		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "cluster mode not enabled"})
@@ -38,6 +44,10 @@ func (s *Server) getClusterStatus(w http.ResponseWriter, r *http.Request) {
 // postClusterJoin handles POST /v1/sys/cluster/join.
 // Must be called on the current leader.
 func (s *Server) postClusterJoin(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "sys/cluster", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	cb, ok := s.cluster()
 	if !ok {
 		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "cluster mode not enabled"})
@@ -77,6 +87,10 @@ func (s *Server) postClusterJoin(w http.ResponseWriter, r *http.Request) {
 // deleteClusterNode handles DELETE /v1/sys/cluster/node/{id}.
 // Must be called on the current leader.
 func (s *Server) deleteClusterNode(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "sys/cluster", policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	cb, ok := s.cluster()
 	if !ok {
 		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "cluster mode not enabled"})

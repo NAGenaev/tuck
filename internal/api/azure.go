@@ -8,10 +8,15 @@ import (
 	"time"
 
 	"github.com/NAGenaev/tuck/internal/dynamic/azure"
+	"github.com/NAGenaev/tuck/internal/policy"
 )
 
 // PUT /v1/azure/config
 func (s *Server) putAzureConfig(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "azure/config", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})
@@ -31,6 +36,10 @@ func (s *Server) putAzureConfig(w http.ResponseWriter, r *http.Request) {
 
 // GET /v1/azure/config
 func (s *Server) getAzureConfig(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "azure/config", policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	cfg, err := s.core.GetAzureConfig(r.Context())
 	if err != nil {
 		if errors.Is(err, azure.ErrNotConfigured) {
@@ -46,6 +55,10 @@ func (s *Server) getAzureConfig(w http.ResponseWriter, r *http.Request) {
 
 // DELETE /v1/azure/config
 func (s *Server) deleteAzureConfig(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "azure/config", policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.DeleteAzureConfig(r.Context()); err != nil {
 		writeErr(w, err)
 		return
@@ -59,6 +72,10 @@ func (s *Server) putAzureRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role name required"})
+		return
+	}
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "azure/roles/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
@@ -115,6 +132,10 @@ func (s *Server) putAzureRole(w http.ResponseWriter, r *http.Request) {
 // GET /v1/azure/roles/{name}
 func (s *Server) getAzureRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "azure/roles/"+name, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	role, err := s.core.GetAzureRole(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, azure.ErrNotFound) {
@@ -130,6 +151,10 @@ func (s *Server) getAzureRole(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/azure/roles/{name}
 func (s *Server) deleteAzureRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "azure/roles/"+name, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.DeleteAzureRole(r.Context(), name); err != nil {
 		writeErr(w, err)
 		return
@@ -139,6 +164,10 @@ func (s *Server) deleteAzureRole(w http.ResponseWriter, r *http.Request) {
 
 // LIST /v1/azure/roles/
 func (s *Server) listAzureRoles(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "azure/roles", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	names, err := s.core.ListAzureRoles(r.Context())
 	if err != nil {
 		writeErr(w, err)
@@ -150,6 +179,10 @@ func (s *Server) listAzureRoles(w http.ResponseWriter, r *http.Request) {
 // POST /v1/azure/creds/{role}
 func (s *Server) generateAzureCreds(w http.ResponseWriter, r *http.Request) {
 	roleName := r.PathValue("role")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "azure/creds/"+roleName, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	res, err := s.core.GenerateAzureCreds(r.Context(), roleName)
 	if err != nil {
 		switch {
@@ -168,6 +201,10 @@ func (s *Server) generateAzureCreds(w http.ResponseWriter, r *http.Request) {
 // GET /v1/azure/lease/{id}
 func (s *Server) getAzureLease(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "azure/lease/"+id, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	lease, err := s.core.GetAzureLease(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, azure.ErrNotFound) {
@@ -183,6 +220,10 @@ func (s *Server) getAzureLease(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/azure/lease/{id}
 func (s *Server) revokeAzureLease(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "azure/lease/"+id, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.RevokeAzureLease(r.Context(), id); err != nil {
 		if errors.Is(err, azure.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "lease not found"})
@@ -196,6 +237,10 @@ func (s *Server) revokeAzureLease(w http.ResponseWriter, r *http.Request) {
 
 // LIST /v1/azure/lease/
 func (s *Server) listAzureLeases(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "azure/lease", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	ids, err := s.core.ListAzureLeases(r.Context())
 	if err != nil {
 		writeErr(w, err)

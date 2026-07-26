@@ -8,10 +8,15 @@ import (
 	"time"
 
 	"github.com/NAGenaev/tuck/internal/dynamic/gcp"
+	"github.com/NAGenaev/tuck/internal/policy"
 )
 
 // PUT /v1/gcp/config
 func (s *Server) putGCPConfig(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "gcp/config", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})
@@ -31,6 +36,10 @@ func (s *Server) putGCPConfig(w http.ResponseWriter, r *http.Request) {
 
 // GET /v1/gcp/config
 func (s *Server) getGCPConfig(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "gcp/config", policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	cfg, err := s.core.GetGCPConfig(r.Context())
 	if err != nil {
 		if errors.Is(err, gcp.ErrNotConfigured) {
@@ -46,6 +55,10 @@ func (s *Server) getGCPConfig(w http.ResponseWriter, r *http.Request) {
 
 // DELETE /v1/gcp/config
 func (s *Server) deleteGCPConfig(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "gcp/config", policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.DeleteGCPConfig(r.Context()); err != nil {
 		writeErr(w, err)
 		return
@@ -59,6 +72,10 @@ func (s *Server) putGCPRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role name required"})
+		return
+	}
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "gcp/roles/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
@@ -119,6 +136,10 @@ func (s *Server) putGCPRole(w http.ResponseWriter, r *http.Request) {
 // GET /v1/gcp/roles/{name}
 func (s *Server) getGCPRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "gcp/roles/"+name, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	role, err := s.core.GetGCPRole(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, gcp.ErrNotFound) {
@@ -134,6 +155,10 @@ func (s *Server) getGCPRole(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/gcp/roles/{name}
 func (s *Server) deleteGCPRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "gcp/roles/"+name, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.DeleteGCPRole(r.Context(), name); err != nil {
 		writeErr(w, err)
 		return
@@ -143,6 +168,10 @@ func (s *Server) deleteGCPRole(w http.ResponseWriter, r *http.Request) {
 
 // LIST /v1/gcp/roles/
 func (s *Server) listGCPRoles(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "gcp/roles", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	names, err := s.core.ListGCPRoles(r.Context())
 	if err != nil {
 		writeErr(w, err)
@@ -154,6 +183,10 @@ func (s *Server) listGCPRoles(w http.ResponseWriter, r *http.Request) {
 // POST /v1/gcp/creds/{role}
 func (s *Server) generateGCPCreds(w http.ResponseWriter, r *http.Request) {
 	roleName := r.PathValue("role")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "gcp/creds/"+roleName, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	res, err := s.core.GenerateGCPCreds(r.Context(), roleName)
 	if err != nil {
 		switch {
@@ -172,6 +205,10 @@ func (s *Server) generateGCPCreds(w http.ResponseWriter, r *http.Request) {
 // GET /v1/gcp/lease/{id}
 func (s *Server) getGCPLease(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "gcp/lease/"+id, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	lease, err := s.core.GetGCPLease(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, gcp.ErrNotFound) {
@@ -187,6 +224,10 @@ func (s *Server) getGCPLease(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/gcp/lease/{id}
 func (s *Server) revokeGCPLease(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "gcp/lease/"+id, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.RevokeGCPLease(r.Context(), id); err != nil {
 		if errors.Is(err, gcp.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "lease not found"})
@@ -200,6 +241,10 @@ func (s *Server) revokeGCPLease(w http.ResponseWriter, r *http.Request) {
 
 // LIST /v1/gcp/lease/
 func (s *Server) listGCPLeases(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "gcp/lease", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	ids, err := s.core.ListGCPLeases(r.Context())
 	if err != nil {
 		writeErr(w, err)

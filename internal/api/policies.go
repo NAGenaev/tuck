@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -46,9 +47,14 @@ func (s *Server) putPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	p := &policy.Policy{Name: name, Inheritable: req.Inheritable}
 	for _, rule := range req.Rules {
+		caps, err := parseCaps(rule.Capabilities)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
 		p.Rules = append(p.Rules, policy.Rule{
 			Path:         rule.Path,
-			Capabilities: parseCaps(rule.Capabilities),
+			Capabilities: caps,
 		})
 	}
 	if err := s.core.PutPolicy(r.Context(), nsFromCtx(r.Context()), p); err != nil {
@@ -114,7 +120,12 @@ func (s *Server) deletePolicy(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func parseCaps(ss []string) policy.Capability {
+// parseCaps rejects unrecognized capability strings instead of silently
+// dropping them — a rule like {"capabilities":["update"]} (a natural typo
+// for anyone porting Vault policies, where "update" is the real capability
+// name) used to parse to zero capabilities with no error, producing a
+// policy rule that granted nothing and denied everything, silently.
+func parseCaps(ss []string) (policy.Capability, error) {
 	var c policy.Capability
 	for _, s := range ss {
 		switch s {
@@ -128,9 +139,11 @@ func parseCaps(ss []string) policy.Capability {
 			c |= policy.CapList
 		case "deny":
 			c |= policy.CapDeny
+		default:
+			return 0, fmt.Errorf("unrecognized capability %q (valid: read, write, delete, list, deny)", s)
 		}
 	}
-	return c
+	return c, nil
 }
 
 func capsToStrings(c policy.Capability) []string {

@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/NAGenaev/tuck/internal/dynamic/transit"
+	"github.com/NAGenaev/tuck/internal/policy"
 )
 
 // POST /v1/transit/keys/{name}
@@ -16,6 +17,10 @@ func (s *Server) transitCreateKey(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "key name required"})
+		return
+	}
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "transit/keys/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
 		return
 	}
 	var req struct {
@@ -44,6 +49,10 @@ func (s *Server) transitCreateKey(w http.ResponseWriter, r *http.Request) {
 // GET /v1/transit/keys/{name}
 func (s *Server) transitGetKey(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "transit/keys/"+name, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	k, err := s.core.TransitGetKey(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, transit.ErrNotFound) {
@@ -59,6 +68,10 @@ func (s *Server) transitGetKey(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/transit/keys/{name}
 func (s *Server) transitDeleteKey(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "transit/keys/"+name, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.TransitDeleteKey(r.Context(), name); err != nil {
 		switch {
 		case errors.Is(err, transit.ErrNotFound):
@@ -75,6 +88,10 @@ func (s *Server) transitDeleteKey(w http.ResponseWriter, r *http.Request) {
 
 // LIST /v1/transit/keys/
 func (s *Server) transitListKeys(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "transit/keys", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	names, err := s.core.TransitListKeys(r.Context())
 	if err != nil {
 		writeErr(w, err)
@@ -86,6 +103,10 @@ func (s *Server) transitListKeys(w http.ResponseWriter, r *http.Request) {
 // POST /v1/transit/keys/{name}/rotate
 func (s *Server) transitRotate(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "transit/keys/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.TransitRotate(r.Context(), name); err != nil {
 		if errors.Is(err, transit.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "key not found"})
@@ -106,6 +127,10 @@ func (s *Server) transitRotate(w http.ResponseWriter, r *http.Request) {
 // Body: {"min_decryption_version":2,"deletable":true}
 func (s *Server) transitUpdateKey(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "transit/keys/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})
@@ -135,6 +160,10 @@ func (s *Server) transitUpdateKey(w http.ResponseWriter, r *http.Request) {
 // Response: {"ciphertext":"vault:v1:..."}
 func (s *Server) transitEncrypt(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "transit/encrypt/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})
@@ -172,6 +201,10 @@ func (s *Server) transitEncrypt(w http.ResponseWriter, r *http.Request) {
 // Response: {"plaintext":"<base64url-encoded-data>"}
 func (s *Server) transitDecrypt(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "transit/decrypt/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})
@@ -202,6 +235,10 @@ func (s *Server) transitDecrypt(w http.ResponseWriter, r *http.Request) {
 // Response: {"ciphertext":"vault:v2:..."} — re-encrypted with latest key version.
 func (s *Server) transitRewrap(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "transit/rewrap/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})
@@ -230,6 +267,10 @@ func (s *Server) transitRewrap(w http.ResponseWriter, r *http.Request) {
 // Response: {"signature":"vault:v1:..."}
 func (s *Server) transitSign(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "transit/sign/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})
@@ -267,6 +308,10 @@ func (s *Server) transitSign(w http.ResponseWriter, r *http.Request) {
 // Response: {"valid":true}
 func (s *Server) transitVerify(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "transit/verify/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})
@@ -305,6 +350,10 @@ func (s *Server) transitVerify(w http.ResponseWriter, r *http.Request) {
 // Response: {"hmac":"vault:v1:..."}
 func (s *Server) transitHMAC(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "transit/hmac/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})

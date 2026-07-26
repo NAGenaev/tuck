@@ -9,6 +9,7 @@ import (
 	"time"
 
 	authjwt "github.com/NAGenaev/tuck/internal/auth/jwt"
+	"github.com/NAGenaev/tuck/internal/policy"
 )
 
 // POST /v1/auth/jwt/login
@@ -55,6 +56,10 @@ func (s *Server) loginJWT(w http.ResponseWriter, r *http.Request) {
 // PUT /v1/auth/jwt/config
 // Body: {"jwks_uri":"...","issuer":"...","audience":"...","default_ttl":"1h"}
 func (s *Server) putJWTConfig(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/jwt/config", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})
@@ -99,6 +104,10 @@ func (s *Server) putJWTConfig(w http.ResponseWriter, r *http.Request) {
 
 // GET /v1/auth/jwt/config
 func (s *Server) getJWTConfig(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/jwt/config", policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	cfg, err := s.core.GetJWTConfig(r.Context())
 	if err != nil {
 		if errors.Is(err, authjwt.ErrConfigNotFound) {
@@ -117,6 +126,10 @@ func (s *Server) putJWTRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role name required"})
+		return
+	}
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/jwt/role/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
@@ -166,6 +179,10 @@ func (s *Server) putJWTRole(w http.ResponseWriter, r *http.Request) {
 // GET /v1/auth/jwt/role/{name}
 func (s *Server) getJWTRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/jwt/role/"+name, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	role, err := s.core.GetJWTRole(r.Context(), name)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
@@ -177,6 +194,10 @@ func (s *Server) getJWTRole(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/auth/jwt/role/{name}
 func (s *Server) deleteJWTRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/jwt/role/"+name, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.DeleteJWTRole(r.Context(), name); err != nil {
 		writeErr(w, err)
 		return
@@ -186,6 +207,10 @@ func (s *Server) deleteJWTRole(w http.ResponseWriter, r *http.Request) {
 
 // LIST /v1/auth/jwt/role/
 func (s *Server) listJWTRoles(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/jwt/role", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	names, err := s.core.ListJWTRoles(r.Context())
 	if err != nil {
 		writeErr(w, err)

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/NAGenaev/tuck/internal/dynamic/database"
+	"github.com/NAGenaev/tuck/internal/policy"
 )
 
 // PUT /v1/database/config/{name}
@@ -19,6 +20,10 @@ func (s *Server) putDBConfig(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "config name required"})
+		return
+	}
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "database/config/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
@@ -50,6 +55,10 @@ func (s *Server) putDBConfig(w http.ResponseWriter, r *http.Request) {
 // GET /v1/database/config/{name}
 func (s *Server) getDBConfig(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "database/config/"+name, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	cfg, err := s.core.GetDBConfig(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, database.ErrNotFound) {
@@ -67,6 +76,10 @@ func (s *Server) getDBConfig(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/database/config/{name}
 func (s *Server) deleteDBConfig(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "database/config/"+name, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.DeleteDBConfig(r.Context(), name); err != nil {
 		writeErr(w, err)
 		return
@@ -76,6 +89,10 @@ func (s *Server) deleteDBConfig(w http.ResponseWriter, r *http.Request) {
 
 // LIST /v1/database/config/
 func (s *Server) listDBConfigs(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "database/config", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	names, err := s.core.ListDBConfigs(r.Context())
 	if err != nil {
 		writeErr(w, err)
@@ -90,6 +107,10 @@ func (s *Server) putDBRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role name required"})
+		return
+	}
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "database/role/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
@@ -146,6 +167,10 @@ func (s *Server) putDBRole(w http.ResponseWriter, r *http.Request) {
 // GET /v1/database/role/{name}
 func (s *Server) getDBRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "database/role/"+name, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	role, err := s.core.GetDBRole(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, database.ErrNotFound) {
@@ -161,6 +186,10 @@ func (s *Server) getDBRole(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/database/role/{name}
 func (s *Server) deleteDBRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "database/role/"+name, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.DeleteDBRole(r.Context(), name); err != nil {
 		writeErr(w, err)
 		return
@@ -170,6 +199,10 @@ func (s *Server) deleteDBRole(w http.ResponseWriter, r *http.Request) {
 
 // LIST /v1/database/role/
 func (s *Server) listDBRoles(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "database/role", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	names, err := s.core.ListDBRoles(r.Context())
 	if err != nil {
 		writeErr(w, err)
@@ -181,6 +214,10 @@ func (s *Server) listDBRoles(w http.ResponseWriter, r *http.Request) {
 // POST /v1/database/creds/{role}
 func (s *Server) generateDBCreds(w http.ResponseWriter, r *http.Request) {
 	role := r.PathValue("role")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "database/creds/"+role, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	creds, err := s.core.GenerateDBCreds(r.Context(), role)
 	if err != nil {
 		if errors.Is(err, database.ErrNotFound) {
@@ -196,6 +233,10 @@ func (s *Server) generateDBCreds(w http.ResponseWriter, r *http.Request) {
 // GET /v1/database/lease/{id}
 func (s *Server) getDBLease(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "database/lease/"+id, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	lease, err := s.core.GetDBLease(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, database.ErrNotFound) {
@@ -211,6 +252,10 @@ func (s *Server) getDBLease(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/database/lease/{id}
 func (s *Server) revokeDBLease(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "database/lease/"+id, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.RevokeDBLease(r.Context(), id); err != nil {
 		if errors.Is(err, database.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "lease not found"})
@@ -224,6 +269,10 @@ func (s *Server) revokeDBLease(w http.ResponseWriter, r *http.Request) {
 
 // LIST /v1/database/lease/
 func (s *Server) listDBLeases(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "database/lease", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	ids, err := s.core.ListDBLeases(r.Context())
 	if err != nil {
 		writeErr(w, err)

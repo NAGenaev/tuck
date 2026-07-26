@@ -7,12 +7,17 @@ import (
 	"net/http"
 
 	"github.com/NAGenaev/tuck/internal/identity"
+	"github.com/NAGenaev/tuck/internal/policy"
 )
 
 // ── Entity handlers ──────────────────────────────────────────────────────────
 
 // POST /v1/identity/entity
 func (s *Server) identityCreateEntity(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/entity", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	var req struct {
 		Name     string            `json:"name"`
 		Policies []string          `json:"policies"`
@@ -42,6 +47,10 @@ func (s *Server) identityCreateEntity(w http.ResponseWriter, r *http.Request) {
 // GET /v1/identity/entity/id/{id}
 func (s *Server) identityGetEntityByID(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/entity/id/"+id, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	e, err := s.core.IdentityGetEntityByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, identity.ErrEntityNotFound) {
@@ -57,6 +66,10 @@ func (s *Server) identityGetEntityByID(w http.ResponseWriter, r *http.Request) {
 // POST /v1/identity/entity/id/{id}  (update)
 func (s *Server) identityUpdateEntityByID(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/entity/id/"+id, policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	e, err := s.core.IdentityGetEntityByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, identity.ErrEntityNotFound) {
@@ -98,6 +111,10 @@ func (s *Server) identityUpdateEntityByID(w http.ResponseWriter, r *http.Request
 // DELETE /v1/identity/entity/id/{id}
 func (s *Server) identityDeleteEntityByID(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/entity/id/"+id, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.IdentityDeleteEntity(r.Context(), id); err != nil {
 		if errors.Is(err, identity.ErrEntityNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "entity not found"})
@@ -112,6 +129,10 @@ func (s *Server) identityDeleteEntityByID(w http.ResponseWriter, r *http.Request
 // GET /v1/identity/entity/name/{name}
 func (s *Server) identityGetEntityByName(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/entity/name/"+name, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	e, err := s.core.IdentityGetEntityByName(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, identity.ErrEntityNotFound) {
@@ -127,6 +148,10 @@ func (s *Server) identityGetEntityByName(w http.ResponseWriter, r *http.Request)
 // POST /v1/identity/entity/name/{name}  (upsert by name)
 func (s *Server) identityUpsertEntityByName(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/entity/name/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	var req struct {
 		Policies []string          `json:"policies"`
 		Metadata map[string]string `json:"metadata"`
@@ -167,6 +192,10 @@ func (s *Server) identityUpsertEntityByName(w http.ResponseWriter, r *http.Reque
 // DELETE /v1/identity/entity/name/{name}
 func (s *Server) identityDeleteEntityByName(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/entity/name/"+name, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	e, err := s.core.IdentityGetEntityByName(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, identity.ErrEntityNotFound) {
@@ -185,6 +214,10 @@ func (s *Server) identityDeleteEntityByName(w http.ResponseWriter, r *http.Reque
 
 // LIST /v1/identity/entity/
 func (s *Server) identityListEntities(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/entity", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	ids, err := s.core.IdentityListEntityIDs(r.Context())
 	if err != nil {
 		writeErr(w, err)
@@ -197,6 +230,10 @@ func (s *Server) identityListEntities(w http.ResponseWriter, r *http.Request) {
 
 // POST /v1/identity/entity-alias
 func (s *Server) identityCreateAlias(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/entity-alias", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	var req struct {
 		EntityID      string            `json:"entity_id"`
 		MountAccessor string            `json:"mount_accessor"`
@@ -222,6 +259,10 @@ func (s *Server) identityCreateAlias(w http.ResponseWriter, r *http.Request) {
 // GET /v1/identity/entity-alias/id/{id}
 func (s *Server) identityGetAlias(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/entity-alias/id/"+id, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	a, err := s.core.IdentityGetAliasByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, identity.ErrAliasNotFound) {
@@ -237,6 +278,10 @@ func (s *Server) identityGetAlias(w http.ResponseWriter, r *http.Request) {
 // POST /v1/identity/entity-alias/id/{id}  (update)
 func (s *Server) identityUpdateAlias(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/entity-alias/id/"+id, policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	a, err := s.core.IdentityGetAliasByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, identity.ErrAliasNotFound) {
@@ -270,6 +315,10 @@ func (s *Server) identityUpdateAlias(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/identity/entity-alias/id/{id}
 func (s *Server) identityDeleteAlias(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/entity-alias/id/"+id, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.IdentityDeleteAlias(r.Context(), id); err != nil {
 		if errors.Is(err, identity.ErrAliasNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "alias not found"})
@@ -283,6 +332,10 @@ func (s *Server) identityDeleteAlias(w http.ResponseWriter, r *http.Request) {
 
 // LIST /v1/identity/entity-alias/id/
 func (s *Server) identityListAliases(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/entity-alias", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	ids, err := s.core.IdentityListAliasIDs(r.Context())
 	if err != nil {
 		writeErr(w, err)
@@ -295,6 +348,10 @@ func (s *Server) identityListAliases(w http.ResponseWriter, r *http.Request) {
 
 // POST /v1/identity/group
 func (s *Server) identityCreateGroup(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/group", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	var req struct {
 		Name            string            `json:"name"`
 		Policies        []string          `json:"policies"`
@@ -321,6 +378,10 @@ func (s *Server) identityCreateGroup(w http.ResponseWriter, r *http.Request) {
 // GET /v1/identity/group/id/{id}
 func (s *Server) identityGetGroupByID(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/group/id/"+id, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	g, err := s.core.IdentityGetGroupByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, identity.ErrGroupNotFound) {
@@ -336,6 +397,10 @@ func (s *Server) identityGetGroupByID(w http.ResponseWriter, r *http.Request) {
 // POST /v1/identity/group/id/{id}  (update)
 func (s *Server) identityUpdateGroupByID(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/group/id/"+id, policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	g, err := s.core.IdentityGetGroupByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, identity.ErrGroupNotFound) {
@@ -381,6 +446,10 @@ func (s *Server) identityUpdateGroupByID(w http.ResponseWriter, r *http.Request)
 // DELETE /v1/identity/group/id/{id}
 func (s *Server) identityDeleteGroupByID(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/group/id/"+id, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.IdentityDeleteGroup(r.Context(), id); err != nil {
 		if errors.Is(err, identity.ErrGroupNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "group not found"})
@@ -395,6 +464,10 @@ func (s *Server) identityDeleteGroupByID(w http.ResponseWriter, r *http.Request)
 // GET /v1/identity/group/name/{name}
 func (s *Server) identityGetGroupByName(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/group/name/"+name, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	g, err := s.core.IdentityGetGroupByName(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, identity.ErrGroupNotFound) {
@@ -410,6 +483,10 @@ func (s *Server) identityGetGroupByName(w http.ResponseWriter, r *http.Request) 
 // POST /v1/identity/group/name/{name}  (upsert by name)
 func (s *Server) identityUpsertGroupByName(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/group/name/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	var req struct {
 		Policies        []string          `json:"policies"`
 		MemberEntityIDs []string          `json:"member_entity_ids"`
@@ -454,6 +531,10 @@ func (s *Server) identityUpsertGroupByName(w http.ResponseWriter, r *http.Reques
 // DELETE /v1/identity/group/name/{name}
 func (s *Server) identityDeleteGroupByName(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/group/name/"+name, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	g, err := s.core.IdentityGetGroupByName(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, identity.ErrGroupNotFound) {
@@ -472,6 +553,10 @@ func (s *Server) identityDeleteGroupByName(w http.ResponseWriter, r *http.Reques
 
 // LIST /v1/identity/group/
 func (s *Server) identityListGroups(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/group", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	ids, err := s.core.IdentityListGroupIDs(r.Context())
 	if err != nil {
 		writeErr(w, err)
@@ -485,6 +570,10 @@ func (s *Server) identityListGroups(w http.ResponseWriter, r *http.Request) {
 // POST /v1/identity/lookup/entity
 // Body: {"id":"..."} or {"name":"..."} or {"alias_name":"...","alias_mount_accessor":"..."}
 func (s *Server) identityLookupEntity(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/lookup/entity", policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	var req struct {
 		ID                 string `json:"id"`
 		Name               string `json:"name"`
@@ -528,6 +617,10 @@ func (s *Server) identityLookupEntity(w http.ResponseWriter, r *http.Request) {
 // POST /v1/identity/lookup/group
 // Body: {"id":"..."} or {"name":"..."}
 func (s *Server) identityLookupGroup(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/lookup/group", policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	var req struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
@@ -564,6 +657,10 @@ func (s *Server) identityLookupGroup(w http.ResponseWriter, r *http.Request) {
 
 // POST /v1/identity/group-alias
 func (s *Server) identityCreateGroupAlias(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/group-alias", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	var req struct {
 		GroupID       string            `json:"group_id"`
 		MountAccessor string            `json:"mount_accessor"`
@@ -593,6 +690,10 @@ func (s *Server) identityGetGroupAliasByID(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "id required"})
 		return
 	}
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/group-alias/id/"+id, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	ga, err := s.core.IdentityGetGroupAliasByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, identity.ErrGroupAliasNotFound) {
@@ -612,6 +713,10 @@ func (s *Server) identityDeleteGroupAlias(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "id required"})
 		return
 	}
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/group-alias/id/"+id, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.IdentityDeleteGroupAlias(r.Context(), id); err != nil {
 		writeErr(w, err)
 		return
@@ -621,6 +726,10 @@ func (s *Server) identityDeleteGroupAlias(w http.ResponseWriter, r *http.Request
 
 // GET /v1/identity/group-alias?list=true
 func (s *Server) identityListGroupAliases(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "identity/group-alias", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	ids, err := s.core.IdentityListGroupAliasIDs(r.Context())
 	if err != nil {
 		writeErr(w, err)

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	authlda "github.com/NAGenaev/tuck/internal/auth/ldap"
+	"github.com/NAGenaev/tuck/internal/policy"
 )
 
 // POST /v1/auth/ldap/login
@@ -53,6 +54,10 @@ func (s *Server) loginLDAP(w http.ResponseWriter, r *http.Request) {
 
 // GET /v1/auth/ldap/config
 func (s *Server) getLDAPConfig(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/ldap/config", policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	cfg, err := s.core.GetLDAPConfig(r.Context())
 	if err != nil {
 		if errors.Is(err, authlda.ErrNotConfigured) {
@@ -68,6 +73,10 @@ func (s *Server) getLDAPConfig(w http.ResponseWriter, r *http.Request) {
 // PUT /v1/auth/ldap/config
 // Body: {"urls":["ldap://..."],"bind_dn":"...","bind_password":"...","user_dn":"..."}
 func (s *Server) putLDAPConfig(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/ldap/config", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})
@@ -99,6 +108,10 @@ func (s *Server) putLDAPRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role name required"})
+		return
+	}
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/ldap/role/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
@@ -144,6 +157,10 @@ func (s *Server) getLDAPRole(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role name required"})
 		return
 	}
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/ldap/role/"+name, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	role, err := s.core.GetLDAPRole(r.Context(), name)
 	if err != nil {
 		writeErr(w, err)
@@ -159,6 +176,10 @@ func (s *Server) deleteLDAPRole(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role name required"})
 		return
 	}
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/ldap/role/"+name, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.DeleteLDAPRole(r.Context(), name); err != nil {
 		writeErr(w, err)
 		return
@@ -168,6 +189,10 @@ func (s *Server) deleteLDAPRole(w http.ResponseWriter, r *http.Request) {
 
 // LIST /v1/auth/ldap/role/
 func (s *Server) listLDAPRoles(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/ldap/role", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	names, err := s.core.ListLDAPRoles(r.Context())
 	if err != nil {
 		writeErr(w, err)

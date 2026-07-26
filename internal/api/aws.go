@@ -8,10 +8,15 @@ import (
 	"time"
 
 	dynaws "github.com/NAGenaev/tuck/internal/dynamic/aws"
+	"github.com/NAGenaev/tuck/internal/policy"
 )
 
 // PUT /v1/aws/config
 func (s *Server) putAWSConfig(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "aws/config", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})
@@ -35,6 +40,10 @@ func (s *Server) putAWSConfig(w http.ResponseWriter, r *http.Request) {
 
 // GET /v1/aws/config
 func (s *Server) getAWSConfig(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "aws/config", policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	cfg, err := s.core.GetAWSConfig(r.Context())
 	if err != nil {
 		if errors.Is(err, dynaws.ErrNotConfigured) {
@@ -50,6 +59,10 @@ func (s *Server) getAWSConfig(w http.ResponseWriter, r *http.Request) {
 
 // DELETE /v1/aws/config
 func (s *Server) deleteAWSConfig(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "aws/config", policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.DeleteAWSConfig(r.Context()); err != nil {
 		writeErr(w, err)
 		return
@@ -63,6 +76,10 @@ func (s *Server) putAWSRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role name required"})
+		return
+	}
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "aws/roles/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
@@ -119,6 +136,10 @@ func (s *Server) putAWSRole(w http.ResponseWriter, r *http.Request) {
 // GET /v1/aws/roles/{name}
 func (s *Server) getAWSRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "aws/roles/"+name, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	role, err := s.core.GetAWSRole(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, dynaws.ErrNotFound) {
@@ -134,6 +155,10 @@ func (s *Server) getAWSRole(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/aws/roles/{name}
 func (s *Server) deleteAWSRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "aws/roles/"+name, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.DeleteAWSRole(r.Context(), name); err != nil {
 		writeErr(w, err)
 		return
@@ -143,6 +168,10 @@ func (s *Server) deleteAWSRole(w http.ResponseWriter, r *http.Request) {
 
 // LIST /v1/aws/roles/
 func (s *Server) listAWSRoles(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "aws/roles", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	names, err := s.core.ListAWSRoles(r.Context())
 	if err != nil {
 		writeErr(w, err)
@@ -154,6 +183,10 @@ func (s *Server) listAWSRoles(w http.ResponseWriter, r *http.Request) {
 // POST /v1/aws/creds/{role}
 func (s *Server) generateAWSCreds(w http.ResponseWriter, r *http.Request) {
 	roleName := r.PathValue("role")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "aws/creds/"+roleName, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	res, err := s.core.GenerateAWSCreds(r.Context(), roleName)
 	if err != nil {
 		switch {
@@ -172,6 +205,10 @@ func (s *Server) generateAWSCreds(w http.ResponseWriter, r *http.Request) {
 // GET /v1/aws/lease/{id}
 func (s *Server) getAWSLease(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "aws/lease/"+id, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	lease, err := s.core.GetAWSLease(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, dynaws.ErrNotFound) {
@@ -187,6 +224,10 @@ func (s *Server) getAWSLease(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/aws/lease/{id}
 func (s *Server) revokeAWSLease(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "aws/lease/"+id, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.RevokeAWSLease(r.Context(), id); err != nil {
 		if errors.Is(err, dynaws.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "lease not found"})
@@ -200,6 +241,10 @@ func (s *Server) revokeAWSLease(w http.ResponseWriter, r *http.Request) {
 
 // LIST /v1/aws/lease/
 func (s *Server) listAWSLeases(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "aws/lease", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	ids, err := s.core.ListAWSLeases(r.Context())
 	if err != nil {
 		writeErr(w, err)

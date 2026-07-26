@@ -8,12 +8,17 @@ import (
 	"time"
 
 	dynSSH "github.com/NAGenaev/tuck/internal/dynamic/ssh"
+	"github.com/NAGenaev/tuck/internal/policy"
 )
 
 // POST /v1/ssh/generate/ca
 // Body: {"key_type":"ed25519"}  (key_type optional, defaults to ed25519)
 // Returns the CA public key in OpenSSH format for use in TrustedUserCAKeys.
 func (s *Server) sshGenerateCA(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "ssh/root", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	var req struct {
 		KeyType string `json:"key_type"`
 	}
@@ -31,6 +36,10 @@ func (s *Server) sshGenerateCA(w http.ResponseWriter, r *http.Request) {
 // POST /v1/ssh/import/ca
 // Body: {"private_key":"-----BEGIN PRIVATE KEY-----\n..."}
 func (s *Server) sshImportCA(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "ssh/root", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})
@@ -77,6 +86,10 @@ func (s *Server) sshPutRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role name required"})
+		return
+	}
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "ssh/roles/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
@@ -129,6 +142,10 @@ func (s *Server) sshPutRole(w http.ResponseWriter, r *http.Request) {
 // GET /v1/ssh/roles/{name}
 func (s *Server) sshGetRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "ssh/roles/"+name, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	role, err := s.core.SSHGetRole(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, dynSSH.ErrNotFound) {
@@ -144,6 +161,10 @@ func (s *Server) sshGetRole(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/ssh/roles/{name}
 func (s *Server) sshDeleteRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "ssh/roles/"+name, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.SSHDeleteRole(r.Context(), name); err != nil {
 		writeErr(w, err)
 		return
@@ -153,6 +174,10 @@ func (s *Server) sshDeleteRole(w http.ResponseWriter, r *http.Request) {
 
 // LIST /v1/ssh/roles/
 func (s *Server) sshListRoles(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "ssh/roles", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	names, err := s.core.SSHListRoles(r.Context())
 	if err != nil {
 		writeErr(w, err)
@@ -166,6 +191,10 @@ func (s *Server) sshListRoles(w http.ResponseWriter, r *http.Request) {
 // Response: {"serial":..., "signed_key":"ssh-ed25519-cert-v01@... ...","valid_after":"...","valid_before":"...","ttl":"24h0m0s"}
 func (s *Server) sshSign(w http.ResponseWriter, r *http.Request) {
 	roleName := r.PathValue("role")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "ssh/sign/"+roleName, policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})

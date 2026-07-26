@@ -8,12 +8,17 @@ import (
 	"time"
 
 	"github.com/NAGenaev/tuck/internal/dynamic/pki"
+	"github.com/NAGenaev/tuck/internal/policy"
 )
 
 // POST /v1/pki/generate/root
 // Body: {"common_name":"...","ttl":"87600h","key_type":"ec","key_bits":256}
 // Returns the CA certificate PEM.
 func (s *Server) pkiGenerateRoot(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "pki/root", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})
@@ -63,6 +68,10 @@ func (s *Server) pkiGenerateRoot(w http.ResponseWriter, r *http.Request) {
 // POST /v1/pki/import/ca
 // Body: {"cert_pem":"...","key_pem":"..."}
 func (s *Server) pkiImportCA(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "pki/root", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})
@@ -126,6 +135,10 @@ func (s *Server) pkiPutRole(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role name required"})
 		return
 	}
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "pki/roles/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})
@@ -186,6 +199,10 @@ func (s *Server) pkiPutRole(w http.ResponseWriter, r *http.Request) {
 // GET /v1/pki/roles/{name}
 func (s *Server) pkiGetRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "pki/roles/"+name, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	role, err := s.core.GetPKIRole(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, pki.ErrNotFound) {
@@ -201,6 +218,10 @@ func (s *Server) pkiGetRole(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/pki/roles/{name}
 func (s *Server) pkiDeleteRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "pki/roles/"+name, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.DeletePKIRole(r.Context(), name); err != nil {
 		writeErr(w, err)
 		return
@@ -210,6 +231,10 @@ func (s *Server) pkiDeleteRole(w http.ResponseWriter, r *http.Request) {
 
 // LIST /v1/pki/roles/
 func (s *Server) pkiListRoles(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "pki/roles", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	names, err := s.core.ListPKIRoles(r.Context())
 	if err != nil {
 		writeErr(w, err)
@@ -223,6 +248,10 @@ func (s *Server) pkiListRoles(w http.ResponseWriter, r *http.Request) {
 // Returns: certificate + private_key + issuing_ca + serial + expires_at
 func (s *Server) pkiIssueCert(w http.ResponseWriter, r *http.Request) {
 	roleName := r.PathValue("role")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "pki/issue/"+roleName, policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})
@@ -271,6 +300,10 @@ func (s *Server) pkiIssueCert(w http.ResponseWriter, r *http.Request) {
 // POST /v1/pki/revoke/{serial}
 func (s *Server) pkiRevokeCert(w http.ResponseWriter, r *http.Request) {
 	serial := r.PathValue("serial")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "pki/revoke/"+serial, policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.RevokePKICert(r.Context(), serial); err != nil {
 		if errors.Is(err, pki.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "certificate not found"})
@@ -285,6 +318,10 @@ func (s *Server) pkiRevokeCert(w http.ResponseWriter, r *http.Request) {
 // GET /v1/pki/certs/{serial}
 func (s *Server) pkiGetCert(w http.ResponseWriter, r *http.Request) {
 	serial := r.PathValue("serial")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "pki/certs/"+serial, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	cr, err := s.core.GetPKICert(r.Context(), serial)
 	if err != nil {
 		if errors.Is(err, pki.ErrNotFound) {
@@ -299,6 +336,10 @@ func (s *Server) pkiGetCert(w http.ResponseWriter, r *http.Request) {
 
 // LIST /v1/pki/certs/
 func (s *Server) pkiListCerts(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "pki/certs", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	serials, err := s.core.ListPKICerts(r.Context())
 	if err != nil {
 		writeErr(w, err)

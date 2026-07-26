@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/NAGenaev/tuck/internal/auth/approle"
+	"github.com/NAGenaev/tuck/internal/policy"
 )
 
 // POST /v1/auth/approle/login
@@ -54,6 +55,10 @@ func (s *Server) putAppRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role name required"})
+		return
+	}
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/approle/role/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
@@ -110,6 +115,10 @@ func (s *Server) putAppRole(w http.ResponseWriter, r *http.Request) {
 // GET /v1/auth/approle/role/{name}
 func (s *Server) getAppRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/approle/role/"+name, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	role, err := s.core.GetAppRole(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, approle.ErrNotFound) {
@@ -125,6 +134,10 @@ func (s *Server) getAppRole(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/auth/approle/role/{name}
 func (s *Server) deleteAppRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/approle/role/"+name, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.DeleteAppRole(r.Context(), name); err != nil {
 		writeErr(w, err)
 		return
@@ -134,6 +147,10 @@ func (s *Server) deleteAppRole(w http.ResponseWriter, r *http.Request) {
 
 // LIST /v1/auth/approle/role/
 func (s *Server) listAppRoles(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/approle/role", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	names, err := s.core.ListAppRoles(r.Context())
 	if err != nil {
 		writeErr(w, err)
@@ -146,6 +163,10 @@ func (s *Server) listAppRoles(w http.ResponseWriter, r *http.Request) {
 // Optional body: {"bound_cidrs":["10.0.0.0/8"],"metadata":{"key":"value"}}
 func (s *Server) generateSecretID(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/approle/role/"+name+"/secret-id", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 
 	var opts approle.SecretIDOptions
 	if r.ContentLength > 0 {
@@ -176,7 +197,12 @@ func (s *Server) generateSecretID(w http.ResponseWriter, r *http.Request) {
 
 // GET /v1/auth/approle/role/{name}/secret-id/{id}
 func (s *Server) lookupSecretID(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
 	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/approle/role/"+name+"/secret-id", policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	sid, err := s.core.LookupSecretID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, approle.ErrNotFound) {
@@ -191,7 +217,12 @@ func (s *Server) lookupSecretID(w http.ResponseWriter, r *http.Request) {
 
 // DELETE /v1/auth/approle/role/{name}/secret-id/{id}
 func (s *Server) destroySecretID(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
 	id := r.PathValue("id")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/approle/role/"+name+"/secret-id", policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.DestroySecretID(r.Context(), id); err != nil {
 		writeErr(w, err)
 		return

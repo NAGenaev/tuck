@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	dynTOTP "github.com/NAGenaev/tuck/internal/dynamic/totp"
+	"github.com/NAGenaev/tuck/internal/policy"
 )
 
 // POST /v1/totp/keys/{name}
@@ -16,6 +17,10 @@ func (s *Server) totpCreateKey(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "key name required"})
+		return
+	}
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "totp/keys/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
@@ -47,6 +52,10 @@ func (s *Server) totpCreateKey(w http.ResponseWriter, r *http.Request) {
 // Returns key metadata and the otpauth:// URL. Never returns the raw secret.
 func (s *Server) totpGetKey(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "totp/keys/"+name, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	info, err := s.core.TOTPGetKey(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, dynTOTP.ErrNotFound) {
@@ -62,6 +71,10 @@ func (s *Server) totpGetKey(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/totp/keys/{name}
 func (s *Server) totpDeleteKey(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "totp/keys/"+name, policy.CapDelete); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := s.core.TOTPDeleteKey(r.Context(), name); err != nil {
 		writeErr(w, err)
 		return
@@ -71,6 +84,10 @@ func (s *Server) totpDeleteKey(w http.ResponseWriter, r *http.Request) {
 
 // LIST /v1/totp/keys/
 func (s *Server) totpListKeys(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "totp/keys", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
 	names, err := s.core.TOTPListKeys(r.Context())
 	if err != nil {
 		writeErr(w, err)
@@ -84,6 +101,10 @@ func (s *Server) totpListKeys(w http.ResponseWriter, r *http.Request) {
 // Response: {"code":"123456","valid_until":"2026-06-11T12:00:30Z"}
 func (s *Server) totpGenerateCode(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "totp/code/"+name, policy.CapRead); err != nil {
+		writeErr(w, err)
+		return
+	}
 	result, err := s.core.TOTPGenerateCode(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, dynTOTP.ErrNotFound) {
@@ -102,6 +123,10 @@ func (s *Server) totpGenerateCode(w http.ResponseWriter, r *http.Request) {
 // Response: {"valid":true} or {"valid":false}
 func (s *Server) totpValidateCode(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "totp/code/"+name, policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body"})

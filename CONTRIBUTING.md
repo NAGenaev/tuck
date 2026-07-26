@@ -21,6 +21,13 @@
 git clone https://github.com/NAGenaev/tuck.git
 cd tuck
 
+# ОБЯЗАТЕЛЬНО первым шагом: internal/ui встраивает собранную веб-панель
+# через //go:embed assets, а internal/ui/assets/ не хранится в git (только
+# .gitkeep-заглушка). Без этого шага ЛЮБАЯ go-команда — go build ./...,
+# go test ./..., golangci-lint — падает с "pattern assets: contains no
+# embeddable files". vite.config.ts сам кладёт сборку в internal/ui/assets.
+cd web && npm ci && npm run build && cd ..
+
 # Сборка всех компонентов
 go build ./...
 
@@ -33,8 +40,9 @@ go build -o bin/tuck ./cmd/tuck
 # Запуск сервера в режиме разработки (dev-seal, распечатан сразу, порт 8200 — всё значения по умолчанию)
 ./bin/tuck
 
-# Сборка и запуск веб-панели отдельно (порт 3333, проксирует /v1, /v2 и т.д. на :8200)
-cd web && npm ci && npm run dev
+# Для разработки самой веб-панели с hot-reload — отдельный dev-сервер
+# (порт 3333, проксирует /v1, /v2 и т.д. на :8200), не нужен для go build:
+cd web && npm run dev
 ```
 
 ### 2.3. Структура проекта

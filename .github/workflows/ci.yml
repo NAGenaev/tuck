@@ -57,6 +57,24 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # internal/ui embeds web/'s build output directly into
+      # internal/ui/assets (see web/vite.config.ts's outDir) via //go:embed;
+      # that directory is gitignored (only a .gitkeep placeholder is
+      # tracked), so any Go tooling that type-checks internal/ui — which
+      # golangci-lint always does — fails on a fresh checkout with "pattern
+      # assets: no matching files found" until this has run once.
+      - name: Build web UI
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
       - name: golangci-lint
         # Pinned build must be built with a Go toolchain >= go.mod's `go`
         # directive, or it refuses to run at all ("Go language version used
@@ -104,6 +122,21 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # See the matching comment in the lint job — govulncheck/gosec both
+      # need to type-check internal/ui, whose //go:embed target is only
+      # populated by this build.
+      - name: Build web UI
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
 
       - name: govulncheck
         run: |

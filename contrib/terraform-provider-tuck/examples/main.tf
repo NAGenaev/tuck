@@ -47,16 +47,16 @@ resource "tuck_mount" "pki" {
 resource "tuck_policy" "readonly" {
   name = "readonly"
   rules_json = jsonencode([
-    { path = "db/*",       capabilities = 1  },  # read
-    { path = "services/*", capabilities = 9  },  # read + list
+    { path = "db/*", capabilities = 1 },       # read
+    { path = "services/*", capabilities = 9 }, # read + list
   ])
 }
 
 resource "tuck_policy" "app_writer" {
   name = "app-writer"
   rules_json = jsonencode([
-    { path = "app/*",      capabilities = 7  },  # read + write + create
-    { path = "transit/*",  capabilities = 5  },  # read + create
+    { path = "app/*", capabilities = 7 },     # read + write + create
+    { path = "transit/*", capabilities = 5 }, # read + create
   ])
 }
 
@@ -73,10 +73,10 @@ resource "tuck_token_role" "app" {
 # ── AppRole ───────────────────────────────────────────────────────────────────
 
 resource "tuck_approle_role" "backend" {
-  name             = "backend"
-  policies         = [tuck_policy.app_writer.name]
-  token_ttl        = "1h"
-  secret_id_ttl    = "24h"
+  name               = "backend"
+  policies           = [tuck_policy.app_writer.name]
+  token_ttl          = "1h"
+  secret_id_ttl      = "24h"
   secret_id_num_uses = 10
 }
 
@@ -139,6 +139,80 @@ resource "tuck_database_role" "app_readonly" {
   max_ttl     = "24h"
 }
 
+# ── Dynamic Cloud Secrets (AWS / GCP / Azure) ─────────────────────────────────
+# Each cloud's config is a singleton (one per Tuck server/namespace) — the
+# resource address itself gives it identity, there's no separate name field.
+
+resource "tuck_aws_config" "this" {
+  region            = "us-east-1"
+  access_key_id     = var.aws_access_key_id
+  secret_access_key = var.aws_secret_access_key
+}
+
+resource "tuck_aws_role" "readonly" {
+  name            = "readonly"
+  credential_type = "iam_user"
+  policy_arns     = ["arn:aws:iam::aws:policy/ReadOnlyAccess"]
+  default_ttl     = "1h"
+  max_ttl         = "24h"
+}
+
+resource "tuck_gcp_config" "this" {
+  credentials_json = var.gcp_credentials_json
+}
+
+resource "tuck_gcp_role" "readonly" {
+  name                  = "readonly"
+  credential_type       = "access_token"
+  service_account_email = "readonly@my-project.iam.gserviceaccount.com"
+  scopes                = ["https://www.googleapis.com/auth/cloud-platform.read-only"]
+  default_ttl           = "1h"
+  max_ttl               = "24h"
+}
+
+resource "tuck_azure_config" "this" {
+  tenant_id     = var.azure_tenant_id
+  client_id     = var.azure_client_id
+  client_secret = var.azure_client_secret
+}
+
+resource "tuck_azure_role" "readonly" {
+  name                  = "readonly"
+  application_object_id = var.azure_readonly_app_object_id
+  application_id        = var.azure_readonly_app_id
+  default_ttl           = "1h"
+  max_ttl               = "24h"
+}
+
+variable "aws_access_key_id" {
+  type      = string
+  sensitive = true
+}
+variable "aws_secret_access_key" {
+  type      = string
+  sensitive = true
+}
+variable "gcp_credentials_json" {
+  type      = string
+  sensitive = true
+}
+variable "azure_tenant_id" {
+  type = string
+}
+variable "azure_client_id" {
+  type = string
+}
+variable "azure_client_secret" {
+  type      = string
+  sensitive = true
+}
+variable "azure_readonly_app_object_id" {
+  type = string
+}
+variable "azure_readonly_app_id" {
+  type = string
+}
+
 # ── KV v1 Secrets ─────────────────────────────────────────────────────────────
 
 resource "tuck_kv_secret" "db_password" {
@@ -154,7 +228,7 @@ resource "tuck_kv_secret" "api_key" {
 # ── KV v2 Secrets (versioned) ─────────────────────────────────────────────────
 
 resource "tuck_kv_secret_v2" "app_config" {
-  path  = "app/config"
+  path = "app/config"
   value = jsonencode({
     db_host = "postgres.internal"
     db_port = 5432

@@ -424,6 +424,15 @@ func preservePlannedTTLs(defaultTTL, maxTTL *types.String, plannedDefault, plann
 	}
 }
 
+// errRoleDisappearedAfterWrite reports the (should-be-impossible) case where
+// a role that was just successfully PUT can't be found on the immediate
+// follow-up GET — used by the AWS/GCP/Azure role resources, whose PUT
+// endpoints respond 204 with no body and so need a separate GET to read
+// back the stored role.
+func errRoleDisappearedAfterWrite(name string) error {
+	return fmt.Errorf("role %q not found immediately after a successful write", name)
+}
+
 // preserveEquivalentTTL is Read's counterpart to preservePlannedTTLs: there's
 // no plan to defer to during a read, only prior state, so it keeps the prior
 // state's string whenever it's semantically the same duration as the
@@ -776,6 +785,363 @@ func (c *tuckClient) deleteDBRole(ctx context.Context, name string) error {
 	}
 	if status != http.StatusNoContent && status != http.StatusNotFound {
 		return fmt.Errorf("tuck DELETE database role %s: HTTP %d", name, status)
+	}
+	return nil
+}
+
+// ─── AWS dynamic secrets ─────────────────────────────────────────────────────
+// The AWS config is a singleton (PUT/GET/DELETE /v1/aws/config, no name in
+// the path) — Terraform addressing (resource "tuck_aws_config" "this") is
+// what gives it a unique identity, so the schema carries no id/name
+// attribute of its own.
+
+type awsConfigReq struct {
+	AccessKeyID     string `json:"access_key_id,omitempty"`
+	SecretAccessKey string `json:"secret_access_key,omitempty"`
+	Region          string `json:"region"`
+	IAMEndpoint     string `json:"iam_endpoint,omitempty"`
+	STSEndpoint     string `json:"sts_endpoint,omitempty"`
+}
+
+// awsConfigAPIResp mirrors aws.Config JSON. SecretAccessKey comes back
+// blanked from a GET (server-side redaction) — callers must not use it to
+// overwrite state.
+type awsConfigAPIResp struct {
+	AccessKeyID     string `json:"access_key_id,omitempty"`
+	SecretAccessKey string `json:"secret_access_key,omitempty"`
+	Region          string `json:"region"`
+	IAMEndpoint     string `json:"iam_endpoint,omitempty"`
+	STSEndpoint     string `json:"sts_endpoint,omitempty"`
+}
+
+// putAWSConfig returns only an error — PUT /v1/aws/config responds 204 with
+// no body, unlike the database config endpoint.
+func (c *tuckClient) putAWSConfig(ctx context.Context, req awsConfigReq) error {
+	body, status, err := c.doJSON(ctx, http.MethodPut, "/v1/aws/config", req)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent {
+		return fmt.Errorf("tuck PUT aws config: HTTP %d: %s", status, body)
+	}
+	return nil
+}
+
+func (c *tuckClient) getAWSConfig(ctx context.Context) (*awsConfigAPIResp, bool, error) {
+	body, status, err := c.doJSON(ctx, http.MethodGet, "/v1/aws/config", nil)
+	if err != nil {
+		return nil, false, err
+	}
+	if status == http.StatusNotFound {
+		return nil, false, nil
+	}
+	if status != http.StatusOK {
+		return nil, false, fmt.Errorf("tuck GET aws config: HTTP %d: %s", status, body)
+	}
+	var resp awsConfigAPIResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, false, fmt.Errorf("parse aws config response: %w", err)
+	}
+	return &resp, true, nil
+}
+
+func (c *tuckClient) deleteAWSConfig(ctx context.Context) error {
+	_, status, err := c.doJSON(ctx, http.MethodDelete, "/v1/aws/config", nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent && status != http.StatusNotFound {
+		return fmt.Errorf("tuck DELETE aws config: HTTP %d", status)
+	}
+	return nil
+}
+
+type awsRoleReq struct {
+	CredentialType string   `json:"credential_type"`
+	PolicyARNs     []string `json:"policy_arns,omitempty"`
+	PolicyDocument string   `json:"policy_document,omitempty"`
+	RoleARNs       []string `json:"role_arns,omitempty"`
+	DefaultTTL     string   `json:"default_ttl,omitempty"`
+	MaxTTL         string   `json:"max_ttl,omitempty"`
+}
+
+// awsRoleAPIResp mirrors aws.Role JSON (durations are ns int64).
+type awsRoleAPIResp struct {
+	Name           string   `json:"name"`
+	CredentialType string   `json:"credential_type"`
+	PolicyARNs     []string `json:"policy_arns,omitempty"`
+	PolicyDocument string   `json:"policy_document,omitempty"`
+	RoleARNs       []string `json:"role_arns,omitempty"`
+	DefaultTTL     int64    `json:"default_ttl,omitempty"`
+	MaxTTL         int64    `json:"max_ttl,omitempty"`
+}
+
+func (c *tuckClient) getAWSRole(ctx context.Context, name string) (*awsRoleAPIResp, bool, error) {
+	body, status, err := c.doJSON(ctx, http.MethodGet, "/v1/aws/roles/"+name, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	if status == http.StatusNotFound {
+		return nil, false, nil
+	}
+	if status != http.StatusOK {
+		return nil, false, fmt.Errorf("tuck GET aws role %s: HTTP %d: %s", name, status, body)
+	}
+	var resp awsRoleAPIResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, false, fmt.Errorf("parse aws role response: %w", err)
+	}
+	resp.Name = name
+	return &resp, true, nil
+}
+
+// putAWSRole returns only an error — PUT /v1/aws/roles/{name} responds 204
+// with no body, unlike the PKI/SSH/database role endpoints. Callers must
+// getAWSRole afterward to read back server-assigned/defaulted fields.
+func (c *tuckClient) putAWSRole(ctx context.Context, name string, req awsRoleReq) error {
+	body, status, err := c.doJSON(ctx, http.MethodPut, "/v1/aws/roles/"+name, req)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent {
+		return fmt.Errorf("tuck PUT aws role %s: HTTP %d: %s", name, status, body)
+	}
+	return nil
+}
+
+func (c *tuckClient) deleteAWSRole(ctx context.Context, name string) error {
+	_, status, err := c.doJSON(ctx, http.MethodDelete, "/v1/aws/roles/"+name, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent && status != http.StatusNotFound {
+		return fmt.Errorf("tuck DELETE aws role %s: HTTP %d", name, status)
+	}
+	return nil
+}
+
+// ─── GCP dynamic secrets ─────────────────────────────────────────────────────
+
+type gcpConfigReq struct {
+	CredentialsJSON string `json:"credentials_json,omitempty"`
+}
+
+// gcpConfigAPIResp mirrors gcp.Config JSON. CredentialsJSON comes back
+// blanked from a GET (server-side redaction).
+type gcpConfigAPIResp struct {
+	CredentialsJSON string `json:"credentials_json,omitempty"`
+}
+
+func (c *tuckClient) putGCPConfig(ctx context.Context, req gcpConfigReq) error {
+	body, status, err := c.doJSON(ctx, http.MethodPut, "/v1/gcp/config", req)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent {
+		return fmt.Errorf("tuck PUT gcp config: HTTP %d: %s", status, body)
+	}
+	return nil
+}
+
+func (c *tuckClient) getGCPConfig(ctx context.Context) (*gcpConfigAPIResp, bool, error) {
+	body, status, err := c.doJSON(ctx, http.MethodGet, "/v1/gcp/config", nil)
+	if err != nil {
+		return nil, false, err
+	}
+	if status == http.StatusNotFound {
+		return nil, false, nil
+	}
+	if status != http.StatusOK {
+		return nil, false, fmt.Errorf("tuck GET gcp config: HTTP %d: %s", status, body)
+	}
+	var resp gcpConfigAPIResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, false, fmt.Errorf("parse gcp config response: %w", err)
+	}
+	return &resp, true, nil
+}
+
+func (c *tuckClient) deleteGCPConfig(ctx context.Context) error {
+	_, status, err := c.doJSON(ctx, http.MethodDelete, "/v1/gcp/config", nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent && status != http.StatusNotFound {
+		return fmt.Errorf("tuck DELETE gcp config: HTTP %d", status)
+	}
+	return nil
+}
+
+type gcpRoleReq struct {
+	CredentialType      string   `json:"credential_type"`
+	ServiceAccountEmail string   `json:"service_account_email"`
+	KeyAlgorithm        string   `json:"key_algorithm,omitempty"`
+	Scopes              []string `json:"scopes,omitempty"`
+	DefaultTTL          string   `json:"default_ttl,omitempty"`
+	MaxTTL              string   `json:"max_ttl,omitempty"`
+}
+
+// gcpRoleAPIResp mirrors gcp.Role JSON (durations are ns int64).
+type gcpRoleAPIResp struct {
+	Name                string   `json:"name"`
+	CredentialType      string   `json:"credential_type"`
+	ServiceAccountEmail string   `json:"service_account_email"`
+	KeyAlgorithm        string   `json:"key_algorithm,omitempty"`
+	Scopes              []string `json:"scopes,omitempty"`
+	DefaultTTL          int64    `json:"default_ttl,omitempty"`
+	MaxTTL              int64    `json:"max_ttl,omitempty"`
+}
+
+func (c *tuckClient) getGCPRole(ctx context.Context, name string) (*gcpRoleAPIResp, bool, error) {
+	body, status, err := c.doJSON(ctx, http.MethodGet, "/v1/gcp/roles/"+name, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	if status == http.StatusNotFound {
+		return nil, false, nil
+	}
+	if status != http.StatusOK {
+		return nil, false, fmt.Errorf("tuck GET gcp role %s: HTTP %d: %s", name, status, body)
+	}
+	var resp gcpRoleAPIResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, false, fmt.Errorf("parse gcp role response: %w", err)
+	}
+	resp.Name = name
+	return &resp, true, nil
+}
+
+func (c *tuckClient) putGCPRole(ctx context.Context, name string, req gcpRoleReq) error {
+	body, status, err := c.doJSON(ctx, http.MethodPut, "/v1/gcp/roles/"+name, req)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent {
+		return fmt.Errorf("tuck PUT gcp role %s: HTTP %d: %s", name, status, body)
+	}
+	return nil
+}
+
+func (c *tuckClient) deleteGCPRole(ctx context.Context, name string) error {
+	_, status, err := c.doJSON(ctx, http.MethodDelete, "/v1/gcp/roles/"+name, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent && status != http.StatusNotFound {
+		return fmt.Errorf("tuck DELETE gcp role %s: HTTP %d", name, status)
+	}
+	return nil
+}
+
+// ─── Azure dynamic secrets ───────────────────────────────────────────────────
+
+type azureConfigReq struct {
+	TenantID     string `json:"tenant_id"`
+	ClientID     string `json:"client_id,omitempty"`
+	ClientSecret string `json:"client_secret,omitempty"`
+}
+
+// azureConfigAPIResp mirrors azure.Config JSON. ClientSecret comes back
+// blanked from a GET (server-side redaction).
+type azureConfigAPIResp struct {
+	TenantID     string `json:"tenant_id"`
+	ClientID     string `json:"client_id,omitempty"`
+	ClientSecret string `json:"client_secret,omitempty"`
+}
+
+func (c *tuckClient) putAzureConfig(ctx context.Context, req azureConfigReq) error {
+	body, status, err := c.doJSON(ctx, http.MethodPut, "/v1/azure/config", req)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent {
+		return fmt.Errorf("tuck PUT azure config: HTTP %d: %s", status, body)
+	}
+	return nil
+}
+
+func (c *tuckClient) getAzureConfig(ctx context.Context) (*azureConfigAPIResp, bool, error) {
+	body, status, err := c.doJSON(ctx, http.MethodGet, "/v1/azure/config", nil)
+	if err != nil {
+		return nil, false, err
+	}
+	if status == http.StatusNotFound {
+		return nil, false, nil
+	}
+	if status != http.StatusOK {
+		return nil, false, fmt.Errorf("tuck GET azure config: HTTP %d: %s", status, body)
+	}
+	var resp azureConfigAPIResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, false, fmt.Errorf("parse azure config response: %w", err)
+	}
+	return &resp, true, nil
+}
+
+func (c *tuckClient) deleteAzureConfig(ctx context.Context) error {
+	_, status, err := c.doJSON(ctx, http.MethodDelete, "/v1/azure/config", nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent && status != http.StatusNotFound {
+		return fmt.Errorf("tuck DELETE azure config: HTTP %d", status)
+	}
+	return nil
+}
+
+type azureRoleReq struct {
+	ApplicationObjectID string `json:"application_object_id"`
+	ApplicationID       string `json:"application_id"`
+	DefaultTTL          string `json:"default_ttl,omitempty"`
+	MaxTTL              string `json:"max_ttl,omitempty"`
+}
+
+// azureRoleAPIResp mirrors azure.Role JSON (durations are ns int64).
+type azureRoleAPIResp struct {
+	Name                string `json:"name"`
+	ApplicationObjectID string `json:"application_object_id"`
+	ApplicationID       string `json:"application_id"`
+	DefaultTTL          int64  `json:"default_ttl,omitempty"`
+	MaxTTL              int64  `json:"max_ttl,omitempty"`
+}
+
+func (c *tuckClient) getAzureRole(ctx context.Context, name string) (*azureRoleAPIResp, bool, error) {
+	body, status, err := c.doJSON(ctx, http.MethodGet, "/v1/azure/roles/"+name, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	if status == http.StatusNotFound {
+		return nil, false, nil
+	}
+	if status != http.StatusOK {
+		return nil, false, fmt.Errorf("tuck GET azure role %s: HTTP %d: %s", name, status, body)
+	}
+	var resp azureRoleAPIResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, false, fmt.Errorf("parse azure role response: %w", err)
+	}
+	resp.Name = name
+	return &resp, true, nil
+}
+
+func (c *tuckClient) putAzureRole(ctx context.Context, name string, req azureRoleReq) error {
+	body, status, err := c.doJSON(ctx, http.MethodPut, "/v1/azure/roles/"+name, req)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent {
+		return fmt.Errorf("tuck PUT azure role %s: HTTP %d: %s", name, status, body)
+	}
+	return nil
+}
+
+func (c *tuckClient) deleteAzureRole(ctx context.Context, name string) error {
+	_, status, err := c.doJSON(ctx, http.MethodDelete, "/v1/azure/roles/"+name, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent && status != http.StatusNotFound {
+		return fmt.Errorf("tuck DELETE azure role %s: HTTP %d", name, status)
 	}
 	return nil
 }

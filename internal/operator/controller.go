@@ -142,7 +142,7 @@ func (ctrl *Controller) runOnce(ctx context.Context) error {
 func (ctrl *Controller) handleEvent(ctx context.Context, ev WatchEvent) error {
 	switch ev.Type {
 	case "ADDED", "MODIFIED":
-		ctrl.addTracked(ev.Object)
+		specChanged := ctrl.addTracked(ev.Object)
 		// If the object is being deleted (DeletionTimestamp set) run cleanup.
 		if ev.Object.Metadata.DeletionTimestamp != nil {
 			return ctrl.runDeletion(ctx, ev.Object)
@@ -150,6 +150,17 @@ func (ctrl *Controller) handleEvent(ctx context.Context, ev WatchEvent) error {
 		// Ensure our finalizer is present before syncing.
 		if err := ctrl.ensureFinalizer(ctx, ev.Object); err != nil {
 			return err
+		}
+		if !specChanged {
+			// reconcile's deferred UpdateStatus bumps resourceVersion, which
+			// the watch echoes straight back as another MODIFIED event for
+			// the same, unchanged spec. Reconciling that echo would write
+			// status again, produce another echo, and so on — a tight
+			// MODIFIED/reconcile/UpdateStatus loop with no backoff, visible
+			// as a burst of status-update 409s whenever it raced the 30s
+			// periodic refresh. Only spec changes (or first sight of a
+			// resource) need a reconcile; status-only echoes are a no-op.
+			return nil
 		}
 		return ctrl.reconcile(ctx, ev.Object)
 
@@ -285,13 +296,21 @@ func (ctrl *Controller) runDueRefreshes(ctx context.Context) {
 	}
 }
 
-func (ctrl *Controller) addTracked(ts TuckSecret) {
+// addTracked records ts as the latest known state and reports whether its
+// Spec differs from whatever was previously tracked for this resource (true
+// for a resource seen for the first time too, since that always needs a
+// reconcile).
+func (ctrl *Controller) addTracked(ts TuckSecret) (specChanged bool) {
 	ctrl.mu.Lock()
 	defer ctrl.mu.Unlock()
-	ctrl.tracked[resourceKey(ts)] = trackedResource{
+	key := resourceKey(ts)
+	prev, wasTracked := ctrl.tracked[key]
+	specChanged = !wasTracked || prev.ts.Spec != ts.Spec
+	ctrl.tracked[key] = trackedResource{
 		ts:          ts,
 		nextRefresh: time.Now().Add(ts.Spec.RefreshDuration()),
 	}
+	return specChanged
 }
 
 func (ctrl *Controller) removeTracked(ts TuckSecret) {

@@ -194,6 +194,44 @@ func TestGeneratePassword(t *testing.T) {
 	}
 }
 
+// TestDefaultRevocationStatementsPostgres_RevokesConnectAndOwnedObjects
+// guards against DROP USER failing with a dependency error when the role
+// still has an open session or owns grants/objects beyond the public-schema
+// tables the older template cleaned up: CONNECT must be revoked first so no
+// new session can open, and DROP OWNED BY must run before DROP USER so any
+// remaining objects/privileges are cleared regardless of schema.
+func TestDefaultRevocationStatementsPostgres_RevokesConnectAndOwnedObjects(t *testing.T) {
+	out := renderTemplate(DefaultRevocationStatementsPostgres, map[string]string{
+		"{{username}}": "tuck_app_123",
+		"{{database}}": "qa-postgres",
+	})
+	if !containsAll(out, `REVOKE CONNECT ON DATABASE "qa-postgres" FROM "tuck_app_123"`) {
+		t.Errorf("revocation statement does not revoke CONNECT before drop: %q", out)
+	}
+	if !containsAll(out, `DROP OWNED BY "tuck_app_123"`) {
+		t.Errorf("revocation statement does not DROP OWNED BY before DROP USER: %q", out)
+	}
+
+	stmts := splitStatements(out)
+	revokeIdx, dropOwnedIdx, dropUserIdx := -1, -1, -1
+	for i, s := range stmts {
+		switch {
+		case containsStr(s, "REVOKE CONNECT"):
+			revokeIdx = i
+		case containsStr(s, "DROP OWNED BY"):
+			dropOwnedIdx = i
+		case containsStr(s, "DROP USER"):
+			dropUserIdx = i
+		}
+	}
+	if revokeIdx == -1 || dropOwnedIdx == -1 || dropUserIdx == -1 {
+		t.Fatalf("expected REVOKE CONNECT, DROP OWNED BY and DROP USER statements, got %v", stmts)
+	}
+	if !(revokeIdx < dropOwnedIdx && dropOwnedIdx < dropUserIdx) {
+		t.Fatalf("expected order REVOKE CONNECT, DROP OWNED BY, DROP USER, got %v", stmts)
+	}
+}
+
 func TestSplitStatements(t *testing.T) {
 	stmts := splitStatements("  CREATE USER x; GRANT SELECT ON y;  ")
 	if len(stmts) != 2 {

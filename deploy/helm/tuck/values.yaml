@@ -143,6 +143,14 @@ operator:
 
   leaderElect: true
 
+  # -- Namespace for the leader-election Lease object. Empty defaults to the
+  # release namespace (the same namespace the operator itself runs in) — the
+  # operator's own --leader-namespace flag default ("tuck-system") is only
+  # meant for raw kubectl deployments that create that namespace by hand;
+  # this chart does not create it, so leaving this empty avoids the operator
+  # retrying forever against a namespace that was never created.
+  leaderNamespace: ""
+
   resources:
     limits:
       cpu: 200m

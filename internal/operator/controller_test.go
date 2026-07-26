@@ -162,6 +162,52 @@ func TestHandleEvent_Added(t *testing.T) {
 	}
 }
 
+// TestHandleEvent_ModifiedEchoWithoutSpecChange_SkipsReconcile guards
+// against a self-triggering feedback loop: reconcile's status write bumps
+// resourceVersion, which the watch echoes back as another MODIFIED event
+// for the very same, unchanged spec. Without a spec-change check that echo
+// would trigger another reconcile, another status write, another echo —
+// an unbounded MODIFIED/UpdateStatus loop with no backoff. Only a genuine
+// spec change (or first sighting of a resource) should reconcile.
+func TestHandleEvent_ModifiedEchoWithoutSpecChange_SkipsReconcile(t *testing.T) {
+	ts := newTS("ns", "ev-secret", "path/to/secret", "k8s-secret", "data")
+	kube := &mockKube{}
+	tuck := &mockTuck{secrets: map[string][]byte{"path/to/secret": []byte("hello")}}
+	ctrl := New(kube, tuck, "ns")
+
+	// First MODIFIED (equivalent to ADDED for an untracked resource) does a
+	// real reconcile.
+	if err := ctrl.handleEvent(context.Background(), WatchEvent{Type: "MODIFIED", Object: ts}); err != nil {
+		t.Fatalf("first handleEvent error: %v", err)
+	}
+	if len(kube.applied) != 1 || len(kube.statuses) != 1 {
+		t.Fatalf("expected 1 applied secret and 1 status write after first MODIFIED, got applied=%d statuses=%d",
+			len(kube.applied), len(kube.statuses))
+	}
+
+	// Echo: same spec, only resourceVersion bumped (as a status write would
+	// do) — must not trigger another reconcile.
+	echo := ts
+	echo.Metadata.ResourceVersion = "2"
+	if err := ctrl.handleEvent(context.Background(), WatchEvent{Type: "MODIFIED", Object: echo}); err != nil {
+		t.Fatalf("echo handleEvent error: %v", err)
+	}
+	if len(kube.applied) != 1 || len(kube.statuses) != 1 {
+		t.Fatalf("echo MODIFIED must not reconcile again, got applied=%d statuses=%d", len(kube.applied), len(kube.statuses))
+	}
+
+	// A genuine spec change must still reconcile.
+	changed := ts
+	changed.Metadata.ResourceVersion = "3"
+	changed.Spec.SecretKey = "other-key"
+	if err := ctrl.handleEvent(context.Background(), WatchEvent{Type: "MODIFIED", Object: changed}); err != nil {
+		t.Fatalf("changed handleEvent error: %v", err)
+	}
+	if len(kube.applied) != 2 || len(kube.statuses) != 2 {
+		t.Fatalf("spec change must reconcile, got applied=%d statuses=%d", len(kube.applied), len(kube.statuses))
+	}
+}
+
 func TestHandleEvent_Deleted_DoesNotApply(t *testing.T) {
 	ts := newTS("ns", "ev-secret", "path/to/secret", "k8s-secret", "data")
 	kube := &mockKube{}

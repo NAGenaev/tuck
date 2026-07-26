@@ -42,8 +42,12 @@ const (
 
 	// DefaultCreationStatementsPostgres is a safe template for PostgreSQL.
 	DefaultCreationStatementsPostgres = `CREATE USER "{{username}}" WITH PASSWORD '{{password}}' VALID UNTIL '{{expiry}}'; GRANT CONNECT ON DATABASE "{{database}}" TO "{{username}}";`
-	// DefaultRevocationStatementsPostgres revokes and drops the user.
-	DefaultRevocationStatementsPostgres = `REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM "{{username}}"; DROP USER IF EXISTS "{{username}}";`
+	// DefaultRevocationStatementsPostgres revokes and drops the user. It
+	// revokes CONNECT first so the role can't open new sessions while being
+	// torn down, then DROP OWNED BY clears any objects/privileges the role
+	// still holds in this database — without it, DROP USER fails with a
+	// dependency error whenever the role owns anything beyond table grants.
+	DefaultRevocationStatementsPostgres = `REVOKE CONNECT ON DATABASE "{{database}}" FROM "{{username}}"; REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM "{{username}}"; DROP OWNED BY "{{username}}"; DROP USER IF EXISTS "{{username}}";`
 	// DefaultCreationStatementsMySQL is a safe template for MySQL.
 	DefaultCreationStatementsMySQL = `CREATE USER '{{username}}'@'%' IDENTIFIED BY '{{password}}'; GRANT SELECT ON ` + "`{{database}}`" + `.* TO '{{username}}'@'%';`
 	// DefaultRevocationStatementsMySQL drops the MySQL user.

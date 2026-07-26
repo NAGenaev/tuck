@@ -90,11 +90,24 @@ func (le *LeaderElector) Run(ctx context.Context, onLeading func(ctx context.Con
 	}
 }
 
-// acquireLoop retries tryAcquire until successful or ctx is cancelled.
+// acquireLoop retries tryAcquire until successful or ctx is cancelled. A
+// persistent failure (e.g. the configured LeaseNamespace doesn't exist) used
+// to retry silently forever with no indication anything was wrong; the first
+// failure and then every 15th attempt are now logged so a misconfiguration
+// shows up instead of looking like a hang.
 func (le *LeaderElector) acquireLoop(ctx context.Context) error {
+	var lastErr string
+	attempt := 0
 	for {
-		if err := le.tryAcquire(ctx); err == nil {
+		err := le.tryAcquire(ctx)
+		if err == nil {
 			return nil
+		}
+		attempt++
+		if msg := err.Error(); msg != lastErr || attempt%15 == 0 {
+			slog.Warn("operator: failed to acquire leader lease — retrying",
+				"namespace", le.cfg.LeaseNamespace, "attempt", attempt, "err", err)
+			lastErr = msg
 		}
 		select {
 		case <-time.After(le.cfg.RetryPeriod):

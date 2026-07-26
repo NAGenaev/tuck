@@ -39,6 +39,7 @@ spec:
             {{- end }}
             {{- if .Values.operator.leaderElect }}
             - --leader-elect
+            - --leader-namespace={{ .Values.operator.leaderNamespace | default (include "tuck.namespace" .) }}
             {{- end }}
           env:
             - name: TUCK_TOKEN

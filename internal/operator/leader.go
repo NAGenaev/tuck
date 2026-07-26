@@ -12,7 +12,19 @@ const (
 	defaultLeaseDuration = 15 * time.Second
 	defaultRenewPeriod   = 5 * time.Second
 	defaultRetryPeriod   = 2 * time.Second
-	leaseTimeFormat      = time.RFC3339Nano
+
+	// leaseTimeFormat MUST match k8s.io/apimachinery's metav1.MicroTime
+	// format exactly (fixed 6-digit microsecond precision), not
+	// time.RFC3339Nano: the API server decodes spec.acquireTime/renewTime
+	// as MicroTime and its parser requires exactly 6 fractional digits.
+	// RFC3339Nano trims trailing zeros, so it only produces a
+	// coincidentally-valid 6-digit string when the trimmed value happens
+	// to land on exactly 6 — every other write (the large majority) fails
+	// with a 400 "cannot parse ... as \"Z07:00\"" from the API server. This
+	// was reproduced live: CreateLease/UpdateLease failed on ~99% of
+	// attempts, causing minutes-long delays before first leader acquisition
+	// and near-immediate step-down after every successful renewal.
+	leaseTimeFormat = "2006-01-02T15:04:05.000000Z07:00"
 )
 
 // LeaderConfig controls lease acquisition and renewal behavior.

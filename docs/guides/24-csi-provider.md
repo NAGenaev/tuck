@@ -62,8 +62,7 @@ tuckcli policy put csi-readonly '{"paths":[{"path":"secret/*","capabilities":["r
 helm upgrade --install tuck oci://ghcr.io/nagenaev/tuck \
   --namespace tuck \
   --create-namespace \
-  --set csi.enabled=true \
-  --set csi.tokenSecretName=tuck-csi-token
+  --set csi.enabled=true
 ```
 
 Или в `values.yaml`:
@@ -71,9 +70,10 @@ helm upgrade --install tuck oci://ghcr.io/nagenaev/tuck \
 ```yaml
 csi:
   enabled: true
-  tokenSecretName: tuck-csi-token
   kubeletRootDir: /var/lib/kubelet  # измени для RKE2: /var/lib/rancher/rke2/agent/kubelet
 ```
+
+> Имя K8s Secret с токеном (`tuck-csi-token` в примерах ниже) — не настройка чарта, а обычный `nodePublishSecretRef.name` в спеке конкретного Pod'а: чарт разворачивает только сам драйвер (DaemonSet), а не индивидуальные mount'ы, поэтому у него нет и не может быть единого "чартового" токена на все Pod'ы.
 
 ### 3. Проверь, что DaemonSet запустился
 
@@ -104,9 +104,9 @@ spec:
       csi:
         driver: secrets.tuck.io
         volumeAttributes:
-          tuckAddr: "http://tuck-server.tuck.svc:8200"
-          path: "secret/myapp"      # путь в KV v1
-          expandKeys: "true"         # каждый ключ = отдельный файл
+          tuck.io/addr: "http://tuck-server.tuck.svc:8200"
+          tuck.io/paths: "secret/myapp"       # путь в KV v1 (через запятую — несколько путей)
+          tuck.io/expand-keys: "true"          # каждый ключ = отдельный файл
         nodePublishSecretRef:
           name: tuck-csi-token       # K8s Secret с токеном
 
@@ -127,32 +127,44 @@ spec:
   password    ← содержимое поля "password" из secret/myapp
 ```
 
-### KV v2 (с версиями)
+### KV v2
 
 ```yaml
 volumeAttributes:
-  tuckAddr: "http://tuck-server.tuck.svc:8200"
-  path: "kv/myapp"
-  kvVersion: "2"          # включает KV v2
-  version: "3"            # конкретная версия (по умолчанию: latest)
-  expandKeys: "true"
+  tuck.io/addr: "http://tuck-server.tuck.svc:8200"
+  tuck.io/paths: "kv/myapp"
+  tuck.io/kv-version: "2"          # включает KV v2
+  tuck.io/expand-keys: "true"
 ```
 
-### Один файл (без expandKeys)
+Монтирование всегда отдаёт актуальную (latest) версию секрета — точечного пиннинга на конкретную версию KV v2 через CSI нет (в отличие, например, от `tuckcli kv get --version`).
+
+### Один файл (без expand-keys)
 
 ```yaml
 volumeAttributes:
-  path: "secret/db-password"
-  expandKeys: "false"   # весь JSON пишется в файл "secret"
+  tuck.io/paths: "secret/db-password"
+  tuck.io/expand-keys: "false"   # весь JSON пишется в один файл с именем "db-password"
 ```
 
 ### Настройка прав на файлы
 
 ```yaml
 volumeAttributes:
-  path: "secret/myapp"
-  filePermission: "0400"   # только для владельца (по умолчанию: 0640)
+  tuck.io/paths: "secret/myapp"
+  tuck.io/mode: "0400"   # только чтение для владельца (по умолчанию: "0400")
 ```
+
+### Live-refresh без пересоздания Pod'а
+
+```yaml
+volumeAttributes:
+  tuck.io/addr: "http://tuck-server.tuck.svc:8200"
+  tuck.io/paths: "secret/myapp"
+  tuck.io/refresh-interval: "5m"   # опрашивать Tuck и перезаписывать файлы каждые ~5 минут
+```
+
+По умолчанию (атрибут не указан) секрет читается один раз, при монтировании — поведение не меняется для всех Pod-спек, написанных до появления этого атрибута. С `tuck.io/refresh-interval` `tuckcsi` в фоне периодически перечитывает секрет и **атомарно** (temp-файл + rename) перезаписывает содержимое тома, без пересоздания Pod'а. Подробности и нюансы — в разделе [«Как это работает внутри»](#как-это-работает-внутри) ниже.
 
 ---
 
@@ -160,12 +172,14 @@ volumeAttributes:
 
 | Параметр | Значение по умолчанию | Описание |
 |----------|----------------------|----------|
-| `tuckAddr` | `TUCK_ADDR` из окружения | Адрес сервера Tuck |
-| `path` | (обязательно) | Путь к секрету в Tuck |
-| `kvVersion` | `"1"` | Версия KV engine (`"1"` или `"2"`) |
-| `version` | latest | Версия секрета (только KV v2) |
-| `expandKeys` | `"true"` | `"true"` = файл на каждый ключ, `"false"` = один файл |
-| `filePermission` | `"0640"` | Права на смонтированные файлы (octal) |
+| `tuck.io/addr` | (обязательно) | Адрес сервера Tuck |
+| `tuck.io/paths` | (обязательно) | Пути к секретам в Tuck, через запятую |
+| `tuck.io/namespace` | root | Namespace Tuck |
+| `tuck.io/kv-version` | `"1"` | Версия KV engine (`"1"` или `"2"`) — точечный пиннинг версии секрета не поддержан |
+| `tuck.io/insecure` | `"false"` | `"true"` — пропустить проверку TLS-сертификата (только для dev) |
+| `tuck.io/expand-keys` | `"false"` | `"true"` = файл на каждый ключ JSON-объекта, `"false"` = один файл с исходным значением |
+| `tuck.io/mode` | `"0400"` | Права на смонтированные файлы (octal) |
+| `tuck.io/refresh-interval` | (отключено) | Duration-строка (`"5m"`, `"1h"`) — период фонового обновления файлов; минимальная реальная гранулярность ~30с (значения меньше клэмпятся с warning в логах); не указан = том статичен на весь срок жизни Pod, как раньше |
 
 ---
 
@@ -191,7 +205,13 @@ Pod останавливается → kubelet вызывает NodeUnpublishVol
 tmpfs размонтируется, данные исчезают
 ```
 
-> **Секреты через CSI статичны на весь срок жизни Pod.** `tuckcsi` читает секрет ровно один раз, в момент `NodePublishVolume` — никакого фонового опроса или подписки на изменения нет. Если значение в Tuck изменится, файлы в уже смонтированном томе **не обновятся**; единственный способ подтянуть новое значение — пересоздать Pod. Это осознанный выбор по умолчанию (так же работает, например, Kubernetes Secrets Store CSI Driver без `rotationPollInterval`), но он отличается от [Operator/TuckSecret CRD](07-tucksecret-operator.md), который реализует настоящий live-refresh по `refreshInterval` без пересоздания Pod. Если приложению нужна автоматическая ротация секретов без рестарта — используйте Operator, а не CSI.
+> **По умолчанию секреты через CSI статичны на весь срок жизни Pod** — `tuckcsi` читает секрет один раз, в момент `NodePublishVolume`, и без `tuck.io/refresh-interval` больше к нему не возвращается. Единственный способ подтянуть новое значение в этом режиме — пересоздать Pod.
+>
+> **С `tuck.io/refresh-interval` `tuckcsi` фоново перечитывает и перезаписывает файлы**, без пересоздания Pod'а — единый тикер раз в ~30 секунд проверяет, у каких смонтированных томов подошёл срок обновления (поэтому `refresh-interval: "10s"` на практике означает «раз в ~30с», а не буквально каждые 10 секунд — значения меньше 30с автоматически клэмпятся до этого порога). Запись на диск атомарна (temp-файл + rename): контейнер никогда не увидит наполовину записанный файл. Если фоновый запрос к Tuck временно падает (сеть, 5xx), старое содержимое файлов остаётся как есть — ошибка просто логируется, и попытка повторяется на следующем тике.
+>
+> **Токен, переданный через `nodePublishSecretRef` при монтировании, используется для всех последующих фоновых обновлений без изменений** — Kubernetes не передаёт `nodePublishSecretRef` повторно уже смонтированному тому. Если токен истечёт или будет отозван, фоновые обновления начнут молча падать, а том «застынет» на последнем успешно полученном значении (с warning в логах `tuckcsi` каждые ~30с) — без креша драйвера и без порчи файлов, но и без подсказки об этом иначе, чем через логи. Если секрету нужна ротация без пересоздания Pod'а, выставляй TTL токена заведомо дольше ожидаемого времени жизни Pod'а.
+>
+> Если приложению нужен настоящий Kubernetes `Secret`-объект, обновляемый живьём (а не просто файлы в tmpfs одного Pod'а) — используй [Operator/TuckSecret CRD](07-tucksecret-operator.md) вместо CSI.
 
 ---
 
@@ -228,8 +248,8 @@ kubectl exec -n tuck <pod-csi> -c tuckcsi -- ls -la /csi/
 kubectl describe pod myapp
 
 # Частые причины:
-# - "token not found" → проверь tokenSecretName
-# - "connection refused" → проверь tuckAddr
+# - "token not found" → проверь имя Secret в nodePublishSecretRef.name
+# - "connection refused" → проверь tuck.io/addr
 # - "permission denied" → проверь политику токена (нужен path read)
 ```
 
@@ -272,7 +292,7 @@ kubectl delete pod example-pod
 |-|-------------|-----------------|
 | Изменение Pod spec | Только `volumes:` + `volumeMounts:` | Sidecar добавляется автоматически |
 | Требует cert-manager | Нет | Да (для TLS webhook) |
-| Обновление секрета | При рестарте Pod | При рестарте Pod |
+| Обновление секрета | При рестарте Pod, либо live через `tuck.io/refresh-interval` | При рестарте Pod |
 | Поддержка Windows nodes | Нет | Нет |
 | Поддержка KV v2 | Да | Да |
 

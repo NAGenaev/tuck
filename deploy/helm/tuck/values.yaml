@@ -230,10 +230,6 @@ csi:
     tag: ""          # defaults to .Chart.AppVersion
     pullPolicy: IfNotPresent
 
-  # -- Name of the K8s Secret containing the Tuck token (key: "token").
-  # Create with: kubectl create secret generic tuck-csi-token --from-literal=token=<token>
-  tokenSecretName: "tuck-csi-token"
-
   # -- Path where kubelet stores plugins and pod mounts.
   kubeletRootDir: /var/lib/kubelet
 

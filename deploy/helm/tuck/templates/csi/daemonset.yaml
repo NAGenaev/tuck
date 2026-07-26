@@ -43,14 +43,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            - name: TUCK_ADDR
-              value: {{ include "tuck.serverAddr" . }}
-            - name: TUCK_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.csi.tokenSecretName }}
-                  key: token
-                  optional: true
           resources:
             {{- toYaml .Values.csi.resources | nindent 12 }}
           securityContext:

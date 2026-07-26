@@ -34,3 +34,4 @@ spec:
         tuck.io/paths: "db/password,api/key"
         # tuck.io/namespace: "team-alpha"   # optional Tuck namespace
         # tuck.io/kv-version: "2"           # use KV v2 (versioned secrets)
+        # tuck.io/refresh-interval: "5m"    # re-fetch and atomically rewrite files periodically, no pod restart needed

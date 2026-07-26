@@ -17,8 +17,8 @@ import (
 
 // mockMounter records calls and creates/removes directories without real mounts.
 type mockMounter struct {
-	mounted   map[string]bool
-	mountErr  error
+	mounted    map[string]bool
+	mountErr   error
 	unmountErr error
 }
 
@@ -76,6 +76,50 @@ func TestNodePublishVolume(t *testing.T) {
 	}
 
 	// Secret file should exist
+	got, err := os.ReadFile(filepath.Join(target, "password"))
+	if err != nil {
+		t.Fatalf("read secret file: %v", err)
+	}
+	if string(got) != "s3cr3t" {
+		t.Errorf("secret file content = %q, want %q", got, "s3cr3t")
+	}
+}
+
+// TestNodePublishVolume_RefreshIntervalAbsent_MatchesCurrentBehavior is a
+// compatibility guardrail: omitting tuck.io/refresh-interval (every volume
+// spec written before this attribute existed) must publish exactly like
+// TestNodePublishVolume above — same file content, same tmpfs mount call —
+// with no background refresh wired up for that mount.
+func TestNodePublishVolume_RefreshIntervalAbsent_MatchesCurrentBehavior(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Tuck-Token") != "test-token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"value": "s3cr3t"})
+	}))
+	defer ts.Close()
+
+	target := t.TempDir()
+	m := newMock()
+	drv := csi.NewDriver("test-node", m)
+
+	req := &csispec.NodePublishVolumeRequest{
+		VolumeId:   "vol-1",
+		TargetPath: target,
+		VolumeContext: map[string]string{
+			"tuck.io/addr":  ts.URL,
+			"tuck.io/paths": "db/password",
+		},
+		Secrets: map[string]string{"token": "test-token"},
+	}
+
+	if _, err := drv.NodePublishVolume(context.Background(), req); err != nil {
+		t.Fatalf("NodePublishVolume: %v", err)
+	}
+	if !m.mounted[target] {
+		t.Error("expected MountTmpfs to be called")
+	}
 	got, err := os.ReadFile(filepath.Join(target, "password"))
 	if err != nil {
 		t.Fatalf("read secret file: %v", err)

@@ -86,6 +86,59 @@ output "backend_role_id" {
   sensitive   = false
 }
 
+# ── PKI ───────────────────────────────────────────────────────────────────────
+
+resource "tuck_pki_role" "web" {
+  name             = "web-server"
+  allowed_domains  = ["example.internal"]
+  allow_subdomains = true
+  server_flag      = true
+  default_ttl      = "720h"
+  max_ttl          = "8760h"
+}
+
+# ── Transit ───────────────────────────────────────────────────────────────────
+
+resource "tuck_transit_key" "app" {
+  name = "app-encryption-key"
+  type = "aes256-gcm96"
+  # Tuck refuses to delete a Transit key until this is explicitly true —
+  # flip it (and apply) before removing the resource, or `terraform destroy`
+  # fails on purpose instead of silently discarding key material.
+  deletion_allowed = false
+}
+
+# ── SSH CA ────────────────────────────────────────────────────────────────────
+
+resource "tuck_ssh_role" "ops" {
+  name          = "ops"
+  allowed_users = ["ubuntu", "deploy"]
+  cert_type     = "user"
+  default_ttl   = "1h"
+  max_ttl       = "24h"
+}
+
+# ── Dynamic Database Secrets ──────────────────────────────────────────────────
+
+resource "tuck_database_connection" "app_postgres" {
+  name           = "app-postgres"
+  plugin_name    = "postgresql"
+  connection_url = "postgres://tuck_admin:{{password}}@postgres.internal:5432/postgres?sslmode=disable"
+  database       = "app"
+}
+
+resource "tuck_database_role" "app_readonly" {
+  name    = "app-readonly"
+  db_name = tuck_database_connection.app_postgres.name
+  creation_statements = join(" ", [
+    "CREATE USER \"{{username}}\" WITH PASSWORD '{{password}}' VALID UNTIL '{{expiry}}';",
+    "GRANT CONNECT ON DATABASE \"{{database}}\" TO \"{{username}}\";",
+    "GRANT SELECT ON ALL TABLES IN SCHEMA public TO \"{{username}}\";",
+  ])
+  default_ttl = "1h"
+  max_ttl     = "24h"
+}
+
 # ── KV v1 Secrets ─────────────────────────────────────────────────────────────
 
 resource "tuck_kv_secret" "db_password" {

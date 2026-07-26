@@ -104,6 +104,11 @@ func (p *TuckProvider) Resources(_ context.Context) []func() resource.Resource {
 		NewAppRoleRoleResource,
 		NewNamespaceResource,
 		NewMountResource,
+		NewPKIRoleResource,
+		NewTransitKeyResource,
+		NewSSHRoleResource,
+		NewDatabaseConnectionResource,
+		NewDatabaseRoleResource,
 	}
 }
 

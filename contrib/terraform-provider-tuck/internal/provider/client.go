@@ -10,8 +10,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
-)
 
+	"github.com/hashicorp/terraform-plugin-framework/types"
+)
 
 // tuckClient is a minimal HTTP client for the Tuck API.
 type tuckClient struct {
@@ -402,4 +403,379 @@ func nsDuration(ns int64) string {
 		return ""
 	}
 	return fmt.Sprintf("%s", (time.Duration(ns)).String())
+}
+
+// preservePlannedTTLs re-derives a duration through nsDuration always comes
+// back in Go's canonical long form ("1h" round-trips as "1h0m0s"), which
+// differs byte-for-byte from whatever compact form the user wrote in their
+// config. When a plan attribute has a known (non-null, non-unknown) value,
+// Terraform requires Create/Update to return that exact same value — not a
+// semantically-equal reformatting of it — or it fails the whole apply with
+// "Provider produced inconsistent result after apply". So for any TTL the
+// user actually set, keep their original string in state instead of the
+// server's nanosecond-derived one; only a Computed (unset) TTL takes the
+// server-derived value, since there's no planned string to preserve.
+func preservePlannedTTLs(defaultTTL, maxTTL *types.String, plannedDefault, plannedMax types.String) {
+	if !plannedDefault.IsNull() && !plannedDefault.IsUnknown() {
+		*defaultTTL = plannedDefault
+	}
+	if !plannedMax.IsNull() && !plannedMax.IsUnknown() {
+		*maxTTL = plannedMax
+	}
+}
+
+// preserveEquivalentTTL is Read's counterpart to preservePlannedTTLs: there's
+// no plan to defer to during a read, only prior state, so it keeps the prior
+// state's string whenever it's semantically the same duration as the
+// server's freshly-read one — avoiding a spurious diff on every plan for a
+// config that never actually changed (e.g. prior "1h" vs freshly-read
+// "1h0m0s").
+func preserveEquivalentTTL(fresh string, prior types.String) string {
+	if prior.IsNull() || prior.IsUnknown() {
+		return fresh
+	}
+	priorDur, err := time.ParseDuration(prior.ValueString())
+	if err != nil {
+		return fresh
+	}
+	freshDur, err := time.ParseDuration(fresh)
+	if err != nil {
+		return fresh
+	}
+	if priorDur == freshDur {
+		return prior.ValueString()
+	}
+	return fresh
+}
+
+// ─── PKI roles ───────────────────────────────────────────────────────────────
+
+type pkiRoleReq struct {
+	AllowedDomains  []string `json:"allowed_domains"`
+	AllowSubdomains bool     `json:"allow_subdomains"`
+	AllowIPSANs     bool     `json:"allow_ip_sans"`
+	AllowLocalhost  bool     `json:"allow_localhost"`
+	KeyType         string   `json:"key_type"`
+	KeyBits         int      `json:"key_bits,omitempty"`
+	DefaultTTL      string   `json:"default_ttl,omitempty"`
+	MaxTTL          string   `json:"max_ttl,omitempty"`
+	ServerFlag      bool     `json:"server_flag"`
+	ClientFlag      bool     `json:"client_flag"`
+}
+
+// pkiRoleAPIResp mirrors pki.Role JSON (durations are ns int64).
+type pkiRoleAPIResp struct {
+	Name            string   `json:"name"`
+	AllowedDomains  []string `json:"allowed_domains"`
+	AllowSubdomains bool     `json:"allow_subdomains"`
+	AllowIPSANs     bool     `json:"allow_ip_sans"`
+	AllowLocalhost  bool     `json:"allow_localhost"`
+	KeyType         string   `json:"key_type"`
+	KeyBits         int      `json:"key_bits"`
+	DefaultTTL      int64    `json:"default_ttl"`
+	MaxTTL          int64    `json:"max_ttl"`
+	ServerFlag      bool     `json:"server_flag"`
+	ClientFlag      bool     `json:"client_flag"`
+}
+
+func (c *tuckClient) getPKIRole(ctx context.Context, name string) (*pkiRoleAPIResp, bool, error) {
+	body, status, err := c.doJSON(ctx, http.MethodGet, "/v1/pki/roles/"+name, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	if status == http.StatusNotFound {
+		return nil, false, nil
+	}
+	if status != http.StatusOK {
+		return nil, false, fmt.Errorf("tuck GET pki role %s: HTTP %d: %s", name, status, body)
+	}
+	var resp pkiRoleAPIResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, false, fmt.Errorf("parse pki role response: %w", err)
+	}
+	return &resp, true, nil
+}
+
+func (c *tuckClient) putPKIRole(ctx context.Context, name string, req pkiRoleReq) (*pkiRoleAPIResp, error) {
+	body, status, err := c.doJSON(ctx, http.MethodPut, "/v1/pki/roles/"+name, req)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("tuck PUT pki role %s: HTTP %d: %s", name, status, body)
+	}
+	var resp pkiRoleAPIResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("parse pki role response: %w", err)
+	}
+	return &resp, nil
+}
+
+func (c *tuckClient) deletePKIRole(ctx context.Context, name string) error {
+	_, status, err := c.doJSON(ctx, http.MethodDelete, "/v1/pki/roles/"+name, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent && status != http.StatusNotFound {
+		return fmt.Errorf("tuck DELETE pki role %s: HTTP %d", name, status)
+	}
+	return nil
+}
+
+// ─── Transit keys ────────────────────────────────────────────────────────────
+
+// transitKeyAPIResp mirrors transit.Key JSON.
+type transitKeyAPIResp struct {
+	Name          string `json:"name"`
+	Type          string `json:"type"`
+	LatestVersion int    `json:"latest_version"`
+	Deletable     bool   `json:"deletable"`
+}
+
+func (c *tuckClient) getTransitKey(ctx context.Context, name string) (*transitKeyAPIResp, bool, error) {
+	body, status, err := c.doJSON(ctx, http.MethodGet, "/v1/transit/keys/"+name, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	if status == http.StatusNotFound {
+		return nil, false, nil
+	}
+	if status != http.StatusOK {
+		return nil, false, fmt.Errorf("tuck GET transit key %s: HTTP %d: %s", name, status, body)
+	}
+	var resp transitKeyAPIResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, false, fmt.Errorf("parse transit key response: %w", err)
+	}
+	return &resp, true, nil
+}
+
+func (c *tuckClient) createTransitKey(ctx context.Context, name, keyType string) (*transitKeyAPIResp, error) {
+	body, status, err := c.doJSON(ctx, http.MethodPost, "/v1/transit/keys/"+name, map[string]string{"type": keyType})
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("tuck POST transit key %s: HTTP %d: %s", name, status, body)
+	}
+	var resp transitKeyAPIResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("parse transit key response: %w", err)
+	}
+	return &resp, nil
+}
+
+// setTransitKeyDeletable flips the key's deletable flag. Transit keys are
+// not deletable by default (a deliberate safety guard against accidental
+// deletion) — DELETE fails with 409 until this has been called with true.
+func (c *tuckClient) setTransitKeyDeletable(ctx context.Context, name string, deletable bool) error {
+	body, status, err := c.doJSON(ctx, http.MethodPost, "/v1/transit/keys/"+name+"/config",
+		map[string]any{"deletable": deletable})
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("tuck POST transit key %s config: HTTP %d: %s", name, status, body)
+	}
+	return nil
+}
+
+func (c *tuckClient) deleteTransitKey(ctx context.Context, name string) error {
+	_, status, err := c.doJSON(ctx, http.MethodDelete, "/v1/transit/keys/"+name, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent && status != http.StatusNotFound {
+		return fmt.Errorf("tuck DELETE transit key %s: HTTP %d", name, status)
+	}
+	return nil
+}
+
+// ─── SSH roles ───────────────────────────────────────────────────────────────
+
+type sshRoleReq struct {
+	AllowedUsers      []string          `json:"allowed_users"`
+	DefaultExtensions map[string]string `json:"default_extensions,omitempty"`
+	CertType          string            `json:"cert_type,omitempty"`
+	DefaultTTL        string            `json:"default_ttl,omitempty"`
+	MaxTTL            string            `json:"max_ttl,omitempty"`
+}
+
+// sshRoleAPIResp mirrors ssh.Role JSON (durations are ns int64).
+type sshRoleAPIResp struct {
+	Name              string            `json:"name"`
+	AllowedUsers      []string          `json:"allowed_users"`
+	DefaultExtensions map[string]string `json:"default_extensions,omitempty"`
+	CertType          string            `json:"cert_type"`
+	DefaultTTL        int64             `json:"default_ttl"`
+	MaxTTL            int64             `json:"max_ttl"`
+}
+
+func (c *tuckClient) getSSHRole(ctx context.Context, name string) (*sshRoleAPIResp, bool, error) {
+	body, status, err := c.doJSON(ctx, http.MethodGet, "/v1/ssh/roles/"+name, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	if status == http.StatusNotFound {
+		return nil, false, nil
+	}
+	if status != http.StatusOK {
+		return nil, false, fmt.Errorf("tuck GET ssh role %s: HTTP %d: %s", name, status, body)
+	}
+	var resp sshRoleAPIResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, false, fmt.Errorf("parse ssh role response: %w", err)
+	}
+	return &resp, true, nil
+}
+
+func (c *tuckClient) putSSHRole(ctx context.Context, name string, req sshRoleReq) (*sshRoleAPIResp, error) {
+	body, status, err := c.doJSON(ctx, http.MethodPut, "/v1/ssh/roles/"+name, req)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("tuck PUT ssh role %s: HTTP %d: %s", name, status, body)
+	}
+	var resp sshRoleAPIResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("parse ssh role response: %w", err)
+	}
+	return &resp, nil
+}
+
+func (c *tuckClient) deleteSSHRole(ctx context.Context, name string) error {
+	_, status, err := c.doJSON(ctx, http.MethodDelete, "/v1/ssh/roles/"+name, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent && status != http.StatusNotFound {
+		return fmt.Errorf("tuck DELETE ssh role %s: HTTP %d", name, status)
+	}
+	return nil
+}
+
+// ─── Database dynamic secrets ────────────────────────────────────────────────
+
+type dbConnectionReq struct {
+	PluginName    string `json:"plugin_name"`
+	ConnectionURL string `json:"connection_url"`
+	Database      string `json:"database,omitempty"`
+	MaxOpenConns  int    `json:"max_open_conns,omitempty"`
+}
+
+// dbConnectionAPIResp mirrors database.Config JSON. ConnectionURL comes back
+// "[redacted]" from a GET — callers must not use it to overwrite state.
+type dbConnectionAPIResp struct {
+	Name          string `json:"name"`
+	PluginName    string `json:"plugin_name"`
+	ConnectionURL string `json:"connection_url"`
+	Database      string `json:"database,omitempty"`
+	MaxOpenConns  int    `json:"max_open_conns,omitempty"`
+}
+
+func (c *tuckClient) getDBConnection(ctx context.Context, name string) (*dbConnectionAPIResp, bool, error) {
+	body, status, err := c.doJSON(ctx, http.MethodGet, "/v1/database/config/"+name, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	if status == http.StatusNotFound {
+		return nil, false, nil
+	}
+	if status != http.StatusOK {
+		return nil, false, fmt.Errorf("tuck GET database config %s: HTTP %d: %s", name, status, body)
+	}
+	var resp dbConnectionAPIResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, false, fmt.Errorf("parse database config response: %w", err)
+	}
+	return &resp, true, nil
+}
+
+func (c *tuckClient) putDBConnection(ctx context.Context, name string, req dbConnectionReq) (*dbConnectionAPIResp, error) {
+	body, status, err := c.doJSON(ctx, http.MethodPut, "/v1/database/config/"+name, req)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("tuck PUT database config %s: HTTP %d: %s", name, status, body)
+	}
+	var resp dbConnectionAPIResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("parse database config response: %w", err)
+	}
+	return &resp, nil
+}
+
+func (c *tuckClient) deleteDBConnection(ctx context.Context, name string) error {
+	_, status, err := c.doJSON(ctx, http.MethodDelete, "/v1/database/config/"+name, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent && status != http.StatusNotFound {
+		return fmt.Errorf("tuck DELETE database config %s: HTTP %d", name, status)
+	}
+	return nil
+}
+
+type dbRoleReq struct {
+	DBName               string `json:"db_name"`
+	CreationStatements   string `json:"creation_statements"`
+	RevocationStatements string `json:"revocation_statements,omitempty"`
+	DefaultTTL           string `json:"default_ttl,omitempty"`
+	MaxTTL               string `json:"max_ttl,omitempty"`
+}
+
+// dbRoleAPIResp mirrors database.Role JSON (durations are ns int64).
+type dbRoleAPIResp struct {
+	Name                 string `json:"name"`
+	DBName               string `json:"db_name"`
+	CreationStatements   string `json:"creation_statements"`
+	RevocationStatements string `json:"revocation_statements"`
+	DefaultTTL           int64  `json:"default_ttl"`
+	MaxTTL               int64  `json:"max_ttl"`
+}
+
+func (c *tuckClient) getDBRole(ctx context.Context, name string) (*dbRoleAPIResp, bool, error) {
+	body, status, err := c.doJSON(ctx, http.MethodGet, "/v1/database/role/"+name, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	if status == http.StatusNotFound {
+		return nil, false, nil
+	}
+	if status != http.StatusOK {
+		return nil, false, fmt.Errorf("tuck GET database role %s: HTTP %d: %s", name, status, body)
+	}
+	var resp dbRoleAPIResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, false, fmt.Errorf("parse database role response: %w", err)
+	}
+	return &resp, true, nil
+}
+
+func (c *tuckClient) putDBRole(ctx context.Context, name string, req dbRoleReq) (*dbRoleAPIResp, error) {
+	body, status, err := c.doJSON(ctx, http.MethodPut, "/v1/database/role/"+name, req)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("tuck PUT database role %s: HTTP %d: %s", name, status, body)
+	}
+	var resp dbRoleAPIResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("parse database role response: %w", err)
+	}
+	return &resp, nil
+}
+
+func (c *tuckClient) deleteDBRole(ctx context.Context, name string) error {
+	_, status, err := c.doJSON(ctx, http.MethodDelete, "/v1/database/role/"+name, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent && status != http.StatusNotFound {
+		return fmt.Errorf("tuck DELETE database role %s: HTTP %d", name, status)
+	}
+	return nil
 }

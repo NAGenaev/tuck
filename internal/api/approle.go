@@ -23,7 +23,10 @@ func (s *Server) loginAppRole(w http.ResponseWriter, r *http.Request) {
 		RoleID   string `json:"role_id"`
 		SecretID string `json:"secret_id"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil || req.RoleID == "" || req.SecretID == "" {
+	if !decodeJSON(w, body, &req) {
+		return
+	}
+	if req.RoleID == "" || req.SecretID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role_id and secret_id required"})
 		return
 	}

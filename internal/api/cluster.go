@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 )
@@ -61,7 +60,10 @@ func (s *Server) postClusterJoin(w http.ResponseWriter, r *http.Request) {
 		NodeID   string `json:"node_id"`
 		RaftAddr string `json:"raft_addr"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil || req.NodeID == "" || req.RaftAddr == "" {
+	if !decodeJSON(w, body, &req) {
+		return
+	}
+	if req.NodeID == "" || req.RaftAddr == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "node_id and raft_addr are required"})
 		return
 	}

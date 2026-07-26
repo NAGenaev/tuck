@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -44,7 +43,10 @@ func (s *Server) createMount(w http.ResponseWriter, r *http.Request) {
 		Type        string `json:"type"`
 		Description string `json:"description"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil || req.Type == "" {
+	if !decodeJSON(w, body, &req) {
+		return
+	}
+	if req.Type == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type required"})
 		return
 	}

@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -42,8 +41,7 @@ func (s *Server) putPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req putPolicyReq
-	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+	if !decodeJSON(w, body, &req) {
 		return
 	}
 	p := &policy.Policy{Name: name, Inheritable: req.Inheritable}

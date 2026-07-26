@@ -53,7 +53,10 @@ func (s *Server) enableSecondary(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		PrimaryAddr string `json:"primary_addr"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil || req.PrimaryAddr == "" {
+	if !decodeJSON(w, body, &req) {
+		return
+	}
+	if req.PrimaryAddr == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "primary_addr required"})
 		return
 	}

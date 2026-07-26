@@ -110,7 +110,10 @@ func (s *Server) totpValidateCode(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Code string `json:"code"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil || req.Code == "" {
+	if !decodeJSON(w, body, &req) {
+		return
+	}
+	if req.Code == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "code required"})
 		return
 	}

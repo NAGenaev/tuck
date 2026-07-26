@@ -23,7 +23,10 @@ func (s *Server) loginJWT(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		JWT string `json:"jwt"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil || req.JWT == "" {
+	if !decodeJSON(w, body, &req) {
+		return
+	}
+	if req.JWT == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "jwt field required"})
 		return
 	}

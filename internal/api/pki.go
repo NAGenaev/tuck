@@ -72,7 +72,10 @@ func (s *Server) pkiImportCA(w http.ResponseWriter, r *http.Request) {
 		CertPEM string `json:"cert_pem"`
 		KeyPEM  string `json:"key_pem"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil || req.CertPEM == "" || req.KeyPEM == "" {
+	if !decodeJSON(w, body, &req) {
+		return
+	}
+	if req.CertPEM == "" || req.KeyPEM == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cert_pem and key_pem required"})
 		return
 	}
@@ -230,7 +233,10 @@ func (s *Server) pkiIssueCert(w http.ResponseWriter, r *http.Request) {
 		AltNames   []string `json:"alt_names"`
 		TTL        string   `json:"ttl"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil || req.CommonName == "" {
+	if !decodeJSON(w, body, &req) {
+		return
+	}
+	if req.CommonName == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "common_name required"})
 		return
 	}

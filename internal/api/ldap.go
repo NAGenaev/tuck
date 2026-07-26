@@ -22,7 +22,10 @@ func (s *Server) loginLDAP(w http.ResponseWriter, r *http.Request) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil || req.Username == "" || req.Password == "" {
+	if !decodeJSON(w, body, &req) {
+		return
+	}
+	if req.Username == "" || req.Password == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "username and password required"})
 		return
 	}

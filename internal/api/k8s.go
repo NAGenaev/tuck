@@ -35,7 +35,10 @@ func (s *Server) loginK8s(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Token string `json:"token"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil || req.Token == "" {
+	if !decodeJSON(w, body, &req) {
+		return
+	}
+	if req.Token == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "field 'token' is required"})
 		return
 	}

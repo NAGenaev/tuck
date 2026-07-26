@@ -39,7 +39,10 @@ func (s *Server) sshImportCA(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		PrivateKey string `json:"private_key"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil || req.PrivateKey == "" {
+	if !decodeJSON(w, body, &req) {
+		return
+	}
+	if req.PrivateKey == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "private_key (PEM) required"})
 		return
 	}

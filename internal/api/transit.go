@@ -143,7 +143,10 @@ func (s *Server) transitEncrypt(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Plaintext string `json:"plaintext"` // base64url
 	}
-	if err := json.Unmarshal(body, &req); err != nil || req.Plaintext == "" {
+	if !decodeJSON(w, body, &req) {
+		return
+	}
+	if req.Plaintext == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "plaintext (base64url) required"})
 		return
 	}
@@ -177,7 +180,10 @@ func (s *Server) transitDecrypt(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Ciphertext string `json:"ciphertext"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil || req.Ciphertext == "" {
+	if !decodeJSON(w, body, &req) {
+		return
+	}
+	if req.Ciphertext == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "ciphertext required"})
 		return
 	}
@@ -204,7 +210,10 @@ func (s *Server) transitRewrap(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Ciphertext string `json:"ciphertext"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil || req.Ciphertext == "" {
+	if !decodeJSON(w, body, &req) {
+		return
+	}
+	if req.Ciphertext == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "ciphertext required"})
 		return
 	}
@@ -230,7 +239,10 @@ func (s *Server) transitSign(w http.ResponseWriter, r *http.Request) {
 		Input         string `json:"input"`           // base64url
 		HashAlgorithm string `json:"hash_algorithm"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil || req.Input == "" {
+	if !decodeJSON(w, body, &req) {
+		return
+	}
+	if req.Input == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "input (base64url) required"})
 		return
 	}
@@ -265,7 +277,10 @@ func (s *Server) transitVerify(w http.ResponseWriter, r *http.Request) {
 		Signature     string `json:"signature"`
 		HashAlgorithm string `json:"hash_algorithm"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil || req.Input == "" || req.Signature == "" {
+	if !decodeJSON(w, body, &req) {
+		return
+	}
+	if req.Input == "" || req.Signature == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "input and signature required"})
 		return
 	}
@@ -299,7 +314,10 @@ func (s *Server) transitHMAC(w http.ResponseWriter, r *http.Request) {
 		Input     string `json:"input"`
 		Algorithm string `json:"algorithm"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil || req.Input == "" {
+	if !decodeJSON(w, body, &req) {
+		return
+	}
+	if req.Input == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "input (base64url) required"})
 		return
 	}

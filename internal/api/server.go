@@ -475,3 +475,18 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
+
+// decodeJSON unmarshals body into v, writing a 400 response naming the real
+// decode error (e.g. a field with the wrong JSON type) on failure. Handlers
+// used to fold this into `err != nil || req.Field == ""` and report every
+// failure as "Field required" — including type-mismatch errors that have
+// nothing to do with Field being empty, which sent debugging in the wrong
+// direction. Returns true on success; on false the response is already
+// written and the caller should return immediately.
+func decodeJSON(w http.ResponseWriter, body []byte, v any) bool {
+	if err := json.Unmarshal(body, v); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
+		return false
+	}
+	return true
+}

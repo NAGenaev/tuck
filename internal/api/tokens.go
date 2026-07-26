@@ -160,7 +160,10 @@ func (s *Server) lookupByAccessor(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Accessor string `json:"accessor"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil || req.Accessor == "" {
+	if !decodeJSON(w, body, &req) {
+		return
+	}
+	if req.Accessor == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "accessor is required"})
 		return
 	}
@@ -187,7 +190,10 @@ func (s *Server) revokeByAccessor(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Accessor string `json:"accessor"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil || req.Accessor == "" {
+	if !decodeJSON(w, body, &req) {
+		return
+	}
+	if req.Accessor == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "accessor is required"})
 		return
 	}

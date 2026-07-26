@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -85,13 +86,40 @@ func (r *AWSConfigResource) Create(ctx context.Context, req resource.CreateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if err := r.client.putAWSConfig(ctx, awsConfigModelToReq(plan)); err != nil {
+	state, err := r.writeAndRead(ctx, plan)
+	if err != nil {
 		resp.Diagnostics.AddError("Error creating AWS config", err.Error())
 		return
 	}
-	// Nothing is server-computed for this resource — the plan is already
-	// the complete, final state.
-	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
+}
+
+// writeAndRead PUTs the config, then GETs it back to resolve access_key_id/
+// iam_endpoint/sts_endpoint to known values. This is required, not just
+// tidy: those three are Optional+Computed, so when the config leaves one
+// unset, its planned value is unknown (not null) — Terraform requires every
+// Computed attribute to be a known value once Create/Update returns, or it
+// fails the apply with "provider returned invalid result object". Echoing
+// the plan straight back (as if nothing were server-computed) only happened
+// to work while every test config set every field explicitly.
+func (r *AWSConfigResource) writeAndRead(ctx context.Context, plan awsConfigModel) (awsConfigModel, error) {
+	if err := r.client.putAWSConfig(ctx, awsConfigModelToReq(plan)); err != nil {
+		return awsConfigModel{}, err
+	}
+	cfg, found, err := r.client.getAWSConfig(ctx)
+	if err != nil {
+		return awsConfigModel{}, err
+	}
+	if !found {
+		return awsConfigModel{}, fmt.Errorf("aws config not found immediately after a successful write")
+	}
+	return awsConfigModel{
+		AccessKeyID:     types.StringValue(cfg.AccessKeyID),
+		SecretAccessKey: plan.SecretAccessKey, // never trust the API's redacted value
+		Region:          types.StringValue(cfg.Region),
+		IAMEndpoint:     types.StringValue(cfg.IAMEndpoint),
+		STSEndpoint:     types.StringValue(cfg.STSEndpoint),
+	}, nil
 }
 
 func (r *AWSConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -127,11 +155,12 @@ func (r *AWSConfigResource) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if err := r.client.putAWSConfig(ctx, awsConfigModelToReq(plan)); err != nil {
+	state, err := r.writeAndRead(ctx, plan)
+	if err != nil {
 		resp.Diagnostics.AddError("Error updating AWS config", err.Error())
 		return
 	}
-	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
 func (r *AWSConfigResource) Delete(ctx context.Context, _ resource.DeleteRequest, resp *resource.DeleteResponse) {

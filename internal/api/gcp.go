@@ -40,6 +40,7 @@ func (s *Server) getGCPConfig(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	cfg.CredentialsJSON = "" // never return credentials — same redaction as AWS/Database config
 	writeJSON(w, http.StatusOK, cfg)
 }
 

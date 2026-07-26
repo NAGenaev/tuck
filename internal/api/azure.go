@@ -40,6 +40,7 @@ func (s *Server) getAzureConfig(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	cfg.ClientSecret = "" // never return credentials — same redaction as AWS/Database config
 	writeJSON(w, http.StatusOK, cfg)
 }
 

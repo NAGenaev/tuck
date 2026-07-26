@@ -46,6 +46,7 @@
 | — | [ROADMAP.md](ROADMAP.md) | История версий (M0–M35) и текущий статус |
 | — | [RUNBOOK.md](RUNBOOK.md) | Операционный runbook |
 | — | [THREAT_MODEL.md](THREAT_MODEL.md) | Модель угроз |
+| — | [pitch/tuck-product-pitch.html](pitch/tuck-product-pitch.html) | Продуктовая презентация для заказчика (проблема git+AES, функционал, сравнение с конкурентами, roadmap внедрения) — открывать в браузере |
 
 ---
 

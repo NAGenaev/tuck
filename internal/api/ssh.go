@@ -173,7 +173,11 @@ func (s *Server) sshSign(w http.ResponseWriter, r *http.Request) {
 		ValidPrincipals []string `json:"valid_principals"`
 		TTL             string   `json:"ttl"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil || req.PublicKey == "" {
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
+		return
+	}
+	if req.PublicKey == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "public_key required"})
 		return
 	}

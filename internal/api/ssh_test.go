@@ -236,9 +236,37 @@ func TestSSHSignMissingPublicKey(t *testing.T) {
 	doJSON(t, ts, http.MethodPut, "/v1/ssh/roles/web",
 		`{"cert_type":"user","default_ttl":"1h"}`, root)
 
-	status, _ := doJSON(t, ts, http.MethodPost, "/v1/ssh/sign/web", `{}`, root)
+	status, body := doJSON(t, ts, http.MethodPost, "/v1/ssh/sign/web", `{}`, root)
 	if status != http.StatusBadRequest {
 		t.Errorf("missing public_key: %d, want 400", status)
+	}
+	if !strings.Contains(string(body), "public_key required") {
+		t.Errorf("body = %s, want public_key required message", body)
+	}
+}
+
+// TestSSHSignInvalidValidPrincipalsType verifies that a type-mismatched
+// valid_principals (string instead of []string) produces a JSON-decode error
+// naming the real cause, not the misleading "public_key required" message
+// that a well-formed public_key would previously get blamed with.
+func TestSSHSignInvalidValidPrincipalsType(t *testing.T) {
+	ts, _, root := newTestServer(t)
+
+	doJSON(t, ts, http.MethodPost, "/v1/ssh/generate/ca", "", root)
+	doJSON(t, ts, http.MethodPut, "/v1/ssh/roles/web",
+		`{"cert_type":"user","default_ttl":"1h"}`, root)
+
+	pubKey := generateED25519PubKey(t)
+	reqBody := `{"public_key":"` + pubKey + `","valid_principals":"ubuntu"}`
+	status, body := doJSON(t, ts, http.MethodPost, "/v1/ssh/sign/web", reqBody, root)
+	if status != http.StatusBadRequest {
+		t.Fatalf("invalid valid_principals type: %d %s, want 400", status, body)
+	}
+	if strings.Contains(string(body), "public_key required") {
+		t.Errorf("body = %s, wrongly blames public_key for a valid_principals type error", body)
+	}
+	if !strings.Contains(string(body), "invalid JSON") {
+		t.Errorf("body = %s, want an invalid JSON message naming the real cause", body)
 	}
 }
 

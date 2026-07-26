@@ -299,38 +299,57 @@ curl.exe -s "$env:TUCK_ADDR/v1/cubbyhole/my-data" `
 
 ## 5. Response Wrapping
 
-Секрет оборачивается в одноразовый wrap-токен. Полезно для передачи секретов AppRole и сервисам.
+Произвольный JSON-документ оборачивается в одноразовый wrap-токен через отдельные `sys/wrapping/*`
+эндпоинты — это НЕ заголовок на обычном `GET /v1/secret/...` (см. `internal/api/wrapping.go`).
 
 ### WRAP-1: Оборачивание секрета
 
 ```powershell
-# X-Tuck-Wrap-TTL задаёт время жизни wrap-токена
-curl.exe -s "$env:TUCK_ADDR/v1/secret/myapp/db" `
+curl.exe -s -XPOST "$env:TUCK_ADDR/v1/sys/wrapping/wrap" `
     -H "X-Tuck-Token: $env:TUCK_TOKEN" `
-    -H "X-Tuck-Wrap-TTL: 60s"
+    -d '{"data":{"host":"db.internal","password":"s3cr3t"},"ttl":"60s"}'
 ```
 
-**Ожидается:** `{ "wrap_token": "tuck_wrap.xxx", "ttl": "60s" }` вместо самого секрета.
+**Ожидается:** `{ "token": "tuck_wrap_...", "expires_at": "..." }` вместо самого секрета.
 
 ### WRAP-2: Разворачивание
 
 ```powershell
-$wrapTok = "tuck_wrap.xxx"  # из предыдущего шага
+$wrapTok = "tuck_wrap_..."  # из предыдущего шага
 curl.exe -s -XPOST "$env:TUCK_ADDR/v1/sys/wrapping/unwrap" `
-    -H "X-Tuck-Token: $wrapTok"
+    -H "X-Tuck-Token: $env:TUCK_TOKEN" `
+    -d "{`"token`":`"$wrapTok`"}"
 ```
 
-**Ожидается:** оригинальный секрет: `{ "host": "...", "password": "..." }`.
+**Ожидается:** оригинальные данные: `{ "data": { "host": "...", "password": "..." } }`.
 
 ### WRAP-3: Одноразовость
 
 ```powershell
-# Повторный unwrap — должен вернуть 400/404
+# Повторный unwrap тем же токеном — должен вернуть 404
 curl.exe -s -XPOST "$env:TUCK_ADDR/v1/sys/wrapping/unwrap" `
-    -H "X-Tuck-Token: $wrapTok"
+    -H "X-Tuck-Token: $env:TUCK_TOKEN" `
+    -d "{`"token`":`"$wrapTok`"}"
 ```
 
-**Ожидается:** HTTP 400/404 — wrap-токен уже использован.
+**Ожидается:** HTTP 404 — wrap-токен уже использован (просроченный/несуществующий даёт тот же код;
+`wrapping.ErrExpired` отдельно маппится на 410).
+
+### WRAP-4: Lookup и revoke без разворачивания
+
+```powershell
+# Метаданные токена без его "траты"
+curl.exe -s -XPOST "$env:TUCK_ADDR/v1/sys/wrapping/lookup" `
+    -H "X-Tuck-Token: $env:TUCK_TOKEN" `
+    -d "{`"token`":`"$wrapTok`"}"
+
+# Досрочный отзыв (тоже не требует прав на исходные данные)
+curl.exe -s -XDELETE "$env:TUCK_ADDR/v1/sys/wrapping/revoke" `
+    -H "X-Tuck-Token: $env:TUCK_TOKEN" `
+    -d "{`"token`":`"$wrapTok`"}"
+```
+
+**Ожидается:** lookup — `{"creation_time":"...","expires_at":"...","creation_ttl":...}`; revoke — HTTP 204.
 
 ---
 
@@ -1192,7 +1211,7 @@ Invoke-RestMethod "$env:TUCK_ADDR/v1/sys/audit" `
 | KV v1 | KV1-1…5 | ✅ server_test.go, integration | — |
 | KV v2 | KV2-1…6 | ✅ integration_e2e_test.go | — |
 | Cubbyhole | CUBB-1…3 | ✅ integration_e2e_test.go | — |
-| Wrapping | WRAP-1…3 | ✅ integration_e2e_test.go | — |
+| Wrapping | WRAP-1…4 | ✅ integration_e2e_test.go | — |
 | Tokens | TOK-1…6 | ✅ integration_e2e_test.go | — |
 | Policies | POL-1…4 | ✅ server_test.go | — |
 | AppRole | AR-1…5 | ✅ integration_e2e_test.go | — |
@@ -1212,3 +1231,71 @@ Invoke-RestMethod "$env:TUCK_ADDR/v1/sys/audit" `
 | Dynamic AWS | — | ⚠️ unit | AWS |
 | Dynamic GCP | — | ⚠️ unit | GCP |
 | Dynamic Azure | — | ⚠️ unit | Azure |
+
+---
+
+## Результаты сквозного CLI-прогона (2026-07-26)
+
+Полный проход разделов 1–20 живьём на пересобранном с нуля minikube-кластере (Helm chart, свежие
+образы server/operator/csi), поверх реального Postgres-контейнера для §20. JWT/LDAP оставлены вне
+объёма (нужен внешний OIDC/LDAP-сервер — см. матрицу выше), AWS/GCP/Azure dynamic secrets тоже
+(нет реальных облачных аккаунтов). Все разделы пройдены без критичных находок — сессия в основном
+подтверждала уже исправленные ранее баги (см. `docs/UI_MANUAL_TESTS.md`), а не искала новые.
+Найденные UX/документационные несоответствия:
+
+1. **[Средне, UX] Policies**: `rules`-объект вместо массива (`{"paths":[...]}` вместо `[{"path":...}]`)
+   даёт `{"error":"invalid JSON"}` (400) — синтаксически валидный JSON, просто неверная схема.
+   Сообщение вводит в заблуждение (звучит как ошибка парсинга). См. находку 2 ниже — общая причина.
+2. **[Средне, системный паттерн, частично исправлено] Вводящие в заблуждение сообщения об ошибках
+   при type mismatch.** Найдено дважды в разных движках: (а) Policies PUT см. выше (не исправлено —
+   ниже по приоритету, т.к. полная схема правил сложнее одного поля); (б) `POST /v1/ssh/sign/{role}`
+   — если `valid_principals` прислан строкой вместо массива, `json.Unmarshal` падал, но
+   `internal/api/ssh.go:176` трактовал любую ошибку Unmarshal как «`public_key` required», уводя
+   отладку не в ту сторону. Причина — паттерн
+   `if err := json.Unmarshal(body, &req); err != nil || req.Field == "" { return "Field required" }`,
+   объединяющий синтаксическую/типовую ошибку JSON и пустое поле в одно сообщение. Грепом по
+   `internal/api/*.go` найдено **20 вхождений** этого паттерна в 12 файлах (approle.go, cluster.go,
+   jwt.go, k8s.go, ldap.go, mounts.go, pki.go, replication.go, ssh.go, tokens.go, totp.go,
+   transit.go) — кандидат на отдельный проход по error-handling. **(б) исправлено в этой же сессии**:
+   `sshSign` теперь проверяет `json.Unmarshal` отдельно от `PublicKey == ""` и возвращает
+   `"invalid JSON: <err>"` с реальной причиной; тест `TestSSHSignInvalidValidPrincipalsType`. Полный
+   грепнутый список (12 файлов) остаётся открытым — это отдельный проход по error-handling, не
+   разовый фикс.
+3. **[UX] Несогласованность формата тела между похожими эндпоинтами**: KV v1/v2 PUT принимают
+   **сырую строку** (`--data-raw "text"`), Cubbyhole PUT требует **JSON-объект** и падает с тем же
+   `{"error":"invalid JSON"}` на сырой строке. Пользователь, привыкший к KV, естественно попробует
+   то же в cubbyhole. Предложение: либо унифицировать, либо явно назвать ожидаемый формат в ошибке.
+4. **[Документация, уже исправлено]** Раздел 5 (Response Wrapping) в этом файле полностью не
+   соответствовал реальному API (описывал несуществующий `X-Tuck-Wrap-TTL` заголовок на обычном
+   `GET /v1/secret/...`). Переписан на реальный `POST /v1/sys/wrapping/{wrap,unwrap,lookup,revoke}`
+   (см. `internal/api/wrapping.go`). Сама фича работает корректно, включая одноразовость.
+5. **[Заметка, не баг]** KV v2 PUT не использует Vault-style конверт `{"data":{...}}` — тело целиком
+   становится значением секрета, как в KV v1. Для пользователей, знакомых с HashiCorp Vault, это
+   неожиданно: `{"data":{"user":"a"}}` сохранится буквально как строка, а не распакуется в поля.
+6. **[Заметка]** TTL/длительности в «сырых» JSON-ответах API возвращаются как наносекунды int64
+   (например `"ttl":3600000000000` для 1 часа), не человекочитаемой строкой — неудобно для прямого
+   curl-использования без CLI/Terraform (которые это форматируют).
+7. **[Мелочь]** AppRole: `secret-id`-эндпоинт возвращает поле `"id"`, а `login` ожидает `"secret_id"`
+   в запросе — разная терминология для одного и того же значения между response/request.
+8. **[Мелочь/безопасность, исправлено]** `PUT /v1/database/config/{name}` возвращал `connection_url`
+   без редактирования (в открытом виде, с паролем), хотя `GET` того же ресурса уже маскирует его.
+   Клиент и так знает значение (сам его отправил), поэтому это не была утечка новой информации, но
+   могло засветиться в логах CI/shell history/аудите стороннего инструмента. Исправлено в этой же
+   сессии: `putDBConfig` маскирует `connection_url` в ответе так же, как `getDBConfig`. Тест:
+   `TestPutDBConfig_RedactsConnectionURL`.
+9. **[Подтверждено живьём]** Ротация Postgres dynamic secrets (фикс REVOKE CONNECT + DROP OWNED BY)
+   и отзыв lease через специфичный для движка эндпоинт работают корректно на реальном контейнере —
+   пользователь создаётся, креды генерируются, пользователь реально исчезает из `pg_user` после revoke.
+10. **[Подтверждено живьём, CSI]** Live-refresh секретов через `tuck.io/refresh-interval` (фича,
+    добавленная в эту же сессию) работает корректно: значение в смонтированном томе реально
+    обновляется на следующем тике (~30с) без пересоздания пода. Первая попытка теста ложно показала
+    отсутствие обновления — причина оказалась в устаревшем Docker-образе DaemonSet'а (тот же класс
+    проблемы, что и с leader election, см. ниже), не в самой фиче.
+11. **[Инфраструктура/DevEx]** При локальной пересборке образов для minikube (operator, csi, вероятно
+    server) недостаточно `docker build` + `minikube image load`: (а) `COPY <binary> /app` в
+    Dockerfile кеширует по контенту — если сам бинарник не пересобран, слой остаётся старым;
+    (б) `minikube image load` не форсит замену тега, если старый образ ещё используется контейнером
+    внутри minikube (`docker rmi` без `-f` тихо фейлится, видно только с `-v=3`). Полный рабочий
+    цикл: пересобрать бинарник → пересобрать образ → `minikube ssh -- sudo docker rmi -f <image>` →
+    `minikube image load` → пересоздать под/под-DaemonSet. Стоит задокументировать в
+    `docs/DEVELOPMENT.md` — на эту причину ушло ~20 минут отладки дважды за сессию (operator и csi).

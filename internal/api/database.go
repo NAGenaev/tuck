@@ -40,6 +40,10 @@ func (s *Server) putDBConfig(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	// Mask the connection URL in the response, matching GET — the caller
+	// already knows the value (they just sent it), but an unredacted PUT
+	// response is easy to leak via CI logs/shell history/audit tooling.
+	cfg.ConnectionURL = "[redacted]"
 	writeJSON(w, http.StatusOK, &cfg)
 }
 

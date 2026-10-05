@@ -61,6 +61,8 @@ type Barrier struct {
 	suite     Suite             // cipher suite protecting this store
 	bindAAD   bool              // authenticate the storage key as AEAD associated data
 	versioned bool              // entries carry a 4-byte DEK version prefix
+	pathKey   []byte            // root secret for path encryption (nil = keys stored in the clear)
+	paths     *pathCodec        // non-nil when storage keys are encrypted
 }
 
 // New creates a Barrier over the given backend. It starts sealed.
@@ -88,6 +90,12 @@ func (b *Barrier) Initialize(ctx context.Context, rootKey []byte) error {
 // ("" = aes-256-gcm). The choice is recorded in the store and cannot change
 // afterwards.
 func (b *Barrier) InitializeWithSuite(ctx context.Context, rootKey []byte, suiteName string) error {
+	return b.initialize(ctx, rootKey, suiteName, metaVersionPathEncryption)
+}
+
+// initialize writes a new store at the given metadata version (older
+// versions exist so tests can build stores in earlier formats).
+func (b *Barrier) initialize(ctx context.Context, rootKey []byte, suiteName string, metaVersion int) error {
 	suite, err := LookupSuite(suiteName)
 	if err != nil {
 		return err
@@ -107,7 +115,14 @@ func (b *Barrier) InitializeWithSuite(ctx context.Context, rootKey []byte, suite
 	if _, err := io.ReadFull(rand.Reader, barrierKey); err != nil {
 		return fmt.Errorf("generate barrier key: %w", err)
 	}
-	kr, err := marshalKeyring(1, map[uint32][]byte{1: barrierKey})
+	var pathKey []byte
+	if metaVersion >= metaVersionPathEncryption {
+		pathKey = make([]byte, keySize)
+		if _, err := io.ReadFull(rand.Reader, pathKey); err != nil {
+			return fmt.Errorf("generate path key: %w", err)
+		}
+	}
+	kr, err := marshalKeyring(1, map[uint32][]byte{1: barrierKey}, pathKey)
 	if err != nil {
 		return err
 	}
@@ -115,7 +130,7 @@ func (b *Barrier) InitializeWithSuite(ctx context.Context, rootKey []byte, suite
 	if err != nil {
 		return fmt.Errorf("wrap barrier key: %w", err)
 	}
-	meta, err := json.Marshal(storeMeta{Version: metaVersionVersionedKeys, Cipher: suite.Name})
+	meta, err := json.Marshal(storeMeta{Version: metaVersion, Cipher: suite.Name})
 	if err != nil {
 		return err
 	}
@@ -141,25 +156,35 @@ func (b *Barrier) Unseal(ctx context.Context, rootKey []byte) error {
 	if e == nil {
 		return ErrNotInitialized
 	}
-	suite, bindAAD, versioned, err := b.loadMeta(ctx)
+	suite, flags, err := b.loadMeta(ctx)
 	if err != nil {
 		return err
 	}
 	var aad []byte
-	if bindAAD {
+	if flags.bindAAD {
 		aad = []byte(keyringPath)
 	}
 	plain, err := suite.open(rootKey, e.Value, aad)
 	if err != nil {
 		return ErrUnsealFailed
 	}
-	keys, active := map[uint32][]byte{0: plain}, uint32(0)
-	if versioned {
-		if keys, active, err = parseKeyring(plain); err != nil {
+	keys, active, pathKey := map[uint32][]byte{0: plain}, uint32(0), []byte(nil)
+	if flags.versioned {
+		if keys, active, pathKey, err = parseKeyring(plain); err != nil {
 			return ErrUnsealFailed
 		}
 	}
-	b.suite, b.bindAAD, b.versioned = suite, bindAAD, versioned
+	var paths *pathCodec
+	if flags.encPaths {
+		if len(pathKey) != keySize {
+			return ErrUnsealFailed
+		}
+		if paths, err = newPathCodec(suite, pathKey); err != nil {
+			return err
+		}
+	}
+	b.suite, b.bindAAD, b.versioned = suite, flags.bindAAD, flags.versioned
+	b.pathKey, b.paths = pathKey, paths
 	b.keys, b.active = keys, active
 	b.rootKey = append([]byte(nil), rootKey...)
 	return nil
@@ -174,7 +199,11 @@ func (b *Barrier) Seal() {
 		zero(k)
 	}
 	zero(b.rootKey)
-	b.keys, b.rootKey = nil, nil
+	zero(b.pathKey)
+	if b.paths != nil {
+		b.paths.zero()
+	}
+	b.keys, b.rootKey, b.pathKey, b.paths = nil, nil, nil, nil
 }
 
 // IsSealed reports whether the barrier is currently sealed.
@@ -199,11 +228,12 @@ func (b *Barrier) Get(ctx context.Context, key string) (*physical.Entry, error) 
 	if b.keys == nil {
 		return nil, ErrSealed
 	}
-	e, err := b.backend.Get(ctx, key)
+	pk := b.phys(key)
+	e, err := b.backend.Get(ctx, pk)
 	if err != nil || e == nil {
 		return nil, err
 	}
-	plain, err := b.openEntry(key, e.Value)
+	plain, err := b.openEntry(pk, e.Value)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt %q: %w", key, err)
 	}
@@ -217,11 +247,12 @@ func (b *Barrier) Put(ctx context.Context, entry *physical.Entry) error {
 	if b.keys == nil {
 		return ErrSealed
 	}
-	ct, err := b.sealEntry(entry.Key, entry.Value)
+	pk := b.phys(entry.Key)
+	ct, err := b.sealEntry(pk, entry.Value)
 	if err != nil {
 		return err
 	}
-	return b.backend.Put(ctx, &physical.Entry{Key: entry.Key, Value: ct})
+	return b.backend.Put(ctx, &physical.Entry{Key: pk, Value: ct})
 }
 
 // Delete removes key from the backend.
@@ -231,7 +262,7 @@ func (b *Barrier) Delete(ctx context.Context, key string) error {
 	if b.keys == nil {
 		return ErrSealed
 	}
-	return b.backend.Delete(ctx, key)
+	return b.backend.Delete(ctx, b.phys(key))
 }
 
 // Rekey wraps the current barrier key (DEK) with newRootKey and persists the
@@ -259,7 +290,7 @@ func (b *Barrier) List(ctx context.Context, prefix string) ([]string, error) {
 	if b.keys == nil {
 		return nil, ErrSealed
 	}
-	return b.backend.List(ctx, prefix)
+	return b.listKeys(ctx, prefix)
 }
 
 // --- store metadata and crypto helpers ---
@@ -271,24 +302,30 @@ type storeMeta struct {
 
 // loadMeta reads the store metadata. A store without a metadata record
 // predates cipher suites: it is AES-256-GCM with no associated data.
-func (b *Barrier) loadMeta(ctx context.Context) (Suite, bool, bool, error) {
+type storeFlags struct{ bindAAD, versioned, encPaths bool }
+
+func (b *Barrier) loadMeta(ctx context.Context) (Suite, storeFlags, error) {
 	e, err := b.backend.Get(ctx, metaPath)
 	if err != nil {
-		return Suite{}, false, false, err
+		return Suite{}, storeFlags{}, err
 	}
 	if e == nil {
 		s, err := LookupSuite(SuiteAES256GCM)
-		return s, false, false, err
+		return s, storeFlags{}, err
 	}
 	var m storeMeta
 	if err := json.Unmarshal(e.Value, &m); err != nil {
-		return Suite{}, false, false, fmt.Errorf("parse barrier metadata: %w", err)
+		return Suite{}, storeFlags{}, fmt.Errorf("parse barrier metadata: %w", err)
 	}
 	s, err := LookupSuite(m.Cipher)
 	if err != nil {
-		return Suite{}, false, false, err
+		return Suite{}, storeFlags{}, err
 	}
-	return s, m.Version >= metaVersionAADBinding, m.Version >= metaVersionVersionedKeys, nil
+	return s, storeFlags{
+		bindAAD:   m.Version >= metaVersionAADBinding,
+		versioned: m.Version >= metaVersionVersionedKeys,
+		encPaths:  m.Version >= metaVersionPathEncryption,
+	}, nil
 }
 
 func (b *Barrier) aadFor(key string) []byte {
@@ -335,35 +372,36 @@ func zero(b []byte) {
 // --- versioned barrier keys ---
 
 type keyringDoc struct {
-	Active uint32            `json:"active"`
-	Keys   map[string][]byte `json:"keys"`
+	Active  uint32            `json:"active"`
+	Keys    map[string][]byte `json:"keys"`
+	PathKey []byte            `json:"path_key,omitempty"`
 }
 
-func marshalKeyring(active uint32, keys map[uint32][]byte) ([]byte, error) {
-	doc := keyringDoc{Active: active, Keys: make(map[string][]byte, len(keys))}
+func marshalKeyring(active uint32, keys map[uint32][]byte, pathKey []byte) ([]byte, error) {
+	doc := keyringDoc{Active: active, PathKey: pathKey, Keys: make(map[string][]byte, len(keys))}
 	for v, k := range keys {
 		doc.Keys[strconv.FormatUint(uint64(v), 10)] = k
 	}
 	return json.Marshal(doc)
 }
 
-func parseKeyring(raw []byte) (map[uint32][]byte, uint32, error) {
+func parseKeyring(raw []byte) (map[uint32][]byte, uint32, []byte, error) {
 	var doc keyringDoc
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 	keys := make(map[uint32][]byte, len(doc.Keys))
 	for s, k := range doc.Keys {
 		v, err := strconv.ParseUint(s, 10, 32)
 		if err != nil || len(k) != keySize {
-			return nil, 0, errors.New("malformed keyring")
+			return nil, 0, nil, errors.New("malformed keyring")
 		}
 		keys[uint32(v)] = k
 	}
 	if _, ok := keys[doc.Active]; !ok {
-		return nil, 0, errors.New("keyring has no active key")
+		return nil, 0, nil, errors.New("keyring has no active key")
 	}
-	return keys, doc.Active, nil
+	return keys, doc.Active, doc.PathKey, nil
 }
 
 // persistKeyring wraps the current keyring with rootKey and stores it.
@@ -372,7 +410,7 @@ func (b *Barrier) persistKeyring(ctx context.Context, rootKey []byte) error {
 	var plain []byte
 	if b.versioned {
 		var err error
-		if plain, err = marshalKeyring(b.active, b.keys); err != nil {
+		if plain, err = marshalKeyring(b.active, b.keys, b.pathKey); err != nil {
 			return err
 		}
 		defer zero(plain)

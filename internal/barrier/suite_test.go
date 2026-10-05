@@ -35,7 +35,7 @@ func TestSuiteLifecycleAndPersistence(t *testing.T) {
 		if err := b.Put(ctx, &physical.Entry{Key: "secret/a", Value: want}); err != nil {
 			t.Fatal(err)
 		}
-		raw, _ := be.Get(ctx, "secret/a")
+		raw, _ := be.Get(ctx, b.phys("secret/a"))
 		if bytes.Contains(raw.Value, want) {
 			t.Fatal("plaintext visible at rest")
 		}
@@ -92,8 +92,8 @@ func TestSuiteBindsCiphertextToStorageKey(t *testing.T) {
 		_ = b.Put(ctx, &physical.Entry{Key: "secret/high", Value: []byte("top-secret")})
 
 		// An attacker with storage access copies one ciphertext over another.
-		high, _ := be.Get(ctx, "secret/high")
-		_ = be.Put(ctx, &physical.Entry{Key: "secret/low", Value: high.Value})
+		high, _ := be.Get(ctx, b.phys("secret/high"))
+		_ = be.Put(ctx, &physical.Entry{Key: b.phys("secret/low"), Value: high.Value})
 		if _, err := b.Get(ctx, "secret/low"); err == nil {
 			t.Fatal("swapped ciphertext must fail authentication")
 		}
@@ -109,7 +109,7 @@ func TestSuiteTamperDetected(t *testing.T) {
 		_ = b.InitializeWithSuite(ctx, root, name)
 		_ = b.Unseal(ctx, root)
 		_ = b.Put(ctx, &physical.Entry{Key: "secret/x", Value: []byte("value")})
-		raw, _ := be.Get(ctx, "secret/x")
+		raw, _ := be.Get(ctx, b.phys("secret/x"))
 		raw.Value[len(raw.Value)-1] ^= 1
 		_ = be.Put(ctx, raw)
 		if _, err := b.Get(ctx, "secret/x"); err == nil {

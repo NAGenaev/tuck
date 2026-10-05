@@ -10,13 +10,14 @@ import (
 
 // Cipher suite names stored in the barrier metadata.
 const (
-	SuiteAES256GCM           = "aes-256-gcm"
-	SuiteKuznyechikMGM       = "gost-kuznyechik-mgm"
-	defaultSuiteName         = SuiteAES256GCM
-	suiteKeySize             = 32
-	metaPath                 = "barrier/meta"
-	metaVersionAADBinding    = 1
-	metaVersionVersionedKeys = 2
+	SuiteAES256GCM            = "aes-256-gcm"
+	SuiteKuznyechikMGM        = "gost-kuznyechik-mgm"
+	defaultSuiteName          = SuiteAES256GCM
+	suiteKeySize              = 32
+	metaPath                  = "barrier/meta"
+	metaVersionAADBinding     = 1
+	metaVersionVersionedKeys  = 2
+	metaVersionPathEncryption = 3
 )
 
 // Suite describes an AEAD used to protect barrier data. Every suite must use

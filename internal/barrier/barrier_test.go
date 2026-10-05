@@ -50,7 +50,7 @@ func TestBarrierLifecycle(t *testing.T) {
 	}
 
 	// Encrypted at rest: the raw backend value must not contain the plaintext.
-	raw, _ := be.Get(ctx, "secret/db")
+	raw, _ := be.Get(ctx, b.phys("secret/db"))
 	if raw == nil || bytes.Contains(raw.Value, want) {
 		t.Fatal("value is not encrypted at rest")
 	}

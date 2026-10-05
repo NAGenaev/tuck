@@ -43,23 +43,6 @@ type Config struct {
 			KeyFile string `yaml:"key_file"`
 		} `yaml:"transit"`
 
-		AWSKMS struct {
-			KeyID   string `yaml:"key_id"`
-			Region  string `yaml:"region"`
-			KeyFile string `yaml:"key_file"`
-		} `yaml:"aws_kms"`
-
-		GCPKMS struct {
-			KeyName string `yaml:"key_name"`
-			KeyFile string `yaml:"key_file"`
-		} `yaml:"gcp_kms"`
-
-		AzureKV struct {
-			VaultURL  string `yaml:"vault_url"`
-			KeyName   string `yaml:"key_name"`
-			Algorithm string `yaml:"algorithm"`
-			KeyFile   string `yaml:"key_file"`
-		} `yaml:"azure_kv"`
 	} `yaml:"seal"`
 
 	Cluster struct {
@@ -88,7 +71,7 @@ type Config struct {
 		Cipher string `yaml:"cipher"`
 	} `yaml:"barrier"`
 
-	// EnableEngines opts in to experimental engines (pki, ssh, totp, aws, gcp, azure).
+	// EnableEngines opts in to experimental engines (pki, ssh, totp).
 	EnableEngines []string `yaml:"enable_engines"`
 
 	// RequireMlock makes startup fail when process memory cannot be locked.

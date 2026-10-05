@@ -36,7 +36,7 @@ func TestExperimentalEngineGate(t *testing.T) {
 		return resp.StatusCode, string(b)
 	}
 
-	for _, p := range []string{"/v1/pki/ca/pem", "/v1/ssh/ca/public-key", "/v1/aws/config", "/v1/gcp/config", "/v1/azure/config"} {
+	for _, p := range []string{"/v1/pki/ca/pem", "/v1/ssh/ca/public-key"} {
 		if s, b := get(p); s != http.StatusNotFound || !strings.Contains(b, "disabled") {
 			t.Errorf("%s: want 404 disabled, got %d %s", p, s, b)
 		}
@@ -51,7 +51,7 @@ func TestExperimentalEngineGate(t *testing.T) {
 
 func TestExperimentalEnginesOpenWithoutRestriction(t *testing.T) {
 	ts, _, root := newTestServer(t)
-	resp, err := http.DefaultClient.Do(authedReq(t, "GET", ts.URL+"/v1/aws/config", "", root))
+	resp, err := http.DefaultClient.Do(authedReq(t, "GET", ts.URL+"/v1/pki/ca/pem", "", root))
 	if err != nil {
 		t.Fatal(err)
 	}

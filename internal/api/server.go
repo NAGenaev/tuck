@@ -132,21 +132,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/sys/mounts-tune/{path...}", s.requireToken(s.getMountConfig))
 	mux.HandleFunc("POST /v1/sys/mounts-tune/{path...}", s.requireToken(s.putMountConfig))
 
-	// Plugin catalog — register, inspect, delete external plugins
-	mux.HandleFunc("GET /v1/sys/plugins/catalog/{type}/{name}", s.requireToken(s.getPlugin))
-	mux.HandleFunc("POST /v1/sys/plugins/catalog/{type}/{name}", s.requireToken(s.registerPlugin))
-	mux.HandleFunc("DELETE /v1/sys/plugins/catalog/{type}/{name}", s.requireToken(s.deletePlugin))
-	s.registerListCompat(mux, "/v1/sys/plugins/catalog/{type}/", s.listPlugins)
-	s.registerListCompat(mux, "/v1/sys/plugins/catalog/", s.listPlugins)
-
-	// Replication — WAL and mode management
-	mux.HandleFunc("GET /v1/sys/replication/status", s.requireToken(s.replicationStatus))
-	mux.HandleFunc("POST /v1/sys/replication/primary/enable", s.requireToken(s.enablePrimary))
-	mux.HandleFunc("POST /v1/sys/replication/secondary/enable", s.requireToken(s.enableSecondary))
-	mux.HandleFunc("POST /v1/sys/replication/disable", s.requireToken(s.disableReplication))
-	mux.HandleFunc("GET /v1/sys/replication/wal", s.requireToken(s.walEntries))
-	mux.HandleFunc("POST /v1/sys/replication/wal/trim", s.requireToken(s.trimWAL))
-
 	mux.HandleFunc("GET /v1/sys/seal-status", s.getSealStatus)
 	mux.HandleFunc("GET /v1/sys/ready", s.getReady)
 	mux.HandleFunc("POST /v1/sys/unseal", s.postUnseal)
@@ -214,13 +199,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/auth/jwt/role/{name}", s.requireToken(s.deleteJWTRole))
 	s.registerListCompat(mux, "/v1/auth/jwt/role/", s.listJWTRoles)
 
-	// GitHub Actions OIDC auth — login is unauthenticated; role management requires a token
-	mux.HandleFunc("POST /v1/auth/github/login", s.loginGitHub)
-	mux.HandleFunc("PUT /v1/auth/github/role/{name}", s.requireToken(s.putGitHubRole))
-	mux.HandleFunc("GET /v1/auth/github/role/{name}", s.requireToken(s.getGitHubRole))
-	mux.HandleFunc("DELETE /v1/auth/github/role/{name}", s.requireToken(s.deleteGitHubRole))
-	s.registerListCompat(mux, "/v1/auth/github/role/", s.listGitHubRoles)
-
 	// TOTP secrets engine — store and validate time-based OTP codes
 	mux.HandleFunc("POST /v1/totp/keys/{name}", s.requireToken(s.totpCreateKey))
 	mux.HandleFunc("GET /v1/totp/keys/{name}", s.requireToken(s.totpGetKey))
@@ -253,45 +231,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/transit/sign/{name}", s.requireToken(s.transitSign))
 	mux.HandleFunc("POST /v1/transit/verify/{name}", s.requireToken(s.transitVerify))
 	mux.HandleFunc("POST /v1/transit/hmac/{name}", s.requireToken(s.transitHMAC))
-
-	// Azure dynamic secrets engine — generate Azure AD client secrets for app registrations
-	mux.HandleFunc("PUT /v1/azure/config", s.requireToken(s.putAzureConfig))
-	mux.HandleFunc("GET /v1/azure/config", s.requireToken(s.getAzureConfig))
-	mux.HandleFunc("DELETE /v1/azure/config", s.requireToken(s.deleteAzureConfig))
-	mux.HandleFunc("PUT /v1/azure/roles/{name}", s.requireToken(s.putAzureRole))
-	mux.HandleFunc("GET /v1/azure/roles/{name}", s.requireToken(s.getAzureRole))
-	mux.HandleFunc("DELETE /v1/azure/roles/{name}", s.requireToken(s.deleteAzureRole))
-	s.registerListCompat(mux, "/v1/azure/roles/", s.listAzureRoles)
-	mux.HandleFunc("POST /v1/azure/creds/{role}", s.requireToken(s.generateAzureCreds))
-	mux.HandleFunc("GET /v1/azure/lease/{id}", s.requireToken(s.getAzureLease))
-	mux.HandleFunc("DELETE /v1/azure/lease/{id}", s.requireToken(s.revokeAzureLease))
-	s.registerListCompat(mux, "/v1/azure/lease/", s.listAzureLeases)
-
-	// GCP dynamic secrets engine — generate service account keys or OAuth2 access tokens
-	mux.HandleFunc("PUT /v1/gcp/config", s.requireToken(s.putGCPConfig))
-	mux.HandleFunc("GET /v1/gcp/config", s.requireToken(s.getGCPConfig))
-	mux.HandleFunc("DELETE /v1/gcp/config", s.requireToken(s.deleteGCPConfig))
-	mux.HandleFunc("PUT /v1/gcp/roles/{name}", s.requireToken(s.putGCPRole))
-	mux.HandleFunc("GET /v1/gcp/roles/{name}", s.requireToken(s.getGCPRole))
-	mux.HandleFunc("DELETE /v1/gcp/roles/{name}", s.requireToken(s.deleteGCPRole))
-	s.registerListCompat(mux, "/v1/gcp/roles/", s.listGCPRoles)
-	mux.HandleFunc("POST /v1/gcp/creds/{role}", s.requireToken(s.generateGCPCreds))
-	mux.HandleFunc("GET /v1/gcp/lease/{id}", s.requireToken(s.getGCPLease))
-	mux.HandleFunc("DELETE /v1/gcp/lease/{id}", s.requireToken(s.revokeGCPLease))
-	s.registerListCompat(mux, "/v1/gcp/lease/", s.listGCPLeases)
-
-	// AWS dynamic secrets engine — generate IAM user credentials or STS assumed-role sessions
-	mux.HandleFunc("PUT /v1/aws/config", s.requireToken(s.putAWSConfig))
-	mux.HandleFunc("GET /v1/aws/config", s.requireToken(s.getAWSConfig))
-	mux.HandleFunc("DELETE /v1/aws/config", s.requireToken(s.deleteAWSConfig))
-	mux.HandleFunc("PUT /v1/aws/roles/{name}", s.requireToken(s.putAWSRole))
-	mux.HandleFunc("GET /v1/aws/roles/{name}", s.requireToken(s.getAWSRole))
-	mux.HandleFunc("DELETE /v1/aws/roles/{name}", s.requireToken(s.deleteAWSRole))
-	s.registerListCompat(mux, "/v1/aws/roles/", s.listAWSRoles)
-	mux.HandleFunc("POST /v1/aws/creds/{role}", s.requireToken(s.generateAWSCreds))
-	mux.HandleFunc("GET /v1/aws/lease/{id}", s.requireToken(s.getAWSLease))
-	mux.HandleFunc("DELETE /v1/aws/lease/{id}", s.requireToken(s.revokeAWSLease))
-	s.registerListCompat(mux, "/v1/aws/lease/", s.listAWSLeases)
 
 	// LDAP / Active Directory auth — login is unauthenticated; config and role management require a token
 	mux.HandleFunc("POST /v1/auth/ldap/login", s.loginLDAP)

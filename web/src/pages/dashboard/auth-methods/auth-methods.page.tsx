@@ -6,7 +6,6 @@ import { Page } from '@shared/ui/page/page'
 import { PageHeader } from '@shared/ui/page-header/page-header'
 
 import { AppRoleTab } from './tabs/approle.tab'
-import { GitHubTab } from './tabs/github.tab'
 import { JWTTab } from './tabs/jwt.tab'
 import { KubernetesTab } from './tabs/kubernetes.tab'
 import { LDAPTab } from './tabs/ldap.tab'
@@ -23,7 +22,6 @@ export function AuthMethodsPage() {
                         <Tabs.Tab value="jwt">JWT / OIDC</Tabs.Tab>
                         <Tabs.Tab value="ldap">LDAP</Tabs.Tab>
                         <Tabs.Tab value="kubernetes">Kubernetes</Tabs.Tab>
-                        <Tabs.Tab value="github">GitHub Actions</Tabs.Tab>
                     </Tabs.List>
 
                     <Tabs.Panel pt="md" value="approle">
@@ -37,9 +35,6 @@ export function AuthMethodsPage() {
                     </Tabs.Panel>
                     <Tabs.Panel pt="md" value="kubernetes">
                         <KubernetesTab />
-                    </Tabs.Panel>
-                    <Tabs.Panel pt="md" value="github">
-                        <GitHubTab />
                     </Tabs.Panel>
                 </Tabs>
             </Stack>

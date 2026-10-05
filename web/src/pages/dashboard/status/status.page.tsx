@@ -199,7 +199,6 @@ export function StatusPage() {
                             value={tokensError ? '—' : (tokens?.length ?? 0)}
                         />
                         <PlaceholderCard IconComponent={TbFileText} title={t('status.recentAuditEvents')} />
-                        <PlaceholderCard IconComponent={TbRefresh} title={t('status.replicationLag')} />
                     </SimpleGrid>
                 </Stack>
 

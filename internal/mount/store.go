@@ -1,7 +1,7 @@
 // Package mount implements the secret engine mount table. Each entry
 // associates a logical path prefix with a named engine type and a
 // stable accessor UUID. The builtin engines (kv, kv-v2, pki, database,
-// aws, gcp, azure, transit, ssh, totp, cubbyhole) are registered on
+// transit, ssh, totp, cubbyhole) are registered on
 // first startup; operators can add additional mounts of supported types.
 package mount
 
@@ -182,9 +182,6 @@ func Builtins() []struct{ Path, Type, Description string } {
 		{"sys/", "system", "System configuration and management"},
 		{"auth/", "auth", "Authentication methods"},
 		{"database/", "database", "Database dynamic credentials"},
-		{"aws/", "aws", "AWS dynamic credentials"},
-		{"gcp/", "gcp", "GCP dynamic credentials"},
-		{"azure/", "azure", "Azure dynamic credentials"},
 		{"pki/", "pki", "PKI / certificate management"},
 		{"transit/", "transit", "Encryption-as-a-service"},
 		{"ssh/", "ssh", "SSH certificate signing"},

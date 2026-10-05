@@ -41,7 +41,7 @@ func (r *MountResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			},
 			"type": schema.StringAttribute{
 				Required:    true,
-				Description: "Engine type: kv, transit, pki, database, aws, gcp, azure, ssh, totp.",
+				Description: "Engine type: kv, transit, pki, database, ssh, totp.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},

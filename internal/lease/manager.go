@@ -1,5 +1,5 @@
 // Package lease provides a unified view of all dynamic-credential leases
-// across Tuck's dynamic backends (database, AWS, GCP, Azure).
+// across Tuck's dynamic backends (currently database).
 // Each lease is addressable as "<backend>/<internal-id>", e.g. "database/abc123".
 package lease
 
@@ -17,7 +17,7 @@ var ErrNotFound = errors.New("lease: not found")
 // Info is a backend-agnostic summary of a single lease.
 type Info struct {
 	ID        string    `json:"id"`         // unified: "<backend>/<internal-id>"
-	Backend   string    `json:"backend"`    // e.g. "database", "aws"
+	Backend   string    `json:"backend"`    // e.g. "database"
 	InternalID string   `json:"internal_id"`
 	ExpiresAt time.Time `json:"expires_at"`
 	Revoked   bool      `json:"revoked"`

@@ -44,7 +44,7 @@ func main() {
 	tlsAuto := flag.Bool("tls-auto", false, "generate a self-signed certificate (dev/testing only)")
 
 	// Seal type
-	sealType := flag.String("seal-type", "dev", "seal type: dev, shamir, transit, awskms, gcpkms")
+	sealType := flag.String("seal-type", "dev", "seal type: dev, shamir, transit")
 
 	// Dev seal
 	devSealKey := flag.String("dev-seal-key", "tuck-dev-rootkey", "dev seal: root key file path (INSECURE)")
@@ -60,21 +60,6 @@ func main() {
 	transitToken := flag.String("seal-transit-token", "", "Transit seal: bearer token (use env TUCK_TRANSIT_TOKEN to avoid ps exposure)")
 	transitKeyFile := flag.String("seal-transit-key-file", "tuck-transit.enc", "Transit seal: file to store wrapped root key ciphertext")
 
-	// AWS KMS seal
-	awsKMSKeyID      := flag.String("seal-awskms-key-id", "", "AWS KMS seal: CMK ARN or alias (e.g. alias/tuck-seal)")
-	awsKMSRegion     := flag.String("seal-awskms-region", "", "AWS KMS seal: region (e.g. us-east-1); empty = from AWS_DEFAULT_REGION")
-	awsKMSKeyFile    := flag.String("seal-awskms-key-file", "tuck-awskms.enc", "AWS KMS seal: file to store wrapped root key ciphertext")
-
-	// GCP Cloud KMS seal
-	gcpKMSKeyName := flag.String("seal-gcpkms-key-name", "", "GCP KMS seal: full CryptoKey resource name (projects/.../cryptoKeys/...)")
-	gcpKMSKeyFile := flag.String("seal-gcpkms-key-file", "tuck-gcpkms.enc", "GCP KMS seal: file to store wrapped root key ciphertext")
-
-	// Azure Key Vault seal
-	azureKVVaultURL   := flag.String("seal-azurekv-vault-url", "", "Azure Key Vault seal: vault URL (e.g. https://my-vault.vault.azure.net)")
-	azureKVKeyName    := flag.String("seal-azurekv-key-name", "", "Azure Key Vault seal: RSA key name in the vault")
-	azureKVAlgorithm  := flag.String("seal-azurekv-algorithm", "", "Azure Key Vault seal: encryption algorithm (default RSA-OAEP-256)")
-	azureKVKeyFile    := flag.String("seal-azurekv-key-file", "tuck-azurekv.enc", "Azure Key Vault seal: file to store wrapped root key ciphertext")
-
 	// Cluster (Raft HA)
 	clusterMode      := flag.Bool("cluster", false, "enable Raft HA backend (replaces bbolt with a replicated Raft log)")
 	clusterNodeID    := flag.String("cluster-node-id", "", "unique node ID for this instance (defaults to hostname)")
@@ -87,7 +72,7 @@ func main() {
 
 	// Barrier cipher + experimental engines
 	barrierCipher := flag.String("barrier-cipher", "", "at-rest cipher suite for a NEW store: aes-256-gcm (default) | gost-kuznyechik-mgm; ignored for an existing store")
-	enableEngines := flag.String("enable-engine", "", "comma-separated experimental engines to enable: pki,ssh,totp,aws,gcp,azure (all off by default)")
+	enableEngines := flag.String("enable-engine", "", "comma-separated experimental engines to enable: pki,ssh,totp (all off by default)")
 
 	requireMlock := flag.Bool("require-mlock", false, "refuse to start unless process memory can be locked (no swap); Linux only")
 
@@ -166,18 +151,6 @@ func main() {
 		if !explicit["seal-transit-token"] && os.Getenv("TUCK_TRANSIT_TOKEN") == "" && cfg.Seal.Transit.Token != "" {
 			_ = flag.Set("seal-transit-token", cfg.Seal.Transit.Token)
 		}
-
-		apply("seal-awskms-key-id", cfg.Seal.AWSKMS.KeyID)
-		apply("seal-awskms-region", cfg.Seal.AWSKMS.Region)
-		apply("seal-awskms-key-file", cfg.Seal.AWSKMS.KeyFile)
-
-		apply("seal-gcpkms-key-name", cfg.Seal.GCPKMS.KeyName)
-		apply("seal-gcpkms-key-file", cfg.Seal.GCPKMS.KeyFile)
-
-		apply("seal-azurekv-vault-url", cfg.Seal.AzureKV.VaultURL)
-		apply("seal-azurekv-key-name", cfg.Seal.AzureKV.KeyName)
-		apply("seal-azurekv-algorithm", cfg.Seal.AzureKV.Algorithm)
-		apply("seal-azurekv-key-file", cfg.Seal.AzureKV.KeyFile)
 
 		applyBool("cluster", cfg.Cluster.Enabled)
 		apply("cluster-node-id", cfg.Cluster.NodeID)
@@ -302,32 +275,8 @@ func main() {
 		s = seal.NewTransit(*transitAddr, *transitKey, tok, *transitKeyFile)
 		log.Printf("tuck: Transit seal (addr=%s key=%s)", *transitAddr, *transitKey)
 
-	case "awskms":
-		if *awsKMSKeyID == "" {
-			log.Fatalf("awskms seal requires --seal-awskms-key-id")
-		}
-		s = seal.NewAWSKMS(*awsKMSKeyID, *awsKMSRegion, *awsKMSKeyFile)
-		log.Printf("tuck: AWS KMS seal (key-id=%s region=%s)", *awsKMSKeyID, *awsKMSRegion)
-
-	case "gcpkms":
-		if *gcpKMSKeyName == "" {
-			log.Fatalf("gcpkms seal requires --seal-gcpkms-key-name")
-		}
-		s = seal.NewGCPKMS(*gcpKMSKeyName, *gcpKMSKeyFile)
-		log.Printf("tuck: GCP Cloud KMS seal (key-name=%s)", *gcpKMSKeyName)
-
-	case "azurekv":
-		if *azureKVVaultURL == "" {
-			log.Fatalf("azurekv seal requires --seal-azurekv-vault-url")
-		}
-		if *azureKVKeyName == "" {
-			log.Fatalf("azurekv seal requires --seal-azurekv-key-name")
-		}
-		s = seal.NewAzureKV(*azureKVVaultURL, *azureKVKeyName, *azureKVAlgorithm, *azureKVKeyFile)
-		log.Printf("tuck: Azure Key Vault seal (vault=%s key=%s)", *azureKVVaultURL, *azureKVKeyName)
-
 	default:
-		log.Fatalf("unknown seal type %q; valid: dev, shamir, transit, awskms, gcpkms, azurekv", *sealType)
+		log.Fatalf("unknown seal type %q; valid: dev, shamir, transit", *sealType)
 	}
 
 	// --- Kubernetes auth ---

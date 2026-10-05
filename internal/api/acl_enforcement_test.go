@@ -6,8 +6,8 @@ import (
 )
 
 // TestACLEnforcement_UnprivilegedTokenDeniedAcrossEngines is a regression test
-// for a session-wide finding: transit, pki, ssh, totp, database, aws, gcp,
-// azure, namespaces, cluster, approle role/secret-id management, jwt/ldap
+// for a session-wide finding: transit, pki, ssh, totp, database,
+// namespaces, cluster, approle role/secret-id management, jwt/ldap
 // role/config management, and the identity engine all called their core
 // methods directly without ever checking s.core.EnforceAccess — any token
 // with ANY valid, non-expired policy (regardless of what it granted) could
@@ -15,7 +15,7 @@ import (
 // AppRole secret_id for a role bound to more privileged policies (full
 // privilege escalation) and attaching arbitrary policies to an identity
 // entity. Only kv.go, kvv2.go, tokens.go, policies.go, mounts.go, plugins.go,
-// sysconfig.go, replication.go, github.go, and k8s.go enforced anything.
+// sysconfig.go and k8s.go enforced anything.
 //
 // Confirmed live against a real minikube cluster before this fix (a token
 // scoped to secret/data/* read/list only could decrypt an unrelated Transit
@@ -47,9 +47,6 @@ func TestACLEnforcement_UnprivilegedTokenDeniedAcrossEngines(t *testing.T) {
 	doJSON(t, ts, http.MethodPost, "/v1/ssh/generate/ca", "", root)
 	doJSON(t, ts, http.MethodPost, "/v1/totp/keys/acl-test-totp", "", root)
 	doJSON(t, ts, http.MethodPut, "/v1/database/config/acl-test-db", `{"plugin_name":"postgresql","connection_url":"postgres://u:p@h/db","database":"db"}`, root)
-	doJSON(t, ts, http.MethodPut, "/v1/aws/config", `{"region":"us-east-1"}`, root)
-	doJSON(t, ts, http.MethodPut, "/v1/gcp/config", `{"credentials_json":"{}"}`, root)
-	doJSON(t, ts, http.MethodPut, "/v1/azure/config", `{"tenant_id":"t","client_id":"c","client_secret":"s","subscription_id":"s"}`, root)
 	doJSON(t, ts, http.MethodPost, "/v1/sys/namespaces", `{"name":"acl-test-ns"}`, root)
 	doJSON(t, ts, http.MethodPut, "/v1/auth/approle/role/acl-test-role", `{"policies":["default"]}`, root)
 	doJSON(t, ts, http.MethodPut, "/v1/auth/jwt/role/acl-test-role", `{"policies":["default"],"bound_subject":"x"}`, root)
@@ -72,9 +69,6 @@ func TestACLEnforcement_UnprivilegedTokenDeniedAcrossEngines(t *testing.T) {
 		{"totp get key", http.MethodGet, "/v1/totp/keys/acl-test-totp", ""},
 		{"database get config", http.MethodGet, "/v1/database/config/acl-test-db", ""},
 		{"database put role", http.MethodPut, "/v1/database/role/acl-test-dbrole", `{"db_name":"acl-test-db"}`},
-		{"aws get config", http.MethodGet, "/v1/aws/config", ""},
-		{"gcp get config", http.MethodGet, "/v1/gcp/config", ""},
-		{"azure get config", http.MethodGet, "/v1/azure/config", ""},
 		{"namespaces list", http.MethodGet, "/v1/sys/namespaces/?list=true", ""},
 		{"namespaces create", http.MethodPost, "/v1/sys/namespaces", `{"name":"should-be-denied"}`},
 		{"cluster status", http.MethodGet, "/v1/sys/cluster", ""},

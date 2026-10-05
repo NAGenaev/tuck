@@ -8,7 +8,7 @@ import (
 // ExperimentalEngines are the secret engines that sit outside Tuck's core
 // scope (KV, Transit, Database, auth, audit). A production binary keeps them
 // off unless an operator opts in via RestrictEngines.
-var ExperimentalEngines = []string{"pki", "ssh", "totp", "aws", "gcp", "azure"}
+var ExperimentalEngines = []string{"pki", "ssh", "totp"}
 
 // RestrictEngines turns on the experimental-engine gate: requests to the
 // listed experimental engines are served, requests to every other

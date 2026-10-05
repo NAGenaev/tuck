@@ -16,28 +16,22 @@ import (
 
 	"github.com/NAGenaev/tuck/internal/audit"
 	"github.com/NAGenaev/tuck/internal/auth/approle"
-	ghauth "github.com/NAGenaev/tuck/internal/auth/github"
 	"github.com/NAGenaev/tuck/internal/auth/jwt"
 	authlda "github.com/NAGenaev/tuck/internal/auth/ldap"
 	"github.com/NAGenaev/tuck/internal/barrier"
 	"github.com/NAGenaev/tuck/internal/cubbyhole"
-	dynaws "github.com/NAGenaev/tuck/internal/dynamic/aws"
-	dynazure "github.com/NAGenaev/tuck/internal/dynamic/azure"
 	"github.com/NAGenaev/tuck/internal/dynamic/database"
-	"github.com/NAGenaev/tuck/internal/dynamic/gcp"
 	"github.com/NAGenaev/tuck/internal/dynamic/pki"
 	dynSSH "github.com/NAGenaev/tuck/internal/dynamic/ssh"
 	dynTOTP "github.com/NAGenaev/tuck/internal/dynamic/totp"
 	"github.com/NAGenaev/tuck/internal/dynamic/transit"
 	"github.com/NAGenaev/tuck/internal/identity"
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
+	"github.com/NAGenaev/tuck/internal/kvsecret"
 	"github.com/NAGenaev/tuck/internal/kvv2"
 	"github.com/NAGenaev/tuck/internal/lease"
 	"github.com/NAGenaev/tuck/internal/mount"
 	"github.com/NAGenaev/tuck/internal/namespace"
-	"github.com/NAGenaev/tuck/internal/plugin"
-	"github.com/NAGenaev/tuck/internal/replication"
-	"github.com/NAGenaev/tuck/internal/kvsecret"
 	"github.com/NAGenaev/tuck/internal/physical"
 	"github.com/NAGenaev/tuck/internal/policy"
 	"github.com/NAGenaev/tuck/internal/seal"
@@ -49,10 +43,10 @@ import (
 const secretPrefix = "secret/"
 
 var (
-	ErrUnauthorized    = errors.New("permission denied")
-	ErrTokenInvalid    = errors.New("invalid or expired token")
-	ErrNotRenewable    = errors.New("token is not renewable")
-	ErrK8sAuthDisabled = errors.New("kubernetes auth is not configured")
+	ErrUnauthorized      = errors.New("permission denied")
+	ErrTokenInvalid      = errors.New("invalid or expired token")
+	ErrNotRenewable      = errors.New("token is not renewable")
+	ErrK8sAuthDisabled   = errors.New("kubernetes auth is not configured")
 	ErrK8sUnknownCluster = errors.New("unknown kubernetes cluster")
 
 	// ErrNeedsUnseal is returned by Start when the seal requires interactive
@@ -83,38 +77,32 @@ type ClusterBackender interface {
 
 // Core is Tuck's runtime: storage + crypto + seal, plus the logical KV and identity APIs.
 type Core struct {
-	backend     physical.Backend
-	barrier     *barrier.Barrier
-	seal        seal.Seal
-	tokens      *token.Store
-	tokenRoles  *token.RoleStore
-	policies    *policy.Store
-	kv2         *kvv2.Store
-	namespaces  *namespace.Store
-	auditStore  *audit.Store
-	dispatcher  *audit.Dispatcher
-	jwtStore     *jwt.Store
-	githubStore  *ghauth.Store
-	approleStore *approle.Store
-	ldapStore    *authlda.Store
-	cubbyhole    *cubbyhole.Store
-	wrapping     *wrapping.Store
-	dbManager    *database.Manager
-	awsEngine    *dynaws.Engine
-	gcpEngine    *gcp.Engine
-	azureEngine  *dynazure.Engine
+	backend        physical.Backend
+	barrier        *barrier.Barrier
+	seal           seal.Seal
+	tokens         *token.Store
+	tokenRoles     *token.RoleStore
+	policies       *policy.Store
+	kv2            *kvv2.Store
+	namespaces     *namespace.Store
+	auditStore     *audit.Store
+	dispatcher     *audit.Dispatcher
+	jwtStore       *jwt.Store
+	approleStore   *approle.Store
+	ldapStore      *authlda.Store
+	cubbyhole      *cubbyhole.Store
+	wrapping       *wrapping.Store
+	dbManager      *database.Manager
 	pkiManager     *pki.Manager
 	transitManager *transit.Manager
 	sshManager     *dynSSH.Manager
 	totpManager    *dynTOTP.Manager
-	identity *identity.Store
+	identity       *identity.Store
 
-	sysconfigStore  *sysconfig.Store
-	leaseManager    *lease.Manager
-	mountStore      *mount.Store
+	sysconfigStore   *sysconfig.Store
+	leaseManager     *lease.Manager
+	mountStore       *mount.Store
 	mountConfigStore *mount.ConfigStore
-	pluginCatalog   *plugin.Catalog
-	wal             *replication.WAL
 
 	// optional — nil means k8s auth is disabled
 	k8sReviewer k8sauth.Reviewer
@@ -165,26 +153,22 @@ func New(backend physical.Backend, s seal.Seal) *Core {
 func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer) *Core {
 	b := barrier.New(backend)
 	c := &Core{
-		backend:     backend,
-		barrier:     b,
-		seal:        s,
-		tokens:      token.NewStore(b),
-		tokenRoles:  token.NewRoleStore(b),
-		policies:    policy.NewStore(b),
-		kv2:         kvv2.New(b),
-		namespaces:  namespace.NewStore(b),
-		auditStore:  audit.NewStore(b),
-		dispatcher:  audit.NewDispatcher(audit.Nop()),
-		jwtStore:     jwt.NewStore(b),
-		githubStore:  ghauth.NewStore(b),
-		approleStore: approle.NewStore(b),
-		ldapStore:    authlda.NewStore(b),
-		cubbyhole:    cubbyhole.NewStore(b),
-		wrapping:     wrapping.NewStore(b),
-		dbManager:    database.NewManager(b),
-		awsEngine:    dynaws.New(b),
-		gcpEngine:    gcp.New(b),
-		azureEngine:  dynazure.New(b),
+		backend:        backend,
+		barrier:        b,
+		seal:           s,
+		tokens:         token.NewStore(b),
+		tokenRoles:     token.NewRoleStore(b),
+		policies:       policy.NewStore(b),
+		kv2:            kvv2.New(b),
+		namespaces:     namespace.NewStore(b),
+		auditStore:     audit.NewStore(b),
+		dispatcher:     audit.NewDispatcher(audit.Nop()),
+		jwtStore:       jwt.NewStore(b),
+		approleStore:   approle.NewStore(b),
+		ldapStore:      authlda.NewStore(b),
+		cubbyhole:      cubbyhole.NewStore(b),
+		wrapping:       wrapping.NewStore(b),
+		dbManager:      database.NewManager(b),
 		pkiManager:     pki.NewManager(b),
 		transitManager: transit.NewManager(b),
 		sshManager:     dynSSH.NewManager(b),
@@ -194,11 +178,9 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		k8sReviewer:    reviewer,
 		k8sRoles:       k8sauth.NewRoleStore(b),
 	}
-	c.leaseManager = lease.NewWithEngines(c.dbManager, c.awsEngine, c.gcpEngine, c.azureEngine)
+	c.leaseManager = lease.NewWithEngines(c.dbManager)
 	c.mountStore = mount.New(b)
 	c.mountConfigStore = mount.NewConfigStore(b)
-	c.pluginCatalog = plugin.New(b)
-	c.wal = replication.New(b)
 	return c
 }
 
@@ -280,12 +262,6 @@ func (c *Core) MountStore() *mount.Store { return c.mountStore }
 
 // MountConfigStore returns the per-mount tuning configuration store.
 func (c *Core) MountConfigStore() *mount.ConfigStore { return c.mountConfigStore }
-
-// PluginCatalog returns the plugin registry.
-func (c *Core) PluginCatalog() *plugin.Catalog { return c.pluginCatalog }
-
-// WAL returns the replication write-ahead log.
-func (c *Core) WAL() *replication.WAL { return c.wal }
 
 // UnsealShard accepts one base64url-encoded Shamir shard. When enough shards
 // have been collected the barrier is unsealed automatically. Returns true when
@@ -960,7 +936,7 @@ func (c *Core) DeleteSecret(ctx context.Context, ns, p string) error {
 // secretKey maps a logical path to a backend key, cleaning it so a request
 // cannot escape the secret/ namespace via "..".
 func secretKey(p string) string {
-	return secretPrefix + path.Clean("/"+p)[1:]
+	return secretPrefix + path.Clean("/" + p)[1:]
 }
 
 // KVv2 returns the versioned KV store for the given namespace.
@@ -1091,51 +1067,6 @@ func (c *Core) LoginJWT(ctx context.Context, tokenStr string) (*token.Token, err
 		return nil, err
 	}
 	c.attachEntityToToken(ctx, tok, "auth_jwt", result.Subject, result.Groups)
-	return tok, nil
-}
-
-// --- GitHub Actions OIDC auth ---
-
-// PutGitHubRole creates or updates a GitHub auth role.
-func (c *Core) PutGitHubRole(ctx context.Context, role *ghauth.Role) error {
-	return c.githubStore.PutRole(ctx, role)
-}
-
-// GetGitHubRole returns a GitHub auth role by name.
-func (c *Core) GetGitHubRole(ctx context.Context, name string) (*ghauth.Role, error) {
-	return c.githubStore.GetRole(ctx, name)
-}
-
-// DeleteGitHubRole removes a GitHub auth role.
-func (c *Core) DeleteGitHubRole(ctx context.Context, name string) error {
-	return c.githubStore.DeleteRole(ctx, name)
-}
-
-// ListGitHubRoles returns all GitHub auth role names.
-func (c *Core) ListGitHubRoles(ctx context.Context) ([]string, error) {
-	return c.githubStore.ListRoles(ctx)
-}
-
-// LoginGitHub validates a GitHub Actions OIDC token against the named role
-// and issues a Tuck token carrying the role's policies.
-func (c *Core) LoginGitHub(ctx context.Context, tokenStr, roleName string) (*token.Token, error) {
-	role, err := c.githubStore.GetRole(ctx, roleName)
-	if err != nil {
-		return nil, err
-	}
-	provider := ghauth.NewProvider()
-	result, err := provider.Login(ctx, tokenStr, role)
-	if err != nil {
-		return nil, err
-	}
-	if err := c.checkLoginNamespace(ctx, result.TuckNamespace); err != nil {
-		return nil, err
-	}
-	tok, err := c.CreateToken(ctx, "github:"+result.Subject, result.Policies, result.TTL, loginTokenOpts(result.TuckNamespace)...)
-	if err != nil {
-		return nil, err
-	}
-	c.attachEntityToToken(ctx, tok, "auth_github", result.Subject, nil)
 	return tok, nil
 }
 
@@ -1356,163 +1287,7 @@ func (c *Core) runGC(ctx context.Context) {
 		_ = c.cubbyhole.PurgeToken(ctx, id)
 	}
 	_ = c.dbManager.RevokeExpired(ctx)
-	_ = c.awsEngine.RevokeExpired(ctx)
-	_ = c.gcpEngine.RevokeExpired(ctx)
-	_ = c.azureEngine.RevokeExpired(ctx)
 	_ = c.wrapping.RevokeExpired(ctx)
-}
-
-// --- GCP dynamic secrets engine ---
-
-func (c *Core) PutGCPConfig(ctx context.Context, cfg *gcp.Config) error {
-	return c.gcpEngine.PutConfig(ctx, cfg)
-}
-
-func (c *Core) GetGCPConfig(ctx context.Context) (*gcp.Config, error) {
-	cfg, err := c.gcpEngine.GetConfig(ctx)
-	if err != nil {
-		return nil, err
-	}
-	cfg.CredentialsJSON = "" // never expose credentials through the API
-	return cfg, nil
-}
-
-func (c *Core) DeleteGCPConfig(ctx context.Context) error {
-	return c.gcpEngine.DeleteConfig(ctx)
-}
-
-func (c *Core) PutGCPRole(ctx context.Context, role *gcp.Role) error {
-	return c.gcpEngine.PutRole(ctx, role)
-}
-
-func (c *Core) GetGCPRole(ctx context.Context, name string) (*gcp.Role, error) {
-	return c.gcpEngine.GetRole(ctx, name)
-}
-
-func (c *Core) DeleteGCPRole(ctx context.Context, name string) error {
-	return c.gcpEngine.DeleteRole(ctx, name)
-}
-
-func (c *Core) ListGCPRoles(ctx context.Context) ([]string, error) {
-	return c.gcpEngine.ListRoles(ctx)
-}
-
-func (c *Core) GenerateGCPCreds(ctx context.Context, roleName string) (*gcp.GenerateResult, error) {
-	return c.gcpEngine.GenerateCreds(ctx, roleName)
-}
-
-func (c *Core) GetGCPLease(ctx context.Context, id string) (*gcp.Lease, error) {
-	return c.gcpEngine.GetLease(ctx, id)
-}
-
-func (c *Core) RevokeGCPLease(ctx context.Context, id string) error {
-	return c.gcpEngine.RevokeLease(ctx, id)
-}
-
-func (c *Core) ListGCPLeases(ctx context.Context) ([]string, error) {
-	return c.gcpEngine.ListLeases(ctx)
-}
-
-// --- Azure dynamic secrets engine ---
-
-func (c *Core) PutAzureConfig(ctx context.Context, cfg *dynazure.Config) error {
-	return c.azureEngine.PutConfig(ctx, cfg)
-}
-
-func (c *Core) GetAzureConfig(ctx context.Context) (*dynazure.Config, error) {
-	cfg, err := c.azureEngine.GetConfig(ctx)
-	if err != nil {
-		return nil, err
-	}
-	cfg.ClientSecret = "" // never expose credentials through the API
-	return cfg, nil
-}
-
-func (c *Core) DeleteAzureConfig(ctx context.Context) error {
-	return c.azureEngine.DeleteConfig(ctx)
-}
-
-func (c *Core) PutAzureRole(ctx context.Context, role *dynazure.Role) error {
-	return c.azureEngine.PutRole(ctx, role)
-}
-
-func (c *Core) GetAzureRole(ctx context.Context, name string) (*dynazure.Role, error) {
-	return c.azureEngine.GetRole(ctx, name)
-}
-
-func (c *Core) DeleteAzureRole(ctx context.Context, name string) error {
-	return c.azureEngine.DeleteRole(ctx, name)
-}
-
-func (c *Core) ListAzureRoles(ctx context.Context) ([]string, error) {
-	return c.azureEngine.ListRoles(ctx)
-}
-
-func (c *Core) GenerateAzureCreds(ctx context.Context, roleName string) (*dynazure.GenerateResult, error) {
-	return c.azureEngine.GenerateCreds(ctx, roleName)
-}
-
-func (c *Core) GetAzureLease(ctx context.Context, id string) (*dynazure.Lease, error) {
-	return c.azureEngine.GetLease(ctx, id)
-}
-
-func (c *Core) RevokeAzureLease(ctx context.Context, id string) error {
-	return c.azureEngine.RevokeLease(ctx, id)
-}
-
-func (c *Core) ListAzureLeases(ctx context.Context) ([]string, error) {
-	return c.azureEngine.ListLeases(ctx)
-}
-
-// --- AWS dynamic secrets engine ---
-
-func (c *Core) PutAWSConfig(ctx context.Context, cfg *dynaws.Config) error {
-	return c.awsEngine.PutConfig(ctx, cfg)
-}
-
-func (c *Core) GetAWSConfig(ctx context.Context) (*dynaws.Config, error) {
-	cfg, err := c.awsEngine.GetConfig(ctx)
-	if err != nil {
-		return nil, err
-	}
-	cfg.SecretAccessKey = "" // never expose credentials through the API
-	return cfg, nil
-}
-
-func (c *Core) DeleteAWSConfig(ctx context.Context) error {
-	return c.awsEngine.DeleteConfig(ctx)
-}
-
-func (c *Core) PutAWSRole(ctx context.Context, role *dynaws.Role) error {
-	return c.awsEngine.PutRole(ctx, role)
-}
-
-func (c *Core) GetAWSRole(ctx context.Context, name string) (*dynaws.Role, error) {
-	return c.awsEngine.GetRole(ctx, name)
-}
-
-func (c *Core) DeleteAWSRole(ctx context.Context, name string) error {
-	return c.awsEngine.DeleteRole(ctx, name)
-}
-
-func (c *Core) ListAWSRoles(ctx context.Context) ([]string, error) {
-	return c.awsEngine.ListRoles(ctx)
-}
-
-func (c *Core) GenerateAWSCreds(ctx context.Context, roleName string) (*dynaws.GenerateResult, error) {
-	return c.awsEngine.GenerateCreds(ctx, roleName)
-}
-
-func (c *Core) GetAWSLease(ctx context.Context, id string) (*dynaws.Lease, error) {
-	return c.awsEngine.GetLease(ctx, id)
-}
-
-func (c *Core) RevokeAWSLease(ctx context.Context, id string) error {
-	return c.awsEngine.RevokeLease(ctx, id)
-}
-
-func (c *Core) ListAWSLeases(ctx context.Context) ([]string, error) {
-	return c.awsEngine.ListLeases(ctx)
 }
 
 // --- Unified lease manager ---
@@ -1592,7 +1367,6 @@ func (c *Core) LoginLDAP(ctx context.Context, username, password string) (*token
 	c.attachEntityToToken(ctx, tok, "auth_ldap", result.Username, result.Groups)
 	return tok, nil
 }
-
 
 // --- Response wrapping ---
 

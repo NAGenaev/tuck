@@ -13,8 +13,6 @@ import {
     TbLock,
     TbLogin,
     TbPlugConnected,
-    TbPuzzle,
-    TbRefresh,
     TbServer2,
     TbShieldCheck,
     TbUserCog
@@ -95,8 +93,7 @@ export const useDesktopMenuSections = (): MenuItem[] => {
                     href: ROUTES.DASHBOARD.CRYPTO_ENGINES,
                     icon: TbLock
                 },
-                { id: 'mounts', name: t('nav.mounts'), href: ROUTES.DASHBOARD.MOUNTS, icon: TbPlugConnected },
-                { id: 'plugins', name: t('nav.plugins'), href: ROUTES.DASHBOARD.PLUGINS, icon: TbPuzzle }
+                { id: 'mounts', name: t('nav.mounts'), href: ROUTES.DASHBOARD.MOUNTS, icon: TbPlugConnected }
             ]
         },
         {
@@ -105,12 +102,6 @@ export const useDesktopMenuSections = (): MenuItem[] => {
             icon: TbServer2,
             section: [
                 { id: 'cluster', name: t('nav.cluster'), href: ROUTES.DASHBOARD.CLUSTER, icon: TbServer2 },
-                {
-                    id: 'replication',
-                    name: t('nav.replication'),
-                    href: ROUTES.DASHBOARD.REPLICATION,
-                    icon: TbRefresh
-                },
                 {
                     id: 'audit-sinks',
                     name: t('nav.auditSinks'),

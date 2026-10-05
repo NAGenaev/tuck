@@ -34,15 +34,6 @@ seal:
     addr: https://vault.example.com
     key:  tuck-root
     key_file: /run/secrets/transit-token
-  aws_kms:
-    key_id: alias/tuck
-    region: us-east-1
-  gcp_kms:
-    key_name: projects/p/locations/global/keyRings/r/cryptoKeys/k
-  azure_kv:
-    vault_url: https://kv.vault.azure.net
-    key_name:  tuck-key
-    algorithm: RSA-OAEP-256
 
 cluster:
   enabled:   true
@@ -115,21 +106,6 @@ func TestLoad_SealFields(t *testing.T) {
 	}
 	if cfg.Seal.Transit.Key != "tuck-root" {
 		t.Errorf("Transit.Key = %q, want tuck-root", cfg.Seal.Transit.Key)
-	}
-	if cfg.Seal.AWSKMS.KeyID != "alias/tuck" {
-		t.Errorf("AWSKMS.KeyID = %q, want alias/tuck", cfg.Seal.AWSKMS.KeyID)
-	}
-	if cfg.Seal.AWSKMS.Region != "us-east-1" {
-		t.Errorf("AWSKMS.Region = %q, want us-east-1", cfg.Seal.AWSKMS.Region)
-	}
-	if cfg.Seal.GCPKMS.KeyName == "" {
-		t.Error("GCPKMS.KeyName is empty")
-	}
-	if cfg.Seal.AzureKV.VaultURL != "https://kv.vault.azure.net" {
-		t.Errorf("AzureKV.VaultURL = %q", cfg.Seal.AzureKV.VaultURL)
-	}
-	if cfg.Seal.AzureKV.Algorithm != "RSA-OAEP-256" {
-		t.Errorf("AzureKV.Algorithm = %q, want RSA-OAEP-256", cfg.Seal.AzureKV.Algorithm)
 	}
 }
 

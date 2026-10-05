@@ -208,25 +208,6 @@ func TestLoginAppRole(t *testing.T) {
 	}
 }
 
-func TestLoginGitHub(t *testing.T) {
-	srv := testServer(t, []route{{
-		method: http.MethodPost,
-		path:   "/v1/auth/github/login",
-		status: http.StatusOK,
-		body:   map[string]any{"token": "gh-tok", "policies": []string{"ci"}},
-	}})
-	defer srv.Close()
-
-	c := New(srv.URL, "", WithHTTPClient(srv.Client()))
-	res, err := c.Auth().LoginGitHub(context.Background(), "oidc-jwt", "ci-role")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Token != "gh-tok" {
-		t.Fatalf("expected gh-tok, got %s", res.Token)
-	}
-}
-
 func TestLookupSelf(t *testing.T) {
 	srv := testServer(t, []route{{
 		method: http.MethodGet,

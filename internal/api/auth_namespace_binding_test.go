@@ -201,20 +201,6 @@ func TestLDAPLoginRoleBoundToNamespace(t *testing.T) {
 	}
 }
 
-func TestGitHubRoleNamespaceRoundTrip(t *testing.T) {
-	ts, _, root := newTestServer(t)
-	seedTeams(t, ts, root)
-	if s, b := nsReq(t, ts, http.MethodPut, "/v1/auth/github/role/gr", `{"repository":"o/r","policies":["rd"],"tuck_namespace":"team-a"}`, root, ""); s != http.StatusNoContent {
-		t.Fatalf("put role: %d %s", s, b)
-	}
-	if s, b := nsReq(t, ts, http.MethodGet, "/v1/auth/github/role/gr", "", root, ""); s != http.StatusOK || !strings.Contains(b, `"tuck_namespace":"team-a"`) {
-		t.Fatalf("get role: %d %s", s, b)
-	}
-	if s, b := nsReq(t, ts, http.MethodPut, "/v1/auth/github/role/gr2", `{"repository":"o/r","policies":["rd"],"tuck_namespace":"nope"}`, root, ""); s != http.StatusNotFound {
-		t.Fatalf("unknown namespace: %d %s", s, b)
-	}
-}
-
 // A role bound to a namespace that was later deleted must stop logging in.
 func TestLoginRefusedWhenBoundNamespaceDeleted(t *testing.T) {
 	reviewer := &mockReviewer{result: &k8sauth.ReviewResult{

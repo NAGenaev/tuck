@@ -47,15 +47,6 @@ func (a *AuthClient) LoginJWT(ctx context.Context, jwt, role string) (*LoginResu
 	}, &res)
 }
 
-// LoginGitHub authenticates with a GitHub Actions OIDC token and a role name.
-func (a *AuthClient) LoginGitHub(ctx context.Context, oidcToken, role string) (*LoginResult, error) {
-	var res LoginResult
-	return &res, a.c.post(ctx, "/v1/auth/github/login", map[string]string{
-		"token": oidcToken,
-		"role":  role,
-	}, &res)
-}
-
 // LookupSelf returns information about the token currently set on the client.
 func (c *Client) LookupSelf(ctx context.Context) (*Token, error) {
 	var tok Token

@@ -18,8 +18,6 @@ export const ROUTES = {
         TOKEN_ROLES: '/dashboard/token-roles',
         AUDIT_SINKS: '/dashboard/audit-sinks',
         CLUSTER: '/dashboard/cluster',
-        MOUNTS: '/dashboard/mounts',
-        PLUGINS: '/dashboard/plugins',
-        REPLICATION: '/dashboard/replication'
+        MOUNTS: '/dashboard/mounts'
     }
 } as const

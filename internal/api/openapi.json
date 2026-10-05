@@ -18,15 +18,11 @@
     { "name": "auth-approle", "description": "AppRole auth — machine-to-machine with RoleID + SecretID" },
     { "name": "auth-kubernetes", "description": "Kubernetes ServiceAccount token auth" },
     { "name": "auth-jwt", "description": "JWT / OIDC auth" },
-    { "name": "auth-github", "description": "GitHub Actions OIDC auth" },
     { "name": "auth-ldap", "description": "LDAP / Active Directory auth" },
     { "name": "transit", "description": "Encryption-as-a-Service (Transit engine)" },
     { "name": "pki", "description": "PKI certificate authority" },
     { "name": "ssh", "description": "SSH certificate signing" },
     { "name": "totp", "description": "TOTP code management" },
-    { "name": "aws", "description": "AWS dynamic credentials" },
-    { "name": "gcp", "description": "GCP dynamic credentials" },
-    { "name": "azure", "description": "Azure dynamic credentials" },
     { "name": "database", "description": "Database dynamic credentials" },
     { "name": "identity", "description": "Identity — entities, aliases, groups" },
     { "name": "namespaces", "description": "Namespace management" },
@@ -47,7 +43,7 @@
         "type": "object",
         "properties": {
           "sealed": { "type": "boolean" },
-          "type": { "type": "string", "enum": ["dev", "shamir", "transit", "gcpckms", "awskms", "azurekeyvault"] },
+          "type": { "type": "string", "enum": ["dev", "shamir", "transit"] },
           "required_shards": { "type": "integer" },
           "received_shards": { "type": "integer" }
         }
@@ -491,81 +487,6 @@
         "responses": { "204": { "description": "Removed" } }
       }
     },
-    "/v1/sys/replication/status": {
-      "get": {
-        "tags": ["sys"],
-        "summary": "Replication status",
-        "operationId": "getReplicationStatus",
-        "responses": { "200": { "description": "Replication state" } }
-      }
-    },
-    "/v1/sys/replication/primary/enable": {
-      "post": {
-        "tags": ["sys"],
-        "summary": "Enable this node as replication primary",
-        "operationId": "enableReplicationPrimary",
-        "responses": { "200": { "description": "Enabled; returns bootstrap token" } }
-      }
-    },
-    "/v1/sys/replication/secondary/enable": {
-      "post": {
-        "tags": ["sys"],
-        "summary": "Enable this node as replication secondary",
-        "operationId": "enableReplicationSecondary",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "token": { "type": "string" }, "primary_api_addr": { "type": "string" } } } } } },
-        "responses": { "200": { "description": "Enabled" } }
-      }
-    },
-    "/v1/sys/replication/disable": {
-      "post": {
-        "tags": ["sys"],
-        "summary": "Disable replication on this node",
-        "operationId": "disableReplication",
-        "responses": { "204": { "description": "Disabled" } }
-      }
-    },
-    "/v1/sys/plugins/catalog/{type}/{name}": {
-      "parameters": [
-        { "name": "type", "in": "path", "required": true, "schema": { "type": "string", "enum": ["auth", "secret", "database"] } },
-        { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }
-      ],
-      "get": {
-        "tags": ["sys"],
-        "summary": "Get a plugin catalog entry",
-        "operationId": "getPlugin",
-        "responses": { "200": { "description": "Plugin info" }, "404": { "description": "Not found" } }
-      },
-      "post": {
-        "tags": ["sys"],
-        "summary": "Register a plugin",
-        "operationId": "registerPlugin",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "command": { "type": "string" }, "sha256": { "type": "string" } } } } } },
-        "responses": { "204": { "description": "Registered" } }
-      },
-      "delete": {
-        "tags": ["sys"],
-        "summary": "Deregister a plugin",
-        "operationId": "deletePlugin",
-        "responses": { "204": { "description": "Deregistered" } }
-      }
-    },
-    "/v1/sys/plugins/catalog/{type}/": {
-      "parameters": [{ "name": "type", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "get": {
-        "tags": ["sys"],
-        "summary": "List plugins of a type (LIST method)",
-        "operationId": "listPluginsByType",
-        "responses": { "200": { "description": "Plugin names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
-      }
-    },
-    "/v1/sys/plugins/catalog/": {
-      "get": {
-        "tags": ["sys"],
-        "summary": "List all plugins (LIST method)",
-        "operationId": "listAllPlugins",
-        "responses": { "200": { "description": "Plugins by type" } }
-      }
-    },
     "/v1/secret/{path}": {
       "parameters": [{ "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }],
       "get": {
@@ -990,46 +911,6 @@
         "responses": { "200": { "description": "Role names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
       }
     },
-    "/v1/auth/github/login": {
-      "post": {
-        "tags": ["auth-github"],
-        "summary": "Exchange a GitHub Actions OIDC token for a Tuck token",
-        "operationId": "loginGitHub",
-        "security": [],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "token": { "type": "string", "description": "GitHub Actions OIDC token from ${{ secrets.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}" }, "role": { "type": "string" } }, "required": ["token", "role"] } } } },
-        "responses": { "200": { "description": "Tuck token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } }, "401": { "description": "Invalid or expired OIDC token" }, "403": { "description": "Claims do not match role" }, "404": { "description": "Role not found" } }
-      }
-    },
-    "/v1/auth/github/role/{name}": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "get": {
-        "tags": ["auth-github"],
-        "summary": "Get a GitHub auth role",
-        "operationId": "getGitHubRole",
-        "responses": { "200": { "description": "Role" }, "404": { "description": "Not found" } }
-      },
-      "put": {
-        "tags": ["auth-github"],
-        "summary": "Create or update a GitHub auth role",
-        "operationId": "putGitHubRole",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "repository": { "type": "string", "example": "myorg/myrepo" }, "repository_owner": { "type": "string" }, "ref": { "type": "string", "example": "refs/heads/main" }, "environment": { "type": "string" }, "workflow_ref": { "type": "string" }, "actor": { "type": "string" }, "audience": { "type": "string" }, "policies": { "type": "array", "items": { "type": "string" } }, "ttl": { "type": "string" } } } } } },
-        "responses": { "204": { "description": "Saved" } }
-      },
-      "delete": {
-        "tags": ["auth-github"],
-        "summary": "Delete a GitHub auth role",
-        "operationId": "deleteGitHubRole",
-        "responses": { "204": { "description": "Deleted" } }
-      }
-    },
-    "/v1/auth/github/role/": {
-      "get": {
-        "tags": ["auth-github"],
-        "summary": "List GitHub auth roles (LIST method)",
-        "operationId": "listGitHubRoles",
-        "responses": { "200": { "description": "Role names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
-      }
-    },
     "/v1/auth/ldap/login": {
       "post": {
         "tags": ["auth-ldap"],
@@ -1338,51 +1219,6 @@
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "code": { "type": "string" } } } } } },
         "responses": { "200": { "description": "Valid", "content": { "application/json": { "schema": { "type": "object", "properties": { "valid": { "type": "boolean" } } } } } }, "400": { "description": "Invalid code" } }
       }
-    },
-    "/v1/aws/config": {
-      "get": { "tags": ["aws"], "summary": "Get AWS config", "operationId": "getAWSConfig", "responses": { "200": { "description": "Config" } } },
-      "put": { "tags": ["aws"], "summary": "Set AWS config", "operationId": "putAWSConfig", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "access_key": { "type": "string" }, "secret_key": { "type": "string" }, "region": { "type": "string" } } } } } }, "responses": { "204": { "description": "Saved" } } },
-      "delete": { "tags": ["aws"], "summary": "Delete AWS config", "operationId": "deleteAWSConfig", "responses": { "204": { "description": "Deleted" } } }
-    },
-    "/v1/aws/roles/{name}": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "get": { "tags": ["aws"], "summary": "Get an AWS role", "operationId": "getAWSRole", "responses": { "200": { "description": "Role" }, "404": { "description": "Not found" } } },
-      "put": { "tags": ["aws"], "summary": "Create or update an AWS role", "operationId": "putAWSRole", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "credential_type": { "type": "string", "enum": ["iam_user", "assumed_role", "federation_token"] }, "policy_arns": { "type": "array", "items": { "type": "string" } }, "role_arns": { "type": "array", "items": { "type": "string" } }, "ttl": { "type": "string" } } } } } }, "responses": { "204": { "description": "Saved" } } },
-      "delete": { "tags": ["aws"], "summary": "Delete an AWS role", "operationId": "deleteAWSRole", "responses": { "204": { "description": "Deleted" } } }
-    },
-    "/v1/aws/creds/{role}": {
-      "parameters": [{ "name": "role", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "post": { "tags": ["aws"], "summary": "Generate AWS credentials", "operationId": "getAWSCreds", "responses": { "200": { "description": "AWS credentials", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DynamicCreds" } } } } } }
-    },
-    "/v1/gcp/config": {
-      "get": { "tags": ["gcp"], "summary": "Get GCP config", "operationId": "getGCPConfig", "responses": { "200": { "description": "Config" } } },
-      "put": { "tags": ["gcp"], "summary": "Set GCP config", "operationId": "putGCPConfig", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "credentials": { "type": "string", "description": "GCP service account JSON" } } } } } }, "responses": { "204": { "description": "Saved" } } },
-      "delete": { "tags": ["gcp"], "summary": "Delete GCP config", "operationId": "deleteGCPConfig", "responses": { "204": { "description": "Deleted" } } }
-    },
-    "/v1/gcp/roles/{name}": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "get": { "tags": ["gcp"], "summary": "Get a GCP role", "operationId": "getGCPRole", "responses": { "200": { "description": "Role" }, "404": { "description": "Not found" } } },
-      "put": { "tags": ["gcp"], "summary": "Create or update a GCP role", "operationId": "putGCPRole", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "secret_type": { "type": "string", "enum": ["access_token", "service_account_key"] }, "project": { "type": "string" }, "bindings": { "type": "string", "description": "HCL or JSON IAM bindings" }, "ttl": { "type": "string" } } } } } }, "responses": { "204": { "description": "Saved" } } },
-      "delete": { "tags": ["gcp"], "summary": "Delete a GCP role", "operationId": "deleteGCPRole", "responses": { "204": { "description": "Deleted" } } }
-    },
-    "/v1/gcp/creds/{role}": {
-      "parameters": [{ "name": "role", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "post": { "tags": ["gcp"], "summary": "Generate GCP credentials", "operationId": "getGCPCreds", "responses": { "200": { "description": "GCP credentials", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DynamicCreds" } } } } } }
-    },
-    "/v1/azure/config": {
-      "get": { "tags": ["azure"], "summary": "Get Azure config", "operationId": "getAzureConfig", "responses": { "200": { "description": "Config" } } },
-      "put": { "tags": ["azure"], "summary": "Set Azure config", "operationId": "putAzureConfig", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "subscription_id": { "type": "string" }, "tenant_id": { "type": "string" }, "client_id": { "type": "string" }, "client_secret": { "type": "string" } } } } } }, "responses": { "204": { "description": "Saved" } } },
-      "delete": { "tags": ["azure"], "summary": "Delete Azure config", "operationId": "deleteAzureConfig", "responses": { "204": { "description": "Deleted" } } }
-    },
-    "/v1/azure/roles/{name}": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "get": { "tags": ["azure"], "summary": "Get an Azure role", "operationId": "getAzureRole", "responses": { "200": { "description": "Role" }, "404": { "description": "Not found" } } },
-      "put": { "tags": ["azure"], "summary": "Create or update an Azure role", "operationId": "putAzureRole", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "azure_roles": { "type": "array", "items": { "type": "object", "properties": { "role_name": { "type": "string" }, "scope": { "type": "string" } } } }, "ttl": { "type": "string" } } } } } }, "responses": { "204": { "description": "Saved" } } },
-      "delete": { "tags": ["azure"], "summary": "Delete an Azure role", "operationId": "deleteAzureRole", "responses": { "204": { "description": "Deleted" } } }
-    },
-    "/v1/azure/creds/{role}": {
-      "parameters": [{ "name": "role", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "post": { "tags": ["azure"], "summary": "Generate Azure credentials (service principal)", "operationId": "getAzureCreds", "responses": { "200": { "description": "Azure SP credentials", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DynamicCreds" } } } } } }
     },
     "/v1/database/config/{name}": {
       "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],

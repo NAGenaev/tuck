@@ -503,85 +503,6 @@ func cmdAuthJWTLogin(c *client, jwt, role string) {
 	printJSON(mustJSON(resp, 200))
 }
 
-// ---- GitHub Actions OIDC auth ----
-
-func cmdAuthGitHubLogin(c *client, token, role string) {
-	resp, err := c.do("POST", "/v1/auth/github/login", map[string]string{"token": token, "role": role})
-	if err != nil {
-		fatalf("request: %v", err)
-	}
-	printJSON(mustJSON(resp, 200))
-}
-
-func cmdAuthGitHubRoleCreate(c *client, name, repo, owner, ref, env, workflowRef, actor, audience string, policies []string, ttl string) {
-	body := map[string]any{
-		"policies": policies,
-	}
-	if repo != "" {
-		body["repository"] = repo
-	}
-	if owner != "" {
-		body["repository_owner"] = owner
-	}
-	if ref != "" {
-		body["ref"] = ref
-	}
-	if env != "" {
-		body["environment"] = env
-	}
-	if workflowRef != "" {
-		body["workflow_ref"] = workflowRef
-	}
-	if actor != "" {
-		body["actor"] = actor
-	}
-	if audience != "" {
-		body["audience"] = audience
-	}
-	if ttl != "" {
-		body["ttl"] = ttl
-	}
-	resp, err := c.do("PUT", "/v1/auth/github/role/"+name, body)
-	if err != nil {
-		fatalf("request: %v", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != 204 {
-		body2, _ := io.ReadAll(resp.Body)
-		fatalf("HTTP %d: %s", resp.StatusCode, body2)
-	}
-	fmt.Printf("GitHub role %q saved\n", name)
-}
-
-func cmdAuthGitHubRoleGet(c *client, name string) {
-	resp, err := c.do("GET", "/v1/auth/github/role/"+name, nil)
-	if err != nil {
-		fatalf("request: %v", err)
-	}
-	printJSON(mustJSON(resp, 200))
-}
-
-func cmdAuthGitHubRoleDelete(c *client, name string) {
-	resp, err := c.do("DELETE", "/v1/auth/github/role/"+name, nil)
-	if err != nil {
-		fatalf("request: %v", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != 204 {
-		body, _ := io.ReadAll(resp.Body)
-		fatalf("HTTP %d: %s", resp.StatusCode, body)
-	}
-	fmt.Printf("GitHub role %q deleted\n", name)
-}
-
-func cmdAuthGitHubRoleList(c *client) {
-	resp, err := c.do("LIST", "/v1/auth/github/role/", nil)
-	if err != nil {
-		fatalf("request: %v", err)
-	}
-	printJSON(mustJSON(resp, 200))
-}
-
 // ---- identity ----
 
 func cmdIdentityEntityCreate(c *client, name string, policies []string) {
@@ -1166,9 +1087,6 @@ Policies:
 
 Dynamic credentials:
   db creds <role>                     Get DB credentials
-  aws creds <role>                    Get AWS credentials
-  gcp creds <role>                    Get GCP credentials
-  azure creds <role>                  Get Azure credentials
 
 PKI:
   pki issue <role> --cn=<name> [--ttl=720h] [--alt-name=x ...]
@@ -1603,24 +1521,6 @@ func main() {
 		}
 		cmdDynCreds(c, "database", args[2])
 
-	case "aws":
-		if len(args) < 3 || args[1] != "creds" {
-			fatalf("usage: aws creds <role>")
-		}
-		cmdDynCreds(c, "aws", args[2])
-
-	case "gcp":
-		if len(args) < 3 || args[1] != "creds" {
-			fatalf("usage: gcp creds <role>")
-		}
-		cmdDynCreds(c, "gcp", args[2])
-
-	case "azure":
-		if len(args) < 3 || args[1] != "creds" {
-			fatalf("usage: azure creds <role>")
-		}
-		cmdDynCreds(c, "azure", args[2])
-
 	case "pki":
 		if len(args) < 2 {
 			fatalf("pki requires a subcommand: issue, revoke")
@@ -1727,64 +1627,6 @@ func main() {
 				fatalf("auth jwt login requires --jwt")
 			}
 			cmdAuthJWTLogin(c, *jwt, *role)
-		case "github":
-			if len(args) < 3 {
-				fatalf("auth github requires a subcommand: login, role create/get/delete/list")
-			}
-			switch args[2] {
-			case "login":
-				fs := flag.NewFlagSet("auth github login", flag.ExitOnError)
-				token := fs.String("token", "", "GitHub Actions OIDC token (required)")
-				role := fs.String("role", "", "GitHub auth role name (required)")
-				_ = fs.Parse(args[3:])
-				if *token == "" || *role == "" {
-					fatalf("auth github login requires --token and --role")
-				}
-				cmdAuthGitHubLogin(c, *token, *role)
-			case "role":
-				if len(args) < 4 {
-					fatalf("auth github role requires: create, get, delete, list")
-				}
-				switch args[3] {
-				case "create":
-					fs := flag.NewFlagSet("auth github role create", flag.ExitOnError)
-					name       := fs.String("name", "", "role name (required)")
-					repo       := fs.String("repository", "", "allowed GitHub repository (e.g. myorg/myrepo)")
-					owner      := fs.String("repository-owner", "", "allowed repository owner (e.g. myorg)")
-					ref        := fs.String("ref", "", "allowed git ref (e.g. refs/heads/main)")
-					env        := fs.String("environment", "", "allowed GitHub environment (e.g. production)")
-					workflowRef := fs.String("workflow-ref", "", "allowed workflow_ref claim")
-					actor      := fs.String("actor", "", "allowed GitHub actor (username)")
-					audience   := fs.String("audience", "", "required aud claim (defaults to GitHub issuer)")
-					var policies multiFlag
-					fs.Var(&policies, "policy", "Tuck policy name (may be repeated)")
-					ttl := fs.String("ttl", "1h", "TTL of issued token (e.g. 1h)")
-					_ = fs.Parse(args[4:])
-					if *name == "" {
-						fatalf("auth github role create requires --name")
-					}
-					if len(policies) == 0 {
-						fatalf("auth github role create requires at least one --policy")
-					}
-					cmdAuthGitHubRoleCreate(c, *name, *repo, *owner, *ref, *env, *workflowRef, *actor, *audience, []string(policies), *ttl)
-				case "get":
-					if len(args) < 5 {
-						fatalf("auth github role get requires a role name")
-					}
-					cmdAuthGitHubRoleGet(c, args[4])
-				case "delete":
-					if len(args) < 5 {
-						fatalf("auth github role delete requires a role name")
-					}
-					cmdAuthGitHubRoleDelete(c, args[4])
-				case "list":
-					cmdAuthGitHubRoleList(c)
-				default:
-					fatalf("unknown auth github role subcommand %q", args[3])
-				}
-			default:
-				fatalf("unknown auth github subcommand %q", args[2])
-			}
 		default:
 			fatalf("unknown auth provider %q", args[1])
 		}

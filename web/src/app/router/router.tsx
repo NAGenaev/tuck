@@ -18,9 +18,7 @@ import { KV1Page } from '@pages/dashboard/kv1/kv1.page'
 import { KV2Page } from '@pages/dashboard/kv2/kv2.page'
 import { MountsPage } from '@pages/dashboard/mounts/mounts.page'
 import { NamespacesPage } from '@pages/dashboard/namespaces/namespaces.page'
-import { PluginsPage } from '@pages/dashboard/plugins/plugins.page'
 import { PoliciesPage } from '@pages/dashboard/policies/policies.page'
-import { ReplicationPage } from '@pages/dashboard/replication/replication.page'
 import { StatusPage } from '@pages/dashboard/status/status.page'
 import { TokenRolesPage } from '@pages/dashboard/token-roles/token-roles.page'
 import { TokensPage } from '@pages/dashboard/tokens/tokens.page'
@@ -54,9 +52,7 @@ const router = createBrowserRouter(
                         { path: ROUTES.DASHBOARD.TOKEN_ROLES, element: <TokenRolesPage /> },
                         { path: ROUTES.DASHBOARD.AUDIT_SINKS, element: <AuditSinksPage /> },
                         { path: ROUTES.DASHBOARD.CLUSTER, element: <ClusterPage /> },
-                        { path: ROUTES.DASHBOARD.MOUNTS, element: <MountsPage /> },
-                        { path: ROUTES.DASHBOARD.PLUGINS, element: <PluginsPage /> },
-                        { path: ROUTES.DASHBOARD.REPLICATION, element: <ReplicationPage /> }
+                        { path: ROUTES.DASHBOARD.MOUNTS, element: <MountsPage /> }
                     ]
                 }
             ]

@@ -5,10 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/NAGenaev/tuck/internal/dynamic/aws"
-	"github.com/NAGenaev/tuck/internal/dynamic/azure"
 	"github.com/NAGenaev/tuck/internal/dynamic/database"
-	"github.com/NAGenaev/tuck/internal/dynamic/gcp"
 )
 
 // dbAdapter wraps *database.Manager to implement Backend.
@@ -36,68 +33,9 @@ func (a *dbAdapter) RenewLease(ctx context.Context, id string, increment time.Du
 	return a.m.RenewLease(ctx, id, increment)
 }
 
-// awsAdapter wraps *aws.Engine to implement Backend.
-type awsAdapter struct{ e *aws.Engine }
-
-func (a *awsAdapter) GetLeaseInfo(ctx context.Context, id string) (time.Time, bool, error) {
-	l, err := a.e.GetLease(ctx, id)
-	if err != nil {
-		return time.Time{}, false, ErrNotFound
-	}
-	return l.ExpiresAt, l.Revoked, nil
-}
-func (a *awsAdapter) RevokeLease(ctx context.Context, id string) error {
-	return a.e.RevokeLease(ctx, id)
-}
-func (a *awsAdapter) ListLeases(ctx context.Context) ([]string, error) { return a.e.ListLeases(ctx) }
-func (a *awsAdapter) RenewLease(ctx context.Context, id string, increment time.Duration) (time.Time, error) {
-	return a.e.RenewLease(ctx, id, increment)
-}
-
-// gcpAdapter wraps *gcp.Engine to implement Backend.
-type gcpAdapter struct{ e *gcp.Engine }
-
-func (a *gcpAdapter) GetLeaseInfo(ctx context.Context, id string) (time.Time, bool, error) {
-	l, err := a.e.GetLease(ctx, id)
-	if err != nil {
-		return time.Time{}, false, ErrNotFound
-	}
-	return l.ExpiresAt, l.Revoked, nil
-}
-func (a *gcpAdapter) RevokeLease(ctx context.Context, id string) error {
-	return a.e.RevokeLease(ctx, id)
-}
-func (a *gcpAdapter) ListLeases(ctx context.Context) ([]string, error) { return a.e.ListLeases(ctx) }
-func (a *gcpAdapter) RenewLease(ctx context.Context, id string, increment time.Duration) (time.Time, error) {
-	return a.e.RenewLease(ctx, id, increment)
-}
-
-// azureAdapter wraps *azure.Engine to implement Backend.
-type azureAdapter struct{ e *azure.Engine }
-
-func (a *azureAdapter) GetLeaseInfo(ctx context.Context, id string) (time.Time, bool, error) {
-	l, err := a.e.GetLease(ctx, id)
-	if err != nil {
-		return time.Time{}, false, ErrNotFound
-	}
-	return l.ExpiresAt, l.Revoked, nil
-}
-func (a *azureAdapter) RevokeLease(ctx context.Context, id string) error {
-	return a.e.RevokeLease(ctx, id)
-}
-func (a *azureAdapter) ListLeases(ctx context.Context) ([]string, error) {
-	return a.e.ListLeases(ctx)
-}
-func (a *azureAdapter) RenewLease(ctx context.Context, id string, increment time.Duration) (time.Time, error) {
-	return a.e.RenewLease(ctx, id, increment)
-}
-
-// NewWithEngines creates a Manager wired to all four dynamic backend engines.
-func NewWithEngines(db *database.Manager, awsE *aws.Engine, gcpE *gcp.Engine, azureE *azure.Engine) *Manager {
+// NewWithEngines creates a Manager wired to the dynamic backend engines.
+func NewWithEngines(db *database.Manager) *Manager {
 	return New(map[string]Backend{
 		"database": &dbAdapter{m: db},
-		"aws":      &awsAdapter{e: awsE},
-		"gcp":      &gcpAdapter{e: gcpE},
-		"azure":    &azureAdapter{e: azureE},
 	})
 }

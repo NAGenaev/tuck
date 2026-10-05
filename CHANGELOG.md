@@ -11,6 +11,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Barrier: шифрование путей.** Новые хранилища (`barrier/meta` версии 3) не хранят имена записей в backend в открытом виде: каждый сегмент пути шифруется детерминированно и обратимо (AEAD, AAD — родительский путь), ключ путей лежит в keyring и переживает `rekey` и `rotate-data-key`. Скрыты имена; форма дерева, число записей и длины сегментов остаются видимыми. Хранилища версий 1–2 работают с открытыми путями. См. docs/11 §1.1.
 - Логин по роли, привязанной к удалённому namespace, возвращает 403. Ночной fuzz в CI (`soak.yml`), новый `FuzzSuiteOpen` по всем наборам шифров барьера.
 - `GET /v1/sys/seal-status` возвращает `barrier_cipher`.
 - **Kubernetes auth: несколько кластеров.** `kubernetes.clusters` в конфиге (имя, `api`, `token_file`, `ca_file`) добавляет доверенные кластеры; роли хранятся отдельно по кластеру (`PUT /v1/auth/kubernetes/clusters/{cluster}/role/{ns}/{sa}`, `GET /v1/auth/kubernetes/clusters`), логин принимает необязательное поле `cluster`, Injector — `tuck.io/cluster`, агент — `TUCK_K8S_CLUSTER`, оператор — `--tuck-cluster`. Без `cluster` поведение прежнее (кластер по умолчанию, прежние ключи ролей). Идентичность в Entity и имя токена содержат имя кластера.

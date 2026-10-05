@@ -2,8 +2,10 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
+	"github.com/NAGenaev/tuck/internal/barrier"
 	"github.com/NAGenaev/tuck/internal/policy"
 )
 
@@ -157,4 +159,26 @@ func (s *Server) postSeal(w http.ResponseWriter, r *http.Request) {
 	}
 	s.core.Seal()
 	writeJSON(w, http.StatusOK, map[string]bool{"sealed": true})
+}
+
+// postRotateDataKey handles POST /v1/sys/rotate-data-key[?reencrypt=true].
+// It rotates the barrier DEK; with reencrypt=true existing entries are
+// rewritten under the new key and the old key is discarded.
+func (s *Server) postRotateDataKey(w http.ResponseWriter, r *http.Request) {
+	tokenID := tokenFromCtx(r.Context())
+	if err := s.core.EnforceAccess(r.Context(), tokenID, "sys/rotate-data-key", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
+	reencrypt := r.URL.Query().Get("reencrypt") == "true"
+	ver, n, err := s.core.RotateDataKey(r.Context(), reencrypt)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, barrier.ErrNotVersioned) {
+			status = http.StatusConflict
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "key_version": ver, "reencrypted": n})
 }

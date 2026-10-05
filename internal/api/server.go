@@ -153,6 +153,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sys/seal", s.requireToken(s.postSeal))
 	mux.HandleFunc("GET /v1/sys/snapshot", s.requireToken(s.getSnapshot))
 	mux.HandleFunc("POST /v1/sys/rotate", s.requireToken(s.postRotate))
+	mux.HandleFunc("POST /v1/sys/rotate-data-key", s.requireToken(s.postRotateDataKey))
 
 	// Cubbyhole — per-token private storage, purged on token revocation/expiry
 	mux.HandleFunc("GET /v1/cubbyhole/{path...}", s.requireToken(s.cubbyholeGet))

@@ -24,10 +24,13 @@ package barrier
 import (
 	"context"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/NAGenaev/tuck/internal/physical"
@@ -51,10 +54,13 @@ var (
 type Barrier struct {
 	backend physical.Backend
 
-	mu      sync.RWMutex
-	key     []byte // barrier key (DEK); nil when sealed
-	suite   Suite  // cipher suite protecting this store
-	bindAAD bool   // authenticate the storage key as AEAD associated data
+	mu        sync.RWMutex
+	keys      map[uint32][]byte // barrier keys (DEKs) by version; nil when sealed
+	active    uint32            // version used for new writes
+	rootKey   []byte            // root key, held while unsealed so the keyring can be re-wrapped
+	suite     Suite             // cipher suite protecting this store
+	bindAAD   bool              // authenticate the storage key as AEAD associated data
+	versioned bool              // entries carry a 4-byte DEK version prefix
 }
 
 // New creates a Barrier over the given backend. It starts sealed.
@@ -101,11 +107,15 @@ func (b *Barrier) InitializeWithSuite(ctx context.Context, rootKey []byte, suite
 	if _, err := io.ReadFull(rand.Reader, barrierKey); err != nil {
 		return fmt.Errorf("generate barrier key: %w", err)
 	}
-	wrapped, err := suite.seal(rootKey, barrierKey, []byte(keyringPath))
+	kr, err := marshalKeyring(1, map[uint32][]byte{1: barrierKey})
+	if err != nil {
+		return err
+	}
+	wrapped, err := suite.seal(rootKey, kr, []byte(keyringPath))
 	if err != nil {
 		return fmt.Errorf("wrap barrier key: %w", err)
 	}
-	meta, err := json.Marshal(storeMeta{Version: metaVersionAADBinding, Cipher: suite.Name})
+	meta, err := json.Marshal(storeMeta{Version: metaVersionVersionedKeys, Cipher: suite.Name})
 	if err != nil {
 		return err
 	}
@@ -121,7 +131,7 @@ func (b *Barrier) InitializeWithSuite(ctx context.Context, rootKey []byte, suite
 func (b *Barrier) Unseal(ctx context.Context, rootKey []byte) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.key != nil {
+	if b.keys != nil {
 		return nil // already unsealed
 	}
 	e, err := b.backend.Get(ctx, keyringPath)
@@ -131,7 +141,7 @@ func (b *Barrier) Unseal(ctx context.Context, rootKey []byte) error {
 	if e == nil {
 		return ErrNotInitialized
 	}
-	suite, bindAAD, err := b.loadMeta(ctx)
+	suite, bindAAD, versioned, err := b.loadMeta(ctx)
 	if err != nil {
 		return err
 	}
@@ -139,12 +149,19 @@ func (b *Barrier) Unseal(ctx context.Context, rootKey []byte) error {
 	if bindAAD {
 		aad = []byte(keyringPath)
 	}
-	barrierKey, err := suite.open(rootKey, e.Value, aad)
+	plain, err := suite.open(rootKey, e.Value, aad)
 	if err != nil {
 		return ErrUnsealFailed
 	}
-	b.suite, b.bindAAD = suite, bindAAD
-	b.key = barrierKey
+	keys, active := map[uint32][]byte{0: plain}, uint32(0)
+	if versioned {
+		if keys, active, err = parseKeyring(plain); err != nil {
+			return ErrUnsealFailed
+		}
+	}
+	b.suite, b.bindAAD, b.versioned = suite, bindAAD, versioned
+	b.keys, b.active = keys, active
+	b.rootKey = append([]byte(nil), rootKey...)
 	return nil
 }
 
@@ -153,17 +170,18 @@ func (b *Barrier) Unseal(ctx context.Context, rootKey []byte) error {
 func (b *Barrier) Seal() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.key != nil {
-		zero(b.key)
-		b.key = nil
+	for _, k := range b.keys {
+		zero(k)
 	}
+	zero(b.rootKey)
+	b.keys, b.rootKey = nil, nil
 }
 
 // IsSealed reports whether the barrier is currently sealed.
 func (b *Barrier) IsSealed() bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	return b.key == nil
+	return b.keys == nil
 }
 
 // CipherSuite reports the cipher suite protecting this store ("" until the
@@ -178,14 +196,14 @@ func (b *Barrier) CipherSuite() string {
 func (b *Barrier) Get(ctx context.Context, key string) (*physical.Entry, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	if b.key == nil {
+	if b.keys == nil {
 		return nil, ErrSealed
 	}
 	e, err := b.backend.Get(ctx, key)
 	if err != nil || e == nil {
 		return nil, err
 	}
-	plain, err := b.suite.open(b.key, e.Value, b.aadFor(key))
+	plain, err := b.openEntry(key, e.Value)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt %q: %w", key, err)
 	}
@@ -196,10 +214,10 @@ func (b *Barrier) Get(ctx context.Context, key string) (*physical.Entry, error) 
 func (b *Barrier) Put(ctx context.Context, entry *physical.Entry) error {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	if b.key == nil {
+	if b.keys == nil {
 		return ErrSealed
 	}
-	ct, err := b.suite.seal(b.key, entry.Value, b.aadFor(entry.Key))
+	ct, err := b.sealEntry(entry.Key, entry.Value)
 	if err != nil {
 		return err
 	}
@@ -210,7 +228,7 @@ func (b *Barrier) Put(ctx context.Context, entry *physical.Entry) error {
 func (b *Barrier) Delete(ctx context.Context, key string) error {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	if b.key == nil {
+	if b.keys == nil {
 		return ErrSealed
 	}
 	return b.backend.Delete(ctx, key)
@@ -222,14 +240,15 @@ func (b *Barrier) Delete(ctx context.Context, key string) error {
 func (b *Barrier) Rekey(ctx context.Context, newRootKey []byte) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.key == nil {
+	if b.keys == nil {
 		return ErrSealed
 	}
-	wrapped, err := b.suite.seal(newRootKey, b.key, b.aadFor(keyringPath))
-	if err != nil {
-		return fmt.Errorf("re-wrap barrier key: %w", err)
+	if err := b.persistKeyring(ctx, newRootKey); err != nil {
+		return err
 	}
-	return b.backend.Put(ctx, &physical.Entry{Key: keyringPath, Value: wrapped})
+	zero(b.rootKey)
+	b.rootKey = append([]byte(nil), newRootKey...)
+	return nil
 }
 
 // List returns keys with the given prefix from the backend.
@@ -237,7 +256,7 @@ func (b *Barrier) Rekey(ctx context.Context, newRootKey []byte) error {
 func (b *Barrier) List(ctx context.Context, prefix string) ([]string, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	if b.key == nil {
+	if b.keys == nil {
 		return nil, ErrSealed
 	}
 	return b.backend.List(ctx, prefix)
@@ -252,24 +271,24 @@ type storeMeta struct {
 
 // loadMeta reads the store metadata. A store without a metadata record
 // predates cipher suites: it is AES-256-GCM with no associated data.
-func (b *Barrier) loadMeta(ctx context.Context) (Suite, bool, error) {
+func (b *Barrier) loadMeta(ctx context.Context) (Suite, bool, bool, error) {
 	e, err := b.backend.Get(ctx, metaPath)
 	if err != nil {
-		return Suite{}, false, err
+		return Suite{}, false, false, err
 	}
 	if e == nil {
 		s, err := LookupSuite(SuiteAES256GCM)
-		return s, false, err
+		return s, false, false, err
 	}
 	var m storeMeta
 	if err := json.Unmarshal(e.Value, &m); err != nil {
-		return Suite{}, false, fmt.Errorf("parse barrier metadata: %w", err)
+		return Suite{}, false, false, fmt.Errorf("parse barrier metadata: %w", err)
 	}
 	s, err := LookupSuite(m.Cipher)
 	if err != nil {
-		return Suite{}, false, err
+		return Suite{}, false, false, err
 	}
-	return s, m.Version >= metaVersionAADBinding, nil
+	return s, m.Version >= metaVersionAADBinding, m.Version >= metaVersionVersionedKeys, nil
 }
 
 func (b *Barrier) aadFor(key string) []byte {
@@ -311,4 +330,192 @@ func zero(b []byte) {
 	for i := range b {
 		b[i] = 0
 	}
+}
+
+// --- versioned barrier keys ---
+
+type keyringDoc struct {
+	Active uint32            `json:"active"`
+	Keys   map[string][]byte `json:"keys"`
+}
+
+func marshalKeyring(active uint32, keys map[uint32][]byte) ([]byte, error) {
+	doc := keyringDoc{Active: active, Keys: make(map[string][]byte, len(keys))}
+	for v, k := range keys {
+		doc.Keys[strconv.FormatUint(uint64(v), 10)] = k
+	}
+	return json.Marshal(doc)
+}
+
+func parseKeyring(raw []byte) (map[uint32][]byte, uint32, error) {
+	var doc keyringDoc
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil, 0, err
+	}
+	keys := make(map[uint32][]byte, len(doc.Keys))
+	for s, k := range doc.Keys {
+		v, err := strconv.ParseUint(s, 10, 32)
+		if err != nil || len(k) != keySize {
+			return nil, 0, errors.New("malformed keyring")
+		}
+		keys[uint32(v)] = k
+	}
+	if _, ok := keys[doc.Active]; !ok {
+		return nil, 0, errors.New("keyring has no active key")
+	}
+	return keys, doc.Active, nil
+}
+
+// persistKeyring wraps the current keyring with rootKey and stores it.
+// Caller holds b.mu for writing.
+func (b *Barrier) persistKeyring(ctx context.Context, rootKey []byte) error {
+	var plain []byte
+	if b.versioned {
+		var err error
+		if plain, err = marshalKeyring(b.active, b.keys); err != nil {
+			return err
+		}
+		defer zero(plain)
+	} else {
+		plain = b.keys[b.active]
+	}
+	wrapped, err := b.suite.seal(rootKey, plain, b.aadFor(keyringPath))
+	if err != nil {
+		return fmt.Errorf("wrap keyring: %w", err)
+	}
+	return b.backend.Put(ctx, &physical.Entry{Key: keyringPath, Value: wrapped})
+}
+
+// sealEntry encrypts a value with the active barrier key. Caller holds b.mu.
+func (b *Barrier) sealEntry(key string, value []byte) ([]byte, error) {
+	ct, err := b.suite.seal(b.keys[b.active], value, b.aadFor(key))
+	if err != nil || !b.versioned {
+		return ct, err
+	}
+	out := make([]byte, 4+len(ct))
+	binary.BigEndian.PutUint32(out, b.active)
+	copy(out[4:], ct)
+	return out, nil
+}
+
+func (b *Barrier) entryVersion(data []byte) (uint32, []byte, error) {
+	if !b.versioned {
+		return b.active, data, nil
+	}
+	if len(data) < 4 {
+		return 0, nil, errors.New("ciphertext too short")
+	}
+	return binary.BigEndian.Uint32(data), data[4:], nil
+}
+
+// openEntry decrypts a stored value with whichever barrier key sealed it.
+// Caller holds b.mu.
+func (b *Barrier) openEntry(key string, data []byte) ([]byte, error) {
+	ver, body, err := b.entryVersion(data)
+	if err != nil {
+		return nil, err
+	}
+	k, ok := b.keys[ver]
+	if !ok {
+		return nil, fmt.Errorf("unknown barrier key version %d", ver)
+	}
+	return b.suite.open(k, body, b.aadFor(key))
+}
+
+// KeyVersion reports the barrier key version used for new writes (0 for
+// stores that predate key versioning).
+func (b *Barrier) KeyVersion() uint32 {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.active
+}
+
+// ErrNotVersioned is returned by RotateDataKey on a store created before
+// barrier keys were versioned.
+var ErrNotVersioned = errors.New("barrier store predates key versioning; data key rotation unsupported")
+
+// RotateDataKey generates a new barrier key (DEK) and makes it the active
+// one: all subsequent writes use it, existing entries stay readable under
+// their old key. When reencrypt is true every existing entry is then
+// rewritten under the new key and the old keys are discarded. Reencryption
+// blocks all barrier reads and writes for its duration. It returns the new
+// key version and the number of entries rewritten.
+func (b *Barrier) RotateDataKey(ctx context.Context, reencrypt bool) (uint32, int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.keys == nil {
+		return 0, 0, ErrSealed
+	}
+	if !b.versioned {
+		return 0, 0, ErrNotVersioned
+	}
+	nk := make([]byte, keySize)
+	if _, err := io.ReadFull(rand.Reader, nk); err != nil {
+		return 0, 0, fmt.Errorf("generate barrier key: %w", err)
+	}
+	newVer := b.active + 1
+	b.keys[newVer] = nk
+	prev := b.active
+	b.active = newVer
+	if err := b.persistKeyring(ctx, b.rootKey); err != nil {
+		delete(b.keys, newVer)
+		b.active = prev
+		zero(nk)
+		return 0, 0, err
+	}
+	if !reencrypt {
+		return newVer, 0, nil
+	}
+	n, err := b.reencryptLocked(ctx)
+	if err != nil {
+		return newVer, n, err
+	}
+	for v, k := range b.keys {
+		if v != b.active {
+			zero(k)
+			delete(b.keys, v)
+		}
+	}
+	return newVer, n, b.persistKeyring(ctx, b.rootKey)
+}
+
+// reencryptLocked rewrites every entry not sealed under the active key.
+func (b *Barrier) reencryptLocked(ctx context.Context) (int, error) {
+	keys, err := b.backend.List(ctx, "")
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, k := range keys {
+		if strings.HasPrefix(k, "barrier/") {
+			continue
+		}
+		e, err := b.backend.Get(ctx, k)
+		if err != nil {
+			return n, err
+		}
+		if e == nil {
+			continue
+		}
+		ver, _, err := b.entryVersion(e.Value)
+		if err != nil {
+			return n, fmt.Errorf("reencrypt %q: %w", k, err)
+		}
+		if ver == b.active {
+			continue
+		}
+		plain, err := b.openEntry(k, e.Value)
+		if err != nil {
+			return n, fmt.Errorf("reencrypt %q: %w", k, err)
+		}
+		ct, err := b.sealEntry(k, plain)
+		if err != nil {
+			return n, err
+		}
+		if err := b.backend.Put(ctx, &physical.Entry{Key: k, Value: ct}); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
 }

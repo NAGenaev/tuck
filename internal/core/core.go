@@ -1813,3 +1813,11 @@ func (c *Core) GetSysConfig(ctx context.Context) (sysconfig.Config, error) {
 func (c *Core) PutSysConfig(ctx context.Context, cfg sysconfig.Config) error {
 	return c.sysconfigStore.Put(ctx, cfg)
 }
+
+// RotateDataKey rotates the barrier data-encryption key. With reencrypt the
+// existing data is rewritten under the new key and old keys are discarded
+// (the barrier is unavailable for the duration). It returns the new key
+// version and the number of entries rewritten.
+func (c *Core) RotateDataKey(ctx context.Context, reencrypt bool) (uint32, int, error) {
+	return c.barrier.RotateDataKey(ctx, reencrypt)
+}

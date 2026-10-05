@@ -155,3 +155,94 @@ func TestLegacyStoreWithoutMetadata(t *testing.T) {
 		t.Fatalf("legacy put/get: %v, %v", got, err)
 	}
 }
+
+func TestRotateDataKey(t *testing.T) {
+	forEachSuite(t, func(t *testing.T, name string) {
+		ctx := context.Background()
+		be := physical.NewInMem()
+		root := randKey(t)
+		b := New(be)
+		if err := b.InitializeWithSuite(ctx, root, name); err != nil {
+			t.Fatal(err)
+		}
+		if err := b.Unseal(ctx, root); err != nil {
+			t.Fatal(err)
+		}
+		_ = b.Put(ctx, &physical.Entry{Key: "secret/old", Value: []byte("old")})
+		if b.KeyVersion() != 1 {
+			t.Fatalf("initial version %d", b.KeyVersion())
+		}
+
+		// Rotation without reencryption: old entry still readable, new writes use v2.
+		v, n, err := b.RotateDataKey(ctx, false)
+		if err != nil || v != 2 || n != 0 {
+			t.Fatalf("rotate: %d %d %v", v, n, err)
+		}
+		_ = b.Put(ctx, &physical.Entry{Key: "secret/new", Value: []byte("new")})
+		for k, want := range map[string]string{"secret/old": "old", "secret/new": "new"} {
+			if got, err := b.Get(ctx, k); err != nil || string(got.Value) != want {
+				t.Fatalf("get %s: %v %v", k, got, err)
+			}
+		}
+		// Survives reseal/unseal with both keys in the keyring.
+		b.Seal()
+		if err := b.Unseal(ctx, root); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := b.Get(ctx, "secret/old"); err != nil || string(got.Value) != "old" {
+			t.Fatalf("after unseal: %v %v", got, err)
+		}
+
+		// Rotation with reencryption drops the old key.
+		v, n, err = b.RotateDataKey(ctx, true)
+		if err != nil || v != 3 || n != 2 {
+			t.Fatalf("rotate+reencrypt: %d %d %v", v, n, err)
+		}
+		if len(b.keys) != 1 {
+			t.Fatalf("old keys retained: %d", len(b.keys))
+		}
+		b2 := New(be)
+		if err := b2.Unseal(ctx, root); err != nil {
+			t.Fatal(err)
+		}
+		for k, want := range map[string]string{"secret/old": "old", "secret/new": "new"} {
+			if got, err := b2.Get(ctx, k); err != nil || string(got.Value) != want {
+				t.Fatalf("get %s after reencrypt: %v %v", k, got, err)
+			}
+		}
+		// Root-key rotation still works after DEK rotation.
+		nr := randKey(t)
+		if err := b2.Rekey(ctx, nr); err != nil {
+			t.Fatal(err)
+		}
+		b3 := New(be)
+		if err := b3.Unseal(ctx, nr); err != nil {
+			t.Fatal(err)
+		}
+		// And a second data-key rotation after the rekey wraps with the new root.
+		if _, _, err := b2.RotateDataKey(ctx, true); err != nil {
+			t.Fatal(err)
+		}
+		b4 := New(be)
+		if err := b4.Unseal(ctx, nr); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+func TestRotateDataKeyUnsupportedOnLegacyStore(t *testing.T) {
+	ctx := context.Background()
+	be := physical.NewInMem()
+	root := randKey(t)
+	aes, _ := LookupSuite("")
+	dek := randKey(t)
+	wrapped, _ := aes.seal(root, dek, nil)
+	_ = be.Put(ctx, &physical.Entry{Key: keyringPath, Value: wrapped})
+	b := New(be)
+	if err := b.Unseal(ctx, root); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := b.RotateDataKey(ctx, false); err != ErrNotVersioned {
+		t.Fatalf("got %v", err)
+	}
+}

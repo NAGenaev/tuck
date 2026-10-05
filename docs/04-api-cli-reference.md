@@ -36,6 +36,7 @@ flowchart LR
 | POST | `/v1/sys/unseal` | public | Отправить долю Shamir |
 | POST | `/v1/sys/seal` | token | Запечатать сервер |
 | POST | `/v1/sys/rotate` | token | Ротация root key |
+| POST | `/v1/sys/rotate-data-key` | token | Ротация ключа данных (DEK); `?reencrypt=true` перешифровывает все записи и удаляет старые ключи |
 | GET | `/v1/sys/snapshot` | token | Скачать bbolt-бэкап |
 | GET/PUT | `/v1/sys/config` | token | Runtime-конфиг (rate-limit и т.п.) |
 | POST | `/v1/sys/leases/renew` | token | Продлить lease |

@@ -57,12 +57,12 @@ cmd/tuckcli/          CLI-клиент
 internal/
   api/                HTTP-обработчики и маршрутизация
   audit/              Журнал аудита с цепочкой хэшей
-  auth/               Методы аутентификации (AppRole, LDAP, JWT/OIDC, GitHub)
+  auth/               Методы аутентификации (AppRole, LDAP, JWT/OIDC)
   barrier/            Криптографический барьер AES-256-GCM
   core/               Бизнес-логика (секреты, токены, политики)
   csi/                Реализация CSI Node-плагина
   cubbyhole/          Изолированное хранилище на токен
-  dynamic/            Движки динамических секретов: database, aws, gcp, azure, pki, ssh, totp, transit
+  dynamic/            Движки динамических секретов: database, pki, ssh, totp, transit
   identity/           Сущности/группы identity-модели
   injector/           Логика webhook-инжектора
   k8s/                Аутентификация Kubernetes TokenReview
@@ -74,11 +74,9 @@ internal/
   namespace/          Мультитенантные namespace
   operator/           CRD-контроллер и выбор лидера
   physical/           Физические бэкенды хранения (bbolt, in-memory, raft)
-  plugin/             Каталог внешних плагинов
   policy/             ACL на основе glob-масок путей
   ratelimit/          Token bucket на IP-адрес/токен
-  replication/        Primary/secondary репликация и WAL
-  seal/               Бэкенды снятия печати (dev, shamir, transit, kms)
+  seal/               Бэкенды снятия печати (dev, shamir, transit)
   shamir/             Разделение секрета в GF(256)
   sysconfig/          Системная конфигурация (rate-limit и др.), сохраняемая через API
   tlsutil/            Вспомогательные функции TLS

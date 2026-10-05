@@ -66,4 +66,4 @@ curl "$env:TUCK_ADDR/v1/sys/storage/raft/configuration" `
 ## Дальше
 
 - [19 — Backup](19-backup-restore.md)
-- [05 — Auto-unseal](05-auto-unseal-kms.md)
+- [05 — Auto-unseal](05-auto-unseal-transit.md)

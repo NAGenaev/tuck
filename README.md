@@ -40,16 +40,12 @@ Tuck — специализированная система управлени�
 | **JWT / OIDC** | Любой провайдер — Keycloak, Auth0, GitHub Actions, Google Workspace |
 | **AppRole** | Машинная аутентификация по паре RoleID + SecretID |
 | **LDAP / Active Directory** | Аутентификация пользователей каталога; членство в группах отображается на политики |
-| **GitHub Actions OIDC** | Аутентификация конвейеров CI/CD без долгосрочных секретов |
 
 ### 2.3. Движки динамических секретов
 
 | Движок | Описание |
 |--------|----------|
 | **База данных** | Временные учётные данные PostgreSQL / MySQL; автоматический отзыв по истечении аренды |
-| **AWS IAM** | Временные ключи IAM-пользователя или сессии STS AssumeRole |
-| **GCP** | Ключи сервисного аккаунта или токены OAuth2; автоматический отзыв |
-| **Azure AD** | Клиентские секреты сервисных участников через Microsoft Graph API |
 | **PKI** | Внутренний удостоверяющий центр X.509; выдача TLS-сертификатов по ролям |
 | **Transit** | Шифрование как услуга: AES-256-GCM, ECDSA, Ed25519, RSA-PSS; ротация и перешифрование |
 | **SSH CA** | Центр сертификации SSH; подпись открытых ключей пользователей и узлов |
@@ -65,7 +61,7 @@ Tuck — специализированная система управлени�
 ### 2.5. Подсистема обеспечения отказоустойчивости
 
 - Встроенный Raft (3–5 узлов), не требующий внешних координаторов (Consul, etcd)
-- Автоматическое снятие печати: AWS KMS, GCP Cloud KMS, Azure Key Vault, Transit
+- Автоматическое снятие печати: Transit (корневой ключ шифруется ключом другого Tuck/Vault-совместимого Transit)
 - Снятие печати по схеме Шамира (n-of-k): распределённое хранение долей
 - Резервное копирование: `GET /v1/sys/snapshot` — потоковый снимок BoltDB
 
@@ -136,48 +132,16 @@ tuckcli unseal <доля-2>
 tuckcli unseal <доля-3>
 ```
 
-### 4.4. Автоматическое снятие печати — AWS KMS
+### 4.4. Автоматическое снятие печати — Transit
 
 ```sh
-tuck \
-  --seal-type=awskms \
-  --seal-awskms-key-id=alias/tuck-seal \
-  --seal-awskms-region=us-east-1 \
-  --addr=0.0.0.0:8200 \
-  --tls-cert=/etc/tuck/tls.crt \
-  --tls-key=/etc/tuck/tls.key
+export TUCK_TRANSIT_TOKEN=<токен>
+tuck   --seal-type=transit   --seal-transit-addr=https://transit.example.com   --seal-transit-key=tuck-root   --addr=0.0.0.0:8200   --tls-cert=/etc/tuck/tls.crt   --tls-key=/etc/tuck/tls.key
 ```
 
-Учётные данные получаются автоматически через IRSA или роль экземпляра EC2. Зашифрованный корневой ключ сохраняется в файле `tuck-awskms.enc` и не представляет ценности без доступа к ключу KMS.
+Корневой ключ шифруется ключом Transit внешнего сервиса и сохраняется в файле `tuck-transit.enc`; без доступа к ключу Transit файл не представляет ценности.
 
-### 4.5. Автоматическое снятие печати — GCP Cloud KMS
-
-```sh
-tuck \
-  --seal-type=gcpkms \
-  --seal-gcpkms-key-name=projects/my-project/locations/global/keyRings/tuck/cryptoKeys/seal \
-  --addr=0.0.0.0:8200 \
-  --tls-cert=/etc/tuck/tls.crt \
-  --tls-key=/etc/tuck/tls.key
-```
-
-На GKE учётные данные предоставляются автоматически через Workload Identity. Вне GCP необходимо установить переменную `GOOGLE_APPLICATION_CREDENTIALS`.
-
-### 4.6. Автоматическое снятие печати — Azure Key Vault
-
-```sh
-tuck \
-  --seal-type=azurekv \
-  --seal-azurekv-vault-url=https://my-vault.vault.azure.net \
-  --seal-azurekv-key-name=tuck-seal \
-  --addr=0.0.0.0:8200 \
-  --tls-cert=/etc/tuck/tls.crt \
-  --tls-key=/etc/tuck/tls.key
-```
-
-Учётные данные разрешаются через `DefaultAzureCredential`: Managed Identity (AKS/ВМ), переменные `AZURE_*` (CI), Azure CLI (локальная разработка). Управляемому удостоверению требуется роль `Key Vault Crypto User`.
-
-### 4.7. Развёртывание в Kubernetes через Helm
+### 4.5. Развёртывание в Kubernetes через Helm
 
 ```sh
 helm install tuck deploy/helm/tuck \
@@ -414,7 +378,7 @@ cert, _ := c.PKI().Issue(ctx, "pki", "web", client.PKIIssueRequest{
 │  · JWT / OIDC     │  · PKI (удостоверяющий центр X.509)     │
 │  · AppRole        │  · Transit (шифрование как услуга)      │
 │  · LDAP / AD      │  · SSH (сертификаты в режиме CA)        │
-│  · GitHub OIDC    │  · TOTP (одноразовые пароли)            │
+│                   │  · TOTP (одноразовые пароли)            │
 ├───────────────────┴─────────────────────────────────────────┤
 │  Криптографический барьер  (AES-256-GCM)                    │
 │  корневой ключ → ключ шифрования данных → шифротекст        │
@@ -423,7 +387,7 @@ cert, _ := c.PKI().Issue(ctx, "pki", "web", client.PKIIssueRequest{
 │  BoltDB (одиночный узел) | Raft HA (3–5 узлов, встроенный) │
 └─────────────────────────────────────────────────────────────┘
                ▲
-         Снятие печати (dev | shamir | transit | awskms | gcpkms | azurekv)
+         Снятие печати (dev | shamir | transit)
 ```
 
 ---

@@ -94,9 +94,9 @@ storage "file" {
 |---------|---------|
 | Потеряны unseal keys | Без threshold ключей данные **не восстановить** |
 | Root token в git | Отзовите и выпустите новый через unseal + rotate |
-| Каждый рестарт — unseal | Настройте [05 — Auto-unseal KMS](05-auto-unseal-kms.md) |
+| Каждый рестарт — unseal | Настройте [05 — Auto-unseal Transit](05-auto-unseal-transit.md) |
 
 ## Дальше
 
-- [05 — Auto-unseal](05-auto-unseal-kms.md)
+- [05 — Auto-unseal](05-auto-unseal-transit.md)
 - [20 — Raft HA](20-ha-raft.md)

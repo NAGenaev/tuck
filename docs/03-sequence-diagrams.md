@@ -35,18 +35,18 @@ sequenceDiagram
 
 ---
 
-## 3.2. Авто-распечатывание (AWS KMS / GCP KMS / Azure KV)
+## 3.2. Авто-распечатывание (Transit)
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant Tuck as tuck server
-    participant Seal as seal awskms
-    participant KMS as Cloud KMS
+    participant Seal as seal transit
+    participant KMS as Transit (внешний)
     participant Bar as barrier
 
-    Tuck->>Seal: старт, читать tuck-awskms.enc
-    Seal->>KMS: Decrypt ciphertext via IRSA
+    Tuck->>Seal: старт, читать зашифрованный root key
+    Seal->>KMS: decrypt ciphertext (токен Transit)
     KMS-->>Seal: root key в памяти
     Seal->>Bar: Unseal root key
     Bar-->>Tuck: UNSEALED без участия человека
@@ -293,7 +293,7 @@ sequenceDiagram
     Tuck->>Seal: сгенерировать новый root key
     Seal->>Bar: re-wrap DEK новым root key
     Bar->>Bar: обновить barrier/keyring
-    Note over Seal: shamir новые доли KMS новый ciphertext
+    Note over Seal: shamir новые доли; transit новый ciphertext
     Tuck-->>Op: 200 новые доли при shamir
 ```
 

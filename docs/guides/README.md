@@ -23,7 +23,7 @@ $env:TUCK_TOKEN = "tuck_..."                    # root или scoped token
 | Ограничить доступ приложения (только read) | [02 — Политики и токены](02-politiki-i-dostup.md) |
 | Версии секретов, откат, CAS | [03 — KV v2](03-kvv2.md) |
 | Продакшн: Shamir, распечатывание после рестарта | [04 — Shamir seal](04-prod-shamir.md) |
-| Auto-unseal через облачный KMS | [05 — Auto-unseal KMS](05-auto-unseal-kms.md) |
+| Auto-unseal через Transit | [05 — Auto-unseal Transit](05-auto-unseal-transit.md) |
 | Установить Tuck в Kubernetes | [06 — Helm в K8s](06-kubernetes-helm.md) |
 | Синхронизировать секрет в K8s Secret (CRD) | [07 — TuckSecret оператор](07-tucksecret-operator.md) |
 | Подложить секрет в Pod без etcd (tmpfs) | [08 — Webhook injector](08-webhook-injector.md) |
@@ -32,7 +32,6 @@ $env:TUCK_TOKEN = "tuck_..."                    # root или scoped token
 | Логин через OIDC / JWT | [11 — JWT / OIDC](11-jwt-oidc.md) |
 | Логин через LDAP / Active Directory | [12 — LDAP](12-ldap.md) |
 | Временные креды PostgreSQL/MySQL | [13 — Database dynamic](13-dynamic-database.md) |
-| Временные креды AWS / GCP / Azure | [14 — Cloud dynamic](14-dynamic-cloud.md) |
 | Выпустить TLS-сертификат | [15 — PKI](15-pki.md) |
 | Шифровать данные без выдачи ключа | [16 — Transit](16-transit.md) |
 | SSH-сертификат через CA | [17 — SSH](17-ssh.md) |
@@ -57,7 +56,7 @@ $env:TUCK_TOKEN = "tuck_..."                    # root или scoped token
 ### DevOps / Platform Engineer
 - [06 Helm в K8s](06-kubernetes-helm.md)
 - [07 TuckSecret](07-tucksecret-operator.md)
-- [04 Shamir](04-prod-shamir.md) · [05 Auto-unseal](05-auto-unseal-kms.md)
+- [04 Shamir](04-prod-shamir.md) · [05 Auto-unseal](05-auto-unseal-transit.md)
 - [19 Backup](19-backup-restore.md) · [20 Raft HA](20-ha-raft.md)
 
 ### Security / IAM
@@ -68,7 +67,6 @@ $env:TUCK_TOKEN = "tuck_..."                    # root или scoped token
 
 ### SRE / DBA
 - [13 Database dynamic](13-dynamic-database.md)
-- [14 Cloud dynamic](14-dynamic-cloud.md)
 - [19 Backup / restore](19-backup-restore.md)
 
 ---

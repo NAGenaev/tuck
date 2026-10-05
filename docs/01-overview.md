@@ -34,10 +34,10 @@
 **Tuck снимает именно операционную сложность**, сохраняя при этом богатый функционал:
 
 - Один статический бинарь ~20 МБ, **ноль внешних зависимостей в runtime** (хранилище — встроенный bbolt).
-- **Auto-unseal по умолчанию** (dev / Transit / AWS KMS / GCP KMS / Azure Key Vault) — рестарт не требует ручных действий.
+- **Auto-unseal по умолчанию** (dev / Transit) — рестарт не требует ручных действий.
 - **Встроенный Kubernetes-оператор** и webhook-инжектор — не нужно ставить отдельный External Secrets Operator.
 - **`kubectl apply` / `helm install`** — рабочий инстанс за минуты, а не часы.
-- Все «энтерпрайз»-фичи (Namespaces, Identity, репликация) — в open-source ядре.
+- Все «энтерпрайз»-фичи (Namespaces, Identity) — в open-source ядре.
 
 > **Главный тезис позиционирования:** «Тот же ментальный аппарат, что у Vault (токены, политики, движки, seal), но операционная модель проще на порядок».
 
@@ -73,10 +73,10 @@ flowchart TB
         S2d["K8s SA auth"]
     end
     subgraph S3["Полнота функций"]
-        S3a["8 движков секретов"]
-        S3b["6 методов аутентификации"]
-        S3c["6 типов seal"]
-        S3d["Identity / Namespaces / Replication"]
+        S3a["Движки секретов"]
+        S3b["5 методов аутентификации"]
+        S3c["3 типа seal"]
+        S3d["Identity / Namespaces"]
     end
     subgraph S4["Безопасность"]
         S4a["Envelope encryption AES-256-GCM"]
@@ -106,8 +106,8 @@ flowchart TB
 - **Хранилище**: встроенный bbolt (один файл) **или** встроенный Raft (HA-кластер 3–5 нод, pure-Go, без внешних процессов).
 - **Plaintext никогда не попадает на диск** — физическое хранилище видит только шифртекст.
 
-### Seal / Unseal (6 типов)
-`dev` (локальный auto-unseal), `shamir` (кворум n-of-k), `transit` (Vault-совместимый API), `awskms`, `gcpkms`, `azurekv` (облачный auto-unseal через KMS/Key Vault и cloud-native identity).
+### Seal / Unseal (3 типа)
+`dev` (локальный auto-unseal), `shamir` (кворум n-of-k), `transit` (Vault-совместимый API).
 
 ### Движки секретов
 - **KV v1** — простое key-value хранилище.
@@ -115,20 +115,18 @@ flowchart TB
 - **Cubbyhole** — приватное хранилище токена, авто-очистка при отзыве.
 - **Response Wrapping** — одноразовые токены `tuck_wrap_` для безопасной передачи секретов.
 - **Database** — динамические креды PostgreSQL/MySQL, авто-отзыв по lease.
-- **AWS / GCP / Azure** — динамические облачные креды (IAM user / STS, SA-ключи / OAuth2, AD client secrets).
 - **PKI** — внутренний X.509 CA, выпуск сертификатов по ролям, CRL.
 - **Transit** — шифрование-как-сервис (AES-GCM, ECDSA, Ed25519, RSA), sign/verify/HMAC, rewrap.
 - **SSH** — CA-режим, подпись пользовательских/хостовых сертификатов.
 - **TOTP** — RFC 6238, генерация и валидация OTP-кодов, `otpauth://` URL.
 
 ### Методы аутентификации
-`Token`, `Kubernetes SA` (TokenReview), `JWT/OIDC` (JWKS), `AppRole` (role_id+secret_id), `LDAP/AD`, `GitHub Actions OIDC`.
+`Token`, `Kubernetes SA` (TokenReview), `JWT/OIDC` (JWKS), `AppRole` (role_id+secret_id), `LDAP/AD`.
 
 ### Identity и мультиарендность
 - **Entity & Identity** — сущности, алиасы, группы, group-алиасы (объединение нескольких auth-личностей в одну identity).
 - **Namespaces** — изоляция политик/секретов по неймспейсам (мультиарендность).
-- **Replication** — WAL и режимы primary/secondary.
-- **Mount table** и **Plugin catalog** — управление точками монтирования движков и каталогом плагинов.
+- **Mount table** — управление точками монтирования движков.
 
 ### Авторизация
 ACL-политики с glob-сопоставлением путей и **deny-правилами** (deny имеет приоритет над allow). Capabilities: `read`, `write`, `delete`, `list`, `deny`.

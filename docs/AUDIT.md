@@ -165,6 +165,8 @@ is ready for **v1.0-rc** tagging and external security review.
 
 ## 7. Refresh pass (2026-07-26)
 
+> Note: the AWS/GCP/Azure engines and Terraform resources referenced in this section were removed in commit `46745ac`; the entry is kept as history.
+
 **Scope:** v1.37.0 + same-day commits (`1d44570`, `b98f769`, `28e9415`) — CSI live-refresh, Terraform provider AWS/GCP/Azure resources, and 3 integration-test side-finding fixes from earlier the same day. Re-ran the same tool set as §1–3 against current `main`, ahead of the still-open recommendation in §6 to get an external audit. Both new issues found are fixed as of this entry.
 
 ### 7.1 Vulnerability scan (govulncheck)

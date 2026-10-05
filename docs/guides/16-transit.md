@@ -50,5 +50,5 @@ curl -X POST "$env:TUCK_ADDR/v1/transit/keys/app-data" `
 
 ## Дальше
 
-- [05 — Auto-unseal Transit](05-auto-unseal-kms.md)
+- [05 — Auto-unseal Transit](05-auto-unseal-transit.md)
 - [21 — Wrapping](21-response-wrapping.md)

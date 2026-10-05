@@ -72,5 +72,5 @@ curl "$env:TUCK_ADDR/v1/database/creds/readonly" -H "X-Tuck-Token: $env:TUCK_TOK
 
 ## Дальше
 
-- [14 — Cloud dynamic](14-dynamic-cloud.md)
+- [15 — PKI](15-pki.md)
 - [09 — K8s auth](09-kubernetes-auth.md)

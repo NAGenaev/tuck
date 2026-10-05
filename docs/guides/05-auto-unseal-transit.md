@@ -1,40 +1,52 @@
-# 05 — Auto-unseal (облачный KMS)
+# 05 — Auto-unseal (Transit)
 
 [← Все гайды](README.md)
 
 ## Цель
 
-Сервер автоматически распечатывается после рестарта без ручного ввода Shamir-ключей.
+Сервер автоматически распечатывается после рестарта без ручного ввода Shamir-ключей. Корневой ключ хранится зашифрованным ключом Transit другого Tuck-кластера (или Vault-совместимого сервиса).
 
 ## Кому подходит
 
-SRE в AWS / GCP / Azure.
+SRE, у которых есть отдельный «корневой» Tuck/Transit, управляемый независимо от основного.
 
 ## Предварительные условия
 
 - Инициализированный Tuck ([04 — Shamir](04-prod-shamir.md))
-- Доступ к KMS в облаке (IAM role / service account)
+- Рабочий Transit-эндпоинт с ключом шифрования и токеном, у которого есть права `encrypt`/`decrypt` на этот ключ
 
-## Шаги (AWS KMS — пример)
+## Шаги
 
-### 1. Создать KMS key в AWS
+### 1. Создать ключ в Transit
 
-Зафиксируйте Key ARN.
-
-### 2. Настроить seal в конфиге
-
-```hcl
-seal "awskms" {
-  region     = "eu-central-1"
-  kms_key_id = "arn:aws:kms:eu-central-1:123456789:key/..."
-}
+```bash
+curl -X POST -H "X-Tuck-Token: $TOKEN" https://transit.example.com/v1/transit/keys/tuck-root
 ```
 
-### 3. Перезапустить сервер
+### 2. Запустить сервер с Transit seal
 
-Сервер при старте запросит KMS и выполнит auto-unseal.
+```bash
+export TUCK_TRANSIT_TOKEN=<токен>
+tuck --seal-type=transit \
+  --seal-transit-addr=https://transit.example.com \
+  --seal-transit-key=tuck-root \
+  --seal-transit-key-file=/var/lib/tuck/tuck-transit.enc
+```
 
-### 4. Проверить
+Токен лучше передавать через переменную окружения `TUCK_TRANSIT_TOKEN`, а не флагом (виден в `ps`). Зашифрованный корневой ключ сохраняется в `--seal-transit-key-file`.
+
+То же в конфиге:
+
+```yaml
+seal:
+  type: transit
+  transit:
+    addr: https://transit.example.com
+    key: tuck-root
+    key_file: /var/lib/tuck/tuck-transit.enc
+```
+
+### 3. Проверить
 
 ```powershell
 .\tuckcli.exe status
@@ -42,28 +54,19 @@ seal "awskms" {
 
 `sealed: false` без ручного `operator unseal`.
 
-## Другие провайдеры
-
-| Провайдер | Блок seal в HCL |
-|-----------|-----------------|
-| GCP | `seal "gcpckms" { project=...; region=...; key_ring=...; crypto_key=... }` |
-| Azure | `seal "azurekeyvault" { tenant_id=...; vault_name=...; key_name=... }` |
-| Transit (другой Tuck) | `seal "transit" { address=...; token=...; key_name=... }` |
-
-Точные поля — в `docs/` и примере `deploy/server/`.
-
 ## Проверка
 
 | Действие | Ожидаемый результат |
 |----------|---------------------|
 | Рестарт pod/процесса | `sealed: false` за секунды |
-| Логи сервера | сообщение об успешном auto-unseal |
-| Отзыв KMS доступа | сервер остаётся sealed |
+| Логи сервера | сообщение `Transit seal` и успешный auto-unseal |
+| Отзыв токена Transit | сервер остаётся sealed |
 
 ## Важно
 
-- Shamir-ключи всё равно нужны как **recovery** при потере KMS.
-- Не храните cloud credentials в репозитории.
+- Shamir-ключи (или резервная копия) всё равно нужны как **recovery** при потере Transit-сервера.
+- Доступность Transit становится зависимостью старта: при его недоступности сервер остаётся sealed.
+- Не храните токен Transit в репозитории.
 
 ## Дальше
 

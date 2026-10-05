@@ -35,7 +35,7 @@ Copy-Item tuck-snapshot.db D:\tuck-data\tuck.db -Force
 ### 4. Unseal после restore
 
 - Shamir: [04 — Shamir](04-prod-shamir.md)
-- Auto-unseal: [05 — Auto-unseal](05-auto-unseal-kms.md)
+- Auto-unseal: [05 — Auto-unseal](05-auto-unseal-transit.md)
 
 ### 5. Raft HA (альтернатива)
 

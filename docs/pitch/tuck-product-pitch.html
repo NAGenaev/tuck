@@ -502,7 +502,7 @@ code {
       <div class="risk-card">
         <div class="num">04</div>
         <h3>Ротация — ручной процесс</h3>
-        <p>Смена скомпрометированного пароля к БД или облачного ключа — правки в нескольких местах вручную. Нет точки, которая сама выдаёт новый credential и отзывает старый.</p>
+        <p>Смена скомпрометированного пароля к БД — правки в нескольких местах вручную. Нет точки, которая сама выдаёт новый credential и отзывает старый.</p>
       </div>
     </div>
 
@@ -552,7 +552,6 @@ code {
       </div>
       <div class="feat-grid">
         <div class="feat"><div class="t">PostgreSQL / MySQL</div><div class="d">Короткоживущий credential по запросу, а не статичный пароль в манифесте.</div></div>
-        <div class="feat"><div class="t">AWS / GCP / Azure</div><div class="d">Временные облачные ключи с автоматическим отзывом по истечении TTL.</div></div>
         <div class="feat"><div class="t">Реестр lease</div><div class="d">Принудительный revoke по API для любого выданного credential — без ожидания TTL.</div></div>
       </div>
     </div>
@@ -576,7 +575,7 @@ code {
         <h3>Идентификация и доступ</h3>
       </div>
       <div class="feat-grid">
-        <div class="feat"><div class="t">6 auth-методов</div><div class="d">Token, AppRole, LDAP, JWT/OIDC, GitHub, Kubernetes ServiceAccount (TokenReview).</div></div>
+        <div class="feat"><div class="t">5 auth-методов</div><div class="d">Token, AppRole, LDAP, JWT/OIDC, Kubernetes ServiceAccount (TokenReview).</div></div>
         <div class="feat"><div class="t">Политики по путям</div><div class="d">Доступ описывается на уровне конкретного пути, а не «весь секрет-стор целиком».</div></div>
         <div class="feat"><div class="t">Audit log</div><div class="d">Каждое обращение к секрету — кто, когда, к какому пути, с каким результатом.</div></div>
       </div>
@@ -775,7 +774,7 @@ code {
       <div class="mig-phase">
         <div class="ph">Фаза 3</div>
         <h3>Динамические credentials</h3>
-        <p>Статичные пароли к БД и облачные ключи заменяются движками Database/AWS/GCP/Azure — credential выдаётся на TTL и отзывается автоматически.</p>
+        <p>Статичные пароли к БД заменяются движком Database — credential выдаётся на TTL и отзывается автоматически.</p>
       </div>
     </div>
   </div>

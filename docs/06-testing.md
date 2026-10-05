@@ -15,7 +15,7 @@
 | Соотношение тест/код | ~0.51 (14.5k / 28.5k) |
 | Race detector | `go test -race ./...` — чисто (Linux/macOS; Windows без CGO) |
 | e2e на minikube | 37 / 37 PASS |
-| API integration tests | 119 тестов в `internal/api` (Transit, TOTP, SSH, JWT, LDAP, K8s, Chaos, Sys, AppRole, KVv2, Wrapping, PKI, GitHub, Config) |
+| API integration tests | 119 тестов в `internal/api` (Transit, TOTP, SSH, JWT, LDAP, K8s, Chaos, Sys, AppRole, KVv2, Wrapping, PKI, Config) |
 | Бенчмарки | Go benchmarks (in-process) для KV/Token/SealStatus |
 | Нагрузочные | k6-сценарии smoke / load / stress / soak |
 
@@ -26,23 +26,22 @@ flowchart TB
     subgraph crypto["Крипто-ядро"]
         t1[barrier_test]
         t2[shamir_test]
-        t3[seal shamir transit awskms]
+        t3[seal shamir transit]
     end
     subgraph authz["Auth и ACL"]
         t4[policy_test glob_test]
         t5[token store role]
-        t6[auth approle github ldap jwt]
+        t6[auth approle ldap jwt]
         t7[k8s client_test]
     end
     subgraph engines["Движки"]
-        t8[dynamic aws gcp azure database]
+        t8[dynamic database]
         t9[dynamic pki transit ssh totp]
         t10[kvsecret kvv2 cubbyhole wrapping]
-        t11[lease mount plugin]
+        t11[lease mount]
     end
     subgraph platform["Платформа"]
         t12[physical raft backend_test]
-        t13[replication wal_test]
         t14[identity namespace sysconfig]
         t15[operator injector csi]
         t16[audit metrics ratelimit]
@@ -103,7 +102,7 @@ k6-пороги для GA: KV GET/PUT p99 < 50 мс, token create p99 < 100 мс
 | 1 | ~~**Нет fuzz-тестов** парсеров~~ — **Закрыто**: `FuzzDecryptBytes`, `FuzzBarrierUnseal`, `FuzzParseVaultToken`, `FuzzDecryptAES`, `FuzzVerifyECDSA/Ed25519`, `FuzzMetaJSON`, `FuzzWrite`, `FuzzReadAfterWrite` + `FuzzEncryptDecryptRoundtrip` (barrier, transit, kvv2) | — | ✅ |
 | 2 | **Soak 24h не в CI** (есть сценарий, но не автоматизирован) | Утечки памяти/goroutine под нагрузкой | P1 |
 | 3 | **Chaos-тесты Raft** (убийство лидера/ноды, network partition) ограничены | Потеря данных/split-brain | P1 |
-| 4 | **e2e против реальных облаков** (AWS/GCP/Azure) и реальных БД | Регрессии dynamic-движков и seal | P1 |
+| 4 | **e2e против реальных облаков** и реальных БД | Регрессии dynamic-движков и seal | P1 |
 | 5 | **Coverage-гейт** не зафиксирован на security-пакетах | Дрейф покрытия | P1 |
 | 6 | **Тесты ротации/восстановления** (rotate → restore → consistency) не как отдельный e2e-набор | Ошибки DR | P1 |
 | 7 | ~~**Negative/abuse-тесты** rate-limit~~ — **Частично закрыто**: `TestIPRateLimitBlocks`, `TestTokenRateLimitBlocks`, `TestRateLimitDisabled`, `TestRateLimitTokenIsolation` в `internal/api/ratelimit_test.go`; brute-force lockout под нагрузкой остаётся | Обход защиты | P2 |
@@ -127,7 +126,7 @@ k6-пороги для GA: KV GET/PUT p99 < 50 мс, token create p99 < 100 мс
 - [ ] e2e DR: snapshot → restore в чистый инстанс → проверка целостности всех движков.
 
 ### Фаза C — облака и интеграции (P1)
-- [ ] Матрица e2e (по расписанию, секреты в CI): AWS KMS seal + AWS dynamic, GCP KMS + GCP dynamic, Azure KV + Azure dynamic, PostgreSQL + MySQL dynamic.
+- [ ] Матрица e2e (по расписанию, секреты в CI): PostgreSQL + MySQL dynamic, Transit seal.
 - [ ] e2e оператора и инжектора на `kind`/`minikube` в CI (расширить с 37 сценариев).
 
 ### Фаза D — гейты качества (P1/P2)
@@ -151,14 +150,13 @@ flowchart LR
 | Policy / ACL | ✅ | ✅ | ✅ | ❌ нужно | — |
 | Tokens | ✅ | ✅ | ✅ | — | ⚠️ |
 | KV v1/v2 | ✅ | ✅ | ✅ | ⚠️ | ⚠️ |
-| Dynamic (db/aws/gcp/azure) | ✅ | ⚠️ | ❌ реальные | — | — |
+| Dynamic (db) | ✅ | ⚠️ | ❌ реальные | — | — |
 | Transit | ✅ | ✅ | ✅ | ⚠️ | — |
 | PKI | ✅ | ✅ | ✅ | ⚠️ | — |
 | SSH | ✅ | ✅ | ✅ | — | — |
 | TOTP | ✅ | ✅ | ✅ | — | — |
 | JWT/LDAP auth | ✅ | ✅ | ✅ | — | — |
 | AppRole/K8s auth | ✅ | ✅ | ✅ | — | — |
-| GitHub auth | ✅ | ✅ | ⚠️ (только CI) | — | — |
 | Raft HA | ✅ | ✅ | ⚠️ | — | ❌ нужно chaos |
 | Operator / Injector | ✅ | ✅ | ✅(minikube) | — | — |
 | Rate-limit / Audit | ✅ | ✅ | — | — | ⚠️ |

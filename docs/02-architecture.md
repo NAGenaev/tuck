@@ -47,9 +47,9 @@ flowchart TB
     subgraph engines["Движки"]
         KV["KV v1/v2 Cubbyhole Wrapping"]
         AUTHENG["Auth token k8s jwt approle ldap"]
-        DYN["Dynamic db aws gcp azure"]
+        DYN["Dynamic db"]
         CRYPTO["Crypto pki transit ssh totp"]
-        IDENT["Identity Namespaces Mounts Plugins"]
+        IDENT["Identity Namespaces Mounts"]
     end
 
     subgraph barrier["Barrier internal/barrier"]
@@ -62,7 +62,7 @@ flowchart TB
         RAFT[("Raft FSM HA 3-5 нод")]
     end
 
-    SEALPROV["Seal backends dev shamir transit KMS"]
+    SEALPROV["Seal backends dev shamir transit"]
 
     clients --> TLS --> MW --> ROUTES --> AUTH --> ACL --> ORCH
     ORCH --> KV
@@ -107,7 +107,7 @@ flowchart LR
         i_kvv2["kvv2 / kvsecret"]
         i_cub["cubbyhole / wrapping"]
         i_auth["auth jwt approle ldap"]
-        i_dyn["dynamic aws gcp azure db pki"]
+        i_dyn["dynamic db pki"]
         i_id["identity namespace mount"]
         i_obs["audit metrics telemetry"]
         i_k8s["k8s operator injector csi"]
@@ -128,7 +128,7 @@ flowchart LR
 | `internal/api` | HTTP-слой: 194+ роутов, middleware (audit, rate-limit, metrics), сериализация |
 | `internal/core` | Оркестрация: аутентификация, проверка доступа, маршрутизация в движки |
 | `internal/barrier` | Криптобарьер AES-256-GCM, состояние sealed/unsealed |
-| `internal/seal` | Жизненный цикл root key: dev / shamir / transit / awskms / gcpkms / azurekv |
+| `internal/seal` | Жизненный цикл root key: dev / shamir / transit |
 | `internal/shamir` | Shamir's Secret Sharing над GF(256): Split / Combine |
 | `internal/physical` | Физический слой: bbolt (single file), in-memory (тесты) |
 | `internal/physical/raft` | Raft-реплицируемый backend (HA 3–5 нод) |
@@ -136,12 +136,11 @@ flowchart LR
 | `internal/policy` | ACL: glob-сопоставление путей, capability-проверки, deny-first |
 | `internal/kvv2`, `kvsecret` | KV v2 (версии/CAS/soft-delete) и KV v1 |
 | `internal/cubbyhole`, `wrapping` | Приватное хранилище токена; одноразовые wrapping-токены |
-| `internal/auth/*` | JWT/OIDC, AppRole, LDAP/AD, GitHub OIDC |
-| `internal/dynamic/*` | 8 движков: aws, gcp, azure, database, pki, transit, ssh, totp |
+| `internal/auth/*` | JWT/OIDC, AppRole, LDAP/AD |
+| `internal/dynamic/*` | Движки: database, pki, transit, ssh, totp |
 | `internal/identity` | Entities, aliases, groups, group-aliases |
 | `internal/namespace` | Изоляция по неймспейсам (мультиарендность) |
-| `internal/mount`, `plugin` | Mount table; каталог плагинов |
-| `internal/replication` | WAL и режимы primary/secondary |
+| `internal/mount` | Mount table |
 | `internal/audit` | Tamper-evident лог (SHA-256 hash chain), audit sinks |
 | `internal/metrics`, `telemetry` | Prometheus; OpenTelemetry (OTLP) |
 | `internal/ratelimit` | Per-IP и per-token token-bucket |
@@ -176,7 +175,7 @@ flowchart TB
         KV2[KVv2 store]
     end
     subgraph AE["Auth-движки"]
-        AE1[LoginK8s / LoginJWT / LoginGitHub]
+        AE1[LoginK8s / LoginJWT / LoginAppRole]
         AE2[AppRole / LDAP]
     end
     subgraph CE["Crypto-движки"]
@@ -184,7 +183,7 @@ flowchart TB
         CE2[PKI issue/revoke / SSH sign / TOTP]
     end
     subgraph OP["Операции"]
-        OP1[RotateKey / Snapshotter / ClusterBackend / WAL]
+        OP1[RotateKey / Snapshotter / ClusterBackend]
     end
     ROOT --> LC
     ROOT --> AA
@@ -202,7 +201,7 @@ flowchart TB
 
 ```mermaid
 flowchart TD
-    SEALBK["Seal backend dev shamir transit KMS"] -->|предоставляет| RK["root key 32 байта в памяти"]
+    SEALBK["Seal backend dev shamir transit"] -->|предоставляет| RK["root key 32 байта в памяти"]
     RK -->|AES-256-GCM wrap| DEK["barrier DEK ciphertext в keyring"]
     DEK -->|AES-256-GCM + nonce| DATA["записи данных"]
     DATA --> PHYS[("Physical backend только шифртекст")]
@@ -225,9 +224,6 @@ flowchart LR
     subgraph transit["transit"]
         t1["root key завёрнут Transit auto-unseal"]
     end
-    subgraph kms["awskms gcpkms azurekv"]
-        k1["root key зашифрован KMS auto-unseal"]
-    end
 ```
 
 | Тип | Кейс | Распечатывание | Креды |
@@ -235,9 +231,6 @@ flowchart LR
 | `dev` | Локальная разработка | Авто (plaintext-файл) | — |
 | `shamir` | On-prem, multi-operator | Ручное, K-of-N долей | — |
 | `transit` | Облако, есть внешний Vault/Transit | Авто | токен Transit (через env) |
-| `awskms` | EKS / EC2 | Авто | IRSA / instance role |
-| `gcpkms` | GKE | Авто | Workload Identity / ADC |
-| `azurekv` | AKS / Azure | Авто | Managed Identity / DefaultAzureCredential |
 
 ---
 
@@ -251,7 +244,7 @@ flowchart LR
 | `auth/token/<hash>` | JSON-запись токена (включает accessor) |
 | `auth/accessor/<accessor>` | Индекс accessor → token ID |
 | `auth/policy/<name>` | JSON политики |
-| `auth/<method>/...` | Конфиги/роли auth-движков (k8s, jwt, approle, ldap, github) |
+| `auth/<method>/...` | Конфиги/роли auth-движков (k8s, jwt, approle, ldap) |
 | `secret/<path>` | KV v1 значение |
 | `kvv2/<path>/meta`, `kvv2/<path>/v/<n>` | KV v2 метаданные и версии |
 | `dynamic/<engine>/config` | Конфиг dynamic-движка (секреты внутри зашифрованы) |
@@ -278,9 +271,6 @@ flowchart TB
     end
     subgraph dyn["Динамические секреты"]
         DB[Database PG/MySQL]
-        AWS[AWS IAM/STS]
-        GCP[GCP SA-key/OAuth2]
-        AZ[Azure AD secrets]
     end
     subgraph cr["Криптография как сервис"]
         PKI["PKI X.509 CA"]
@@ -289,14 +279,14 @@ flowchart TB
         TOTP["TOTP OTP"]
     end
     BAR[(Barrier)]
-    EXT["AWS GCP Azure DB"]
+    EXT["База данных"]
     static --> BAR
     dyn --> BAR
     cr --> BAR
     dyn -.-> EXT
 ```
 
-**Единый паттерн dynamic-движков (11 эндпоинтов):** `config` (PUT/GET/DELETE/LIST) + `roles` (PUT/GET/DELETE/LIST) + `creds` (POST) + `lease` (GET/DELETE/LIST). Это делает API предсказуемым и упрощает обучение.
+**Паттерн dynamic-движков (11 эндпоинтов):** `config` (PUT/GET/DELETE/LIST) + `roles` (PUT/GET/DELETE/LIST) + `creds` (POST) + `lease` (GET/DELETE/LIST). Это делает API предсказуемым и упрощает обучение.
 
 ---
 
@@ -310,7 +300,6 @@ flowchart LR
         J["JWT/OIDC JWKS"]
         A["AppRole role_id+secret_id"]
         L["LDAP/AD bind+search"]
-        G[GitHub OIDC]
     end
     methods -->|login| ISSUE["Выпуск Tuck-токена"]
     ISSUE --> REQ["Запрос X-Tuck-Token"]

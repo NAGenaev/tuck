@@ -22,7 +22,7 @@ Tuck — open-source менеджер секретов для Kubernetes. Гла
 |---|---|---|
 | Зависимости | Consul / Raft + DB | нет — один бинарь |
 | Хранилище | Внешнее | Встроенный bbolt или встроенный Raft |
-| Распечатывание после рестарта | Ручное (кворум Shamir) | Автоматическое (dev / transit / AWS KMS / GCP KMS / Azure KV) |
+| Распечатывание после рестарта | Ручное (кворум Shamir) | Автоматическое (dev / transit) |
 | Kubernetes-оператор | Внешний (ESO) | Встроенный |
 | Движки секретов | PKI, Transit, SSH, Database, TOTP | Те же |
 | Методы аутентификации | Token, K8s, JWT, AppRole | Те же |
@@ -36,7 +36,7 @@ Tuck — open-source менеджер секретов для Kubernetes. Гла
 ### Ядро
 
 - **Envelope-шифрование AES-256-GCM** — root key → DEK → шифртекст; ротация ключа перезаворачивает только DEK, данные не перешифровываются
-- **Шесть типов seal:** dev (автораспечатывание, локально), Shamir (кворум n-of-k), Transit (Vault-совместимый API), AWS KMS (IRSA / instance role), GCP Cloud KMS (Workload Identity / ADC), Azure Key Vault (Workload Identity / Managed Identity / DefaultAzureCredential)
+- **Три типа seal:** dev (автораспечатывание, локально), Shamir (кворум n-of-k), Transit (Vault-совместимый API)
 - **KV v1** — простые пары ключ-значение с ACL
 - **KV v2** — версионированные секреты: CAS (check-and-set), мягкое удаление, восстановление, уничтожение, настраиваемый `max_versions`
 - **Tamper-evident аудит-лог** — SHA-256 hash chain, значения секретов никогда не логируются
@@ -52,7 +52,7 @@ Tuck — open-source менеджер секретов для Kubernetes. Гла
 |-------|----------|
 | **Token** | Root-токен при инициализации; создание скопированных токенов с TTL и политиками |
 | **Kubernetes SA** | Воркloadы обмениваются ServiceAccount JWT через `TokenReview` API |
-| **JWT / OIDC** | Любой OIDC-провайдер — Keycloak, Auth0, GitHub Actions, Google |
+| **JWT / OIDC** | Любой OIDC-провайдер — Keycloak, Auth0, Google |
 | **AppRole** | Машина-машина: `role_id` + `secret_id` |
 | **LDAP / AD** | Аутентификация пользователей из OpenLDAP, Active Directory, FreeIPA; членство в группах → политики через Roles |
 
@@ -60,9 +60,6 @@ Tuck — open-source менеджер секретов для Kubernetes. Гла
 
 | Движок | Описание |
 |--------|----------|
-| **AWS** | On-demand учётные данные IAM или STS AssumeRole-сессии; автоотзыв по истечении lease |
-| **GCP** | On-demand JSON-ключи сервисного аккаунта или OAuth2 access-токены; автоотзыв по истечении lease |
-| **Azure** | On-demand клиентские секреты Azure AD (Graph API); автоотзыв по истечении lease |
 | **Database** | On-demand учётные данные PostgreSQL / MySQL; автоотзыв по истечении lease |
 | **PKI** | Внутренний X.509 CA; выпуск короткоживущих TLS-сертификатов по роли |
 | **Transit** | Шифрование как сервис; версионированные ключи (AES-256-GCM, ECDSA, Ed25519, RSA-PSS); sign/verify/HMAC; rewrap после ротации |
@@ -328,20 +325,20 @@ go build ./cmd/tuck-agent
 | M16 — Transit-движок (шифрование как сервис) | v0.16 | ✅ |
 | M17 — SSH-движок (CA-режим, сертификаты) | v0.17 | ✅ |
 | M18 — TOTP-движок (2FA / OTP-валидация) | v0.18 | ✅ |
-| M19 — AWS KMS + GCP Cloud KMS seal backends | v0.19 | ✅ |
-| M20 — LDAP/AD auth, Azure Key Vault seal | v0.20 | ✅ |
-| M21 — AWS динамические секреты (IAM user + STS AssumeRole) | v0.21 | ✅ |
-| M22 — GCP динамические секреты (SA key + access token) | v0.22 | ✅ |
-| M23 — Azure динамические секреты (клиентские секреты AD, Graph API) | v0.23 | ✅ |
+| M19 — AWS KMS + GCP Cloud KMS seal backends | v0.19 | 🗑 удалено |
+| M20 — LDAP/AD auth (Azure Key Vault seal — удалён) | v0.20 | ✅ |
+| M21 — AWS динамические секреты | v0.21 | 🗑 удалено |
+| M22 — GCP динамические секреты | v0.22 | 🗑 удалено |
+| M23 — Azure динамические секреты | v0.23 | 🗑 удалено |
 | M24 — Response wrapping (одноразовые токены, безопасная передача секретов) | v0.24 | ✅ |
 | M25 — Cubbyhole (приватное хранилище токена, автоочистка при отзыве) | v0.25 | ✅ |
 | M26 — Token accessor (псевдоним tuck_acc_, lookup/revoke без знания токена) | v0.26 | ✅ |
 | M27 — Deny-правила в политиках (CapDeny; запрет имеет приоритет над разрешением) | v0.27 | ✅ |
 | M28 — Возобновляемые токены с MaxTTL (флаг renewable, ограничение max_ttl, lookup-self, renew-self) | v0.28 | ✅ |
 | M29 — Token MaxUses (авто-отзыв после N вызовов API; одноразовые bootstrap-токены) | v0.29 | ✅ |
-| M30 — UI: Auth Methods (AppRole/JWT/LDAP/K8s) + Dynamic Secrets (DB/AWS/GCP/Azure) + Leases | v0.30 | ✅ |
+| M30 — UI: Auth Methods (AppRole/JWT/LDAP/K8s) + Dynamic Secrets (DB) + Leases | v0.30 | ✅ |
 | M31 — UI: Crypto Engines (PKI / Transit / SSH / TOTP в браузере) | v0.31 | 🔜 |
-| M32 — CLI completeness (db/aws/gcp/azure creds, pki/transit/ssh/totp операции) | v0.32 | 🔜 |
+| M32 — CLI completeness (db creds, pki/transit/ssh/totp операции) | v0.32 | 🔜 |
 | v1.0 GA — Внешний security audit | — | 🔜 |
 
 ---

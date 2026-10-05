@@ -4,7 +4,7 @@
 
 > Все эндпоинты требуют заголовок `X-Tuck-Token`, кроме помеченных **public**.
 > Базовый префикс — `/v1` (KV v2 — `/v2`). Опциональный заголовок `X-Tuck-Namespace` выбирает неймспейс. Токен привязан к неймспейсу, в котором выдан; заголовок с другим неймспейсом → 403.
-> Роли auth-методов (Kubernetes, AppRole, JWT, GitHub, LDAP) принимают поле `tuck_namespace`: токены логина привязываются к нему (неймспейс на логине из заголовка не выбирается).
+> Роли auth-методов (Kubernetes, AppRole, JWT, LDAP) принимают поле `tuck_namespace`: токены логина привязываются к нему (неймспейс на логине из заголовка не выбирается).
 > Полная машинно-читаемая спецификация доступна по `GET /openapi.json` (OpenAPI 3.0).
 
 ---
@@ -15,9 +15,9 @@
 flowchart LR
     ROOT["/"] --> SYS["/v1/sys seal snapshot rotate"]
     ROOT --> SEC["/v1/secret KV v1 /v2/secret KV v2"]
-    ROOT --> AUTH["/v1/auth token k8s jwt github"]
+    ROOT --> AUTH["/v1/auth token k8s jwt"]
     ROOT --> POL["/v1/policy"]
-    ROOT --> DYN["/v1/database aws gcp azure"]
+    ROOT --> DYN["/v1/database"]
     ROOT --> CRYPTO["/v1/pki transit ssh totp"]
     ROOT --> ID["/v1/identity entity group"]
     ROOT --> CUB["/v1/cubbyhole"]
@@ -45,10 +45,8 @@ flowchart LR
 | GET | `/v1/sys/mounts` | token | Таблица монтирования |
 | POST/DELETE | `/v1/sys/mounts/{path...}` | token | Создать / удалить mount |
 | GET/POST | `/v1/sys/mounts-tune/{path...}` | token | Тюнинг mount |
-| LIST/GET/POST/DELETE | `/v1/sys/plugins/catalog/{type}/{name}` | token | Каталог плагинов |
 | POST/PUT/DELETE/LIST | `/v1/sys/namespaces[/{name}]` | token | Управление неймспейсами |
 | PUT/DELETE/LIST | `/v1/sys/audit/...` | token | Audit sinks (webhook) |
-| GET/POST | `/v1/sys/replication/*` | token | Статус/режимы primary/secondary, WAL |
 | GET | `/v1/sys/cluster` | token | Статус Raft-кластера |
 | POST | `/v1/sys/cluster/join` | token | Добавить Raft-voter |
 | DELETE | `/v1/sys/cluster/node/{id}` | token | Удалить Raft-voter |
@@ -101,8 +99,6 @@ flowchart LR
 | POST | `/v1/auth/jwt/login` | JWT/OIDC |
 | GET/PUT | `/v1/auth/jwt/config` | JWKS-конфиг |
 | PUT/GET/DELETE/LIST | `/v1/auth/jwt/role/{name}` | JWT-роли |
-| POST | `/v1/auth/github/login` | GitHub Actions OIDC |
-| PUT/GET/DELETE/LIST | `/v1/auth/github/role/{name}` | GitHub-роли |
 | POST | `/v1/auth/approle/login` | AppRole |
 | PUT/GET/DELETE/LIST | `/v1/auth/approle/role/{name}` | AppRole-роли |
 | POST/GET/DELETE | `/v1/auth/approle/role/{name}/secret-id[/{id}]` | secret-id |
@@ -135,7 +131,7 @@ flowchart LR
 
 ## 4.6. Динамические секреты (единый 11-эндпоинтный паттерн)
 
-Движки `database`, `aws`, `gcp`, `azure` имеют одинаковую форму API:
+Движок `database` имеет такую форму API:
 
 ```
 PUT/GET/DELETE  /v1/<engine>/config[/{name}]   — конфиг подключения
@@ -150,9 +146,6 @@ LIST            /v1/<engine>/lease/             — список leases
 | Движок | Что выдаёт |
 |--------|------------|
 | `database` | Временные креды PostgreSQL/MySQL |
-| `aws` | IAM user creds или STS AssumeRole-сессия |
-| `gcp` | SA JSON-ключ или OAuth2 access-токен |
-| `azure` | Azure AD client secret (Graph API) |
 
 ---
 
@@ -235,9 +228,6 @@ tuckcli policy put|get|delete|list ...
 
 # Динамические креды
 tuckcli db    creds <role>
-tuckcli aws   creds <role>
-tuckcli gcp   creds <role>
-tuckcli azure creds <role>
 
 # Крипто-движки
 tuckcli pki issue <role>

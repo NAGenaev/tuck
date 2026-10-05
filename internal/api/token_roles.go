@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/NAGenaev/tuck/internal/core"
 	"github.com/NAGenaev/tuck/internal/policy"
 	"github.com/NAGenaev/tuck/internal/token"
 )
@@ -131,7 +132,11 @@ func (s *Server) createTokenFromRole(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewDecoder(io.LimitReader(r.Body, maxBodyBytes)).Decode(&body)
 
-	tok, err := s.core.CreateTokenFromRole(r.Context(), roleName, body.DisplayName)
+	var nsOpts []core.TokenOpt
+	if ns := nsFromCtx(r.Context()); ns != "" {
+		nsOpts = append(nsOpts, core.WithNamespace(ns))
+	}
+	tok, err := s.core.CreateTokenFromRole(r.Context(), roleName, body.DisplayName, nsOpts...)
 	if err != nil {
 		if errors.Is(err, token.ErrRoleNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "role not found"})

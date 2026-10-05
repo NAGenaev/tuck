@@ -472,6 +472,14 @@ func WithMaxUses(n int) TokenOpt {
 	}
 }
 
+// WithNamespace binds the token to a namespace: its policies are resolved in
+// that namespace and the API refuses to use it against any other one.
+func WithNamespace(ns string) TokenOpt {
+	return func(t *token.Token) {
+		t.Namespace = ns
+	}
+}
+
 // WithPeriod creates a period token: each renewal resets ExpiresAt to
 // now+period, effectively allowing infinite renewals within the period window.
 // Period tokens are implicitly renewable and ignore MaxTTL.
@@ -642,7 +650,7 @@ func (c *Core) ListTokenRoles(ctx context.Context) ([]string, error) {
 
 // CreateTokenFromRole generates a token using the named role as a template.
 // displayName overrides the role name as the token's display name when non-empty.
-func (c *Core) CreateTokenFromRole(ctx context.Context, roleName, displayName string) (*token.Token, error) {
+func (c *Core) CreateTokenFromRole(ctx context.Context, roleName, displayName string, extra ...TokenOpt) (*token.Token, error) {
 	role, err := c.tokenRoles.Get(ctx, roleName)
 	if err != nil {
 		return nil, err
@@ -659,6 +667,7 @@ func (c *Core) CreateTokenFromRole(ctx context.Context, roleName, displayName st
 	if role.MaxUses > 0 {
 		opts = append(opts, WithMaxUses(role.MaxUses))
 	}
+	opts = append(opts, extra...)
 	tok, err := token.Generate(name, role.Policies, ttl)
 	if err != nil {
 		return nil, err

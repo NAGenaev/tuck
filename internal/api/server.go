@@ -405,7 +405,8 @@ func (s *Server) requireToken(next http.HandlerFunc) http.HandlerFunc {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing X-Tuck-Token header"})
 			return
 		}
-		if _, err := s.core.Authenticate(r.Context(), id); err != nil {
+		tok, err := s.core.Authenticate(r.Context(), id)
+		if err != nil {
 			if errors.Is(err, barrier.ErrSealed) {
 				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "sealed"})
 				return
@@ -418,7 +419,17 @@ func (s *Server) requireToken(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		ctx := context.WithValue(r.Context(), tokenCtxKey, id)
-		if ns := r.Header.Get("X-Tuck-Namespace"); ns != "" && ns != namespace.RootNamespace {
+		ns := r.Header.Get("X-Tuck-Namespace")
+		if tok.Namespace != "" && tok.Namespace != namespace.RootNamespace {
+			// A namespace-bound token is never usable outside its namespace;
+			// the client-supplied header may only repeat it.
+			if ns != "" && ns != tok.Namespace {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
+				return
+			}
+			ns = tok.Namespace
+		}
+		if ns != "" && ns != namespace.RootNamespace {
 			if _, err := s.core.GetNamespace(r.Context(), ns); err != nil {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "namespace not found"})
 				return

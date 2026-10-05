@@ -80,6 +80,9 @@ func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
 		// Record the creating token as parent so tree revocation works.
 		opts = append(opts, core.WithParent(tokenFromCtx(r.Context())))
 	}
+	if ns := nsFromCtx(r.Context()); ns != "" {
+		opts = append(opts, core.WithNamespace(ns))
+	}
 	tok, err := s.core.CreateToken(r.Context(), req.DisplayName, req.Policies, ttl, opts...)
 	if err != nil {
 		writeErr(w, err)

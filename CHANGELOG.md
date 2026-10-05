@@ -9,8 +9,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Removed
+
+- Вне области пилота удалены: облачные seal (AWS KMS, GCP KMS, Azure Key Vault), облачные динамические движки (AWS, GCP, Azure), GitHub-логин, `internal/plugin`, `internal/replication`, их API-ручки, ресурсы Terraform-провайдера и страницы веб-интерфейса. Go-код: 52 937 → 44 779 строк (−8 158); вместе с веб-частью и зависимостями коммит `46745ac`: −11 957 / +470 строк, 80 файлов. Это ломает конфигурации, где использовались эти функции.
+- Экспериментальные движки теперь только `pki`, `ssh`, `totp`.
+
 ### Added
 
+- **TLS: горячая перезагрузка сертификата сервера** (проверка файлов раз в 15 с; при ошибке остаётся прежний сертификат); в списке шифров TLS 1.2 добавлены ECDHE-RSA.
+- **Raft: mutual TLS** между узлами (`--cluster-tls-cert/-key/-ca/-server-name`, `cluster.tls_*`); без параметров поведение прежнее.
+- docs/guides/25-pilot-deployment.md — гайд по пилотному развёртыванию; в `MANUAL_TESTS.md` добавлены разделы 21–26.
 - **Transit: ГОСТ.** Тип ключа `kuznyechik-mgm` («Кузнечик» + MGM; encrypt/decrypt/rewrap, ротация версий) и HMAC на Стрибоге (`streebog-256`, `streebog-512`). Не сертифицировано ФСБ; подпись ГОСТ Р 34.10 не реализована.
 - **`--require-mlock`** (`require_mlock` в конфиге): запуск прерывается, если память процесса нельзя заблокировать от свопа. Без флага — прежнее предупреждение (теперь единое на всех ОС). На Linux дополнительно отключаются core dump. Для контейнера нужен `CAP_IPC_LOCK`.
 - **Barrier: шифрование путей.** Новые хранилища (`barrier/meta` версии 3) не хранят имена записей в backend в открытом виде: каждый сегмент пути шифруется детерминированно и обратимо (AEAD, AAD — родительский путь), ключ путей лежит в keyring и переживает `rekey` и `rotate-data-key`. Скрыты имена; форма дерева, число записей и длины сегментов остаются видимыми. Хранилища версий 1–2 работают с открытыми путями. См. docs/11 §1.1.
@@ -24,7 +32,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - docs/12-bank-readiness-todo.md — план доработок по итогам банковского аудита.
 - **Operator: multi-key Secrets.** `TuckSecret.spec.data` (ключ Secret → путь в Tuck) наполняет несколько ключей одного K8s Secret; `tuckPath`/`secretKey` остаются рабочими и могут сочетаться с `data`. `tuckPath`/`secretKey` больше не обязательны в CRD (обязателен `secretName`).
 - **Operator: namespace isolation.** Флаг `--enforce-namespace-paths` (Helm `operator.enforceNamespacePaths`) ограничивает TuckSecret путями `<namespace>/...` плюс префиксы из аннотации Namespace `tuck.io/allowed-paths`; пути с `..`, пустыми сегментами и спецсимволами отклоняются, при ошибке чтения Namespace доступ запрещается.
-- **Auth roles bound to a Tuck namespace.** Роли Kubernetes/AppRole/JWT/GitHub/LDAP получили необязательное поле `tuck_namespace`: токен, выданный при логине, привязывается к этому namespace (существование проверяется, 404 если нет; namespaced-вызывающий может создавать роли только для своего namespace, иначе 403). Namespace берётся только из роли, заголовок `X-Tuck-Namespace` на логине игнорируется. Пустое значение = root, как раньше. LDAP: если совпавшие роли привязаны к разным namespace, логин отклоняется (токен живёт в одном namespace).
+- **Auth roles bound to a Tuck namespace.** Роли Kubernetes/AppRole/JWT/LDAP получили необязательное поле `tuck_namespace`: токен, выданный при логине, привязывается к этому namespace (существование проверяется, 404 если нет; namespaced-вызывающий может создавать роли только для своего namespace, иначе 403). Namespace берётся только из роли, заголовок `X-Tuck-Namespace` на логине игнорируется. Пустое значение = root, как раньше. LDAP: если совпавшие роли привязаны к разным namespace, логин отклоняется (токен живёт в одном namespace).
 
 ### Fixed
 

@@ -1,6 +1,6 @@
 # Tuck — Руководство по ручному тестированию
 
-> Версия: v1.35.0 · Обновлено: 2026-06-21  
+> Версия: v1.36.0+ · Обновлено: 2026-10-05  
 > Документ описывает все модули Tuck и позволяет проверить каждый из них вручную.
 
 ---
@@ -29,6 +29,12 @@
 | 18 | [METRICS — Prometheus-метрики](#18-metrics) | MET-1…MET-2 |
 | 19 | [NAMESPACE — Изоляция пространств](#19-namespaces) | NS-1…NS-2 |
 | 20 | [DYNAMIC DB — Динамические секреты БД](#20-dynamic-secrets--database) | DB-1…DB-2 |
+| 21 | [MULTI-CLUSTER — Несколько кластеров Kubernetes](#21-несколько-кластеров-kubernetes) | MC-1…MC-2 |
+| 22 | [NS-BINDING — Привязка токена к namespace](#22-привязка-токена-к-namespace) | NSB-1…NSB-2 |
+| 23 | [BARRIER — Шифр, ротация DEK, шифрование путей](#23-шифр-барьера-ротация-dek-шифрование-путей) | BR-1…BR-3 |
+| 24 | [TLS — Горячая перезагрузка сертификата](#24-tls-горячая-перезагрузка-сертификата) | — |
+| 25 | [RAFT mTLS — Защита транспорта Raft](#25-raft-mutual-tls-между-узлами) | — |
+| 26 | [MLOCK — Защита памяти](#26-защита-памяти) | — |
 
 ---
 
@@ -1175,6 +1181,134 @@ psql -h localhost -U "$($creds.username)" -W -c "\du" postgres
 
 ---
 
+## 21. Несколько кластеров Kubernetes
+
+Требует: два кластера (или один кластер, зарегистрированный под двумя именами) и ServiceAccount-токен рецензента для каждого.
+
+### MC-1: Конфигурация кластеров
+
+Сервер запускается с конфигом:
+
+```yaml
+kubernetes:
+  api: https://k8s-a.example:6443        # кластер по умолчанию
+  token_file: /etc/tuck/k8s-a.token
+  ca_file: /etc/tuck/k8s-a.ca
+  clusters:
+    - {name: seg-b, api: https://k8s-b.example:6443, token_file: /etc/tuck/k8s-b.token, ca_file: /etc/tuck/k8s-b.ca}
+```
+
+```powershell
+curl.exe -s "$env:TUCK_ADDR/v1/auth/kubernetes/clusters" -H "X-Tuck-Token: $env:TUCK_TOKEN"
+```
+
+**Ожидается:** в списке кластер по умолчанию и `seg-b`.
+
+### MC-2: Роли и логин по кластеру
+
+```powershell
+# Роль в кластере seg-b; такой же SA в кластере по умолчанию доступа не получит
+curl.exe -s -XPUT "$env:TUCK_ADDR/v1/auth/kubernetes/clusters/seg-b/role/payments/api" `
+    -H "X-Tuck-Token: $env:TUCK_TOKEN" -H "Content-Type: application/json" `
+    -d '{"policies":["payments-read"],"ttl":"1h","tuck_namespace":"payments"}'
+
+# Логин из пода кластера seg-b
+curl.exe -s -XPOST "$env:TUCK_ADDR/v1/auth/kubernetes/login" -H "Content-Type: application/json" `
+    -d "{`"token`":`"$saToken`",`"cluster`":`"seg-b`"}"
+```
+
+**Ожидается:** токен с политикой `payments-read`. Тот же JWT с `"cluster":"default"` (или без поля) — 403: роль есть только в `seg-b`. JWT из другого кластера с `"cluster":"seg-b"` — 401/403 (TokenReview не проходит).
+
+---
+
+## 22. Привязка токена к namespace
+
+### NSB-1: Токен не выходит за свой namespace
+
+```powershell
+curl.exe -s -XPUT "$env:TUCK_ADDR/v1/sys/namespaces/team-a" -H "X-Tuck-Token: $env:TUCK_TOKEN"
+curl.exe -s -XPUT "$env:TUCK_ADDR/v1/sys/namespaces/team-b" -H "X-Tuck-Token: $env:TUCK_TOKEN"
+# Роль K8s/AppRole с "tuck_namespace":"team-a" (см. §11, §8), логин -> $nsToken
+curl.exe -s -o NUL -w "%{http_code}" "$env:TUCK_ADDR/v1/secret/data" -H "X-Tuck-Token: $nsToken"                              # без заголовка
+curl.exe -s -o NUL -w "%{http_code}" "$env:TUCK_ADDR/v1/secret/data" -H "X-Tuck-Token: $nsToken" -H "X-Tuck-Namespace: team-b"  # чужой
+```
+
+**Ожидается:** первый запрос работает в `team-a` (200/404 по наличию данных), второй — **403**.
+
+### NSB-2: Удалённый namespace
+
+Удалите `team-a` (`DELETE /v1/sys/namespaces/team-a`) и повторите логин по роли с `tuck_namespace":"team-a"`.
+
+**Ожидается:** логин отклонён (403), токен не выдан.
+
+---
+
+## 23. Шифр барьера, ротация DEK, шифрование путей
+
+### BR-1: Шифр в seal-status
+
+```powershell
+(Invoke-RestMethod "$env:TUCK_ADDR/v1/sys/seal-status").barrier_cipher
+```
+
+**Ожидается:** `aes-256-gcm` (или `gost-kuznyechik-mgm`, если хранилище инициализировано с `--barrier-cipher=gost-kuznyechik-mgm`). Для существующего хранилища флаг игнорируется.
+
+### BR-2: Ротация DEK
+
+```powershell
+curl.exe -s -XPOST "$env:TUCK_ADDR/v1/sys/rotate-data-key" -H "X-Tuck-Token: $env:TUCK_TOKEN"
+curl.exe -s -XPOST "$env:TUCK_ADDR/v1/sys/rotate-data-key?reencrypt=true" -H "X-Tuck-Token: $env:TUCK_TOKEN"
+```
+
+**Ожидается:** `{"ok":true,"key_version":N,"reencrypted":0}` для первого вызова (версия растёт на 1); для второго — `reencrypted` равно числу записей. Все ранее записанные секреты читаются. Токен без `write` на `sys/rotate-data-key` получает 403. Хранилище, созданное до версионирования ключей, — 409.
+
+### BR-3: Шифрование путей
+
+Запишите секрет `secret/very-secret-name`, остановите сервер и выполните:
+
+```powershell
+Select-String -Path .\tuck.db -Pattern "very-secret-name" -Encoding ascii
+```
+
+**Ожидается:** совпадений нет (имена записей в файле зашифрованы), при этом после запуска и распечатывания `LIST /v1/secret` показывает `very-secret-name`. Для хранилищ с `barrier/meta` версий 1–2 имена видны открытым текстом — это штатно.
+
+---
+
+## 24. TLS: горячая перезагрузка сертификата
+
+```powershell
+.\tuck.exe server -tls-cert .\srv.crt -tls-key .\srv.key ...
+# в другой консоли: подмените srv.crt/srv.key новыми (другой CN/срок), подождите ~15 с
+openssl s_client -connect localhost:8200 </dev/null 2>$null | openssl x509 -noout -serial -subject
+```
+
+**Ожидается:** без перезапуска сервер отдаёт новый сертификат (меняется serial). Если подложить битую пару, в логе сообщение об ошибке перезагрузки, а сервер продолжает работать со старым сертификатом.
+
+---
+
+## 25. Raft: mutual TLS между узлами
+
+Требует: три узла и отдельный CA кластера (не публичный).
+
+```powershell
+.\tuck.exe server -cluster -cluster-node-id n1 -cluster-bootstrap -cluster-peers "n1=10.0.0.1:8201,n2=10.0.0.2:8201,n3=10.0.0.3:8201" `
+    -cluster-tls-cert n1.crt -cluster-tls-key n1.key -cluster-tls-ca cluster-ca.crt
+```
+
+**Ожидается:** узлы с сертификатами от `cluster-ca.crt` формируют кластер, `GET /v1/sys/cluster` показывает лидера и 3 голосующих. Узел без сертификата или с сертификатом чужого CA в кластер не входит (в логе ошибка TLS-рукопожатия), порт 8201 не отвечает на обычный TCP-обмен. С `-cluster-tls-server-name` дополнительно проверяется имя в сертификате пира.
+
+---
+
+## 26. Защита памяти
+
+```powershell
+.\tuck.exe server -require-mlock ...
+```
+
+**Ожидается:** на Linux — запуск проходит, если память можно заблокировать (`ulimit -l`/`CAP_IPC_LOCK`), иначе сервер завершается с ошибкой. Без флага — только предупреждение. На Windows/macOS флаг не поддерживается.
+
+---
+
 ## Полезные команды для отладки
 
 ```powershell
@@ -1227,10 +1361,11 @@ Invoke-RestMethod "$env:TUCK_ADDR/v1/sys/audit" `
 | Metrics | MET-1…2 | ✅ bench_test.go | — |
 | Namespaces | NS-1…2 | ✅ integration | — |
 | Dynamic DB | DB-1…2 | ⚠️ unit (нет e2e) | PostgreSQL/MySQL |
-| GitHub auth | — | ⚠️ только негативные | GitHub Actions |
-| Dynamic AWS | — | ⚠️ unit | AWS |
-| Dynamic GCP | — | ⚠️ unit | GCP |
-| Dynamic Azure | — | ⚠️ unit | Azure |
+| Multi-cluster K8s | MC-1…2 | ✅ k8s_test.go | 2 кластера K8s |
+| Namespace binding | NSB-1…2 | ✅ api-тесты | — |
+| Barrier: cipher / DEK / пути | BR-1…3 | ✅ barrier-тесты | — |
+| TLS hot-reload | §24 | ✅ tlsutil/reload_test.go | — |
+| Raft mTLS | §25 | ✅ raft/tls_test.go | — |
 
 ---
 
@@ -1238,8 +1373,7 @@ Invoke-RestMethod "$env:TUCK_ADDR/v1/sys/audit" `
 
 Полный проход разделов 1–20 живьём на пересобранном с нуля minikube-кластере (Helm chart, свежие
 образы server/operator/csi), поверх реального Postgres-контейнера для §20. JWT/LDAP оставлены вне
-объёма (нужен внешний OIDC/LDAP-сервер — см. матрицу выше), AWS/GCP/Azure dynamic secrets тоже
-(нет реальных облачных аккаунтов). Найденные UX/документационные несоответствия ниже — но самая
+объёма (нужен внешний OIDC/LDAP-сервер — см. матрицу выше). Найденные UX/документационные несоответствия ниже — но самая
 серьёзная находка всей сессии (см. 0 ниже) обнаружилась не в этом прогоне, а позже, при постройке
 реальных юз-кейсов применения (см. `docs/USE_CASES.md`), и уже исправлена.
 
@@ -1251,8 +1385,8 @@ Invoke-RestMethod "$env:TUCK_ADDR/v1/sys/audit" `
    существующей AppRole-роли по имени** (полная эскалация привилегий до политик этой роли) и
    **создать identity-entity с произвольными `policies` в теле запроса**. Причина: `requireToken`
    (`internal/api/server.go`) проверяет только валидность/срок токена, а не capability — почти
-   каждый хендлер в `transit.go`, `pki.go`, `ssh.go`, `totp.go`, `database.go`, `aws.go`, `gcp.go`,
-   `azure.go`, `namespaces.go`, `cluster.go`, значительная часть `approle.go`/`jwt.go`/`ldap.go`
+   каждый хендлер в `transit.go`, `pki.go`, `ssh.go`, `totp.go`, `database.go`, облачные движки (позже удалены),
+   `namespaces.go`, `cluster.go`, значительная часть `approle.go`/`jwt.go`/`ldap.go`
    (управление ролями/конфигом) и весь `identity.go` (27 хендлеров) вызывали свои core-методы
    напрямую, без единого `s.core.EnforceAccess`. Реально enforced были только `kv.go`, `kvv2.go`,
    `tokens.go`, `policies.go`, `mounts.go`, `plugins.go`, `sysconfig.go`, `replication.go`,

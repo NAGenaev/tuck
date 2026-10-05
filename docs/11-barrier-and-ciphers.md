@@ -65,7 +65,7 @@ barrier:
 
 ## 4. Экспериментальные движки
 
-PKI, SSH, TOTP, AWS, GCP и Azure выключены в бинарнике `tuck` по умолчанию (запросы к ним получают 404 `disabled`). Включение:
+PKI, SSH и TOTP выключены в бинарнике `tuck` по умолчанию (запросы к ним получают 404 `disabled`). Включение:
 
 ```bash
 tuck --enable-engine=pki,totp
@@ -79,11 +79,11 @@ enable_engines: [pki, totp]
 
 ## 4.1 Фокус пилота
 
-Пилот ограничен: **KV v2 + Kubernetes auth + оператор `TuckSecret` (+ Injector при необходимости) + аудит**. Всё остальное (динамические секреты БД и облаков, PKI, SSH, TOTP) в пилот не входит, экспериментальные движки остаются выключенными.
+Пилот ограничен: **KV v2 + Kubernetes auth + оператор `TuckSecret` (+ Injector при необходимости) + аудит**. Всё остальное (динамические секреты БД, PKI, SSH, TOTP) в пилот не входит, экспериментальные движки остаются выключенными.
 
 ## 5. Токены и namespace
 
-Токен, выданный внутри namespace, привязан к нему: заголовок `X-Tuck-Namespace` с другим namespace даёт 403, без заголовка применяется namespace токена. Логины (Kubernetes/AppRole/JWT/GitHub/LDAP) получают namespace из поля роли `tuck_namespace`.
+Токен, выданный внутри namespace, привязан к нему: заголовок `X-Tuck-Namespace` с другим namespace даёт 403, без заголовка применяется namespace токена. Логины (Kubernetes/AppRole/JWT/LDAP) получают namespace из поля роли `tuck_namespace`.
 
 Если namespace, к которому привязана роль, удалён, логин по такой роли возвращает 403 (токен в «висящий» namespace не выдаётся).
 

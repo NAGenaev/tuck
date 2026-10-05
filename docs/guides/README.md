@@ -42,6 +42,7 @@ $env:TUCK_TOKEN = "tuck_..."                    # root или scoped token
 | Приватное хранилище одного токена | [22 — Cubbyhole](22-cubbyhole.md) |
 | Работа через веб-интерфейс | [23 — Web UI](23-web-ui.md) |
 | Монтировать секреты как файлы в Pod (CSI) | [24 — CSI Provider](24-csi-provider.md) |
+| **Развернуть пилот в банке (один сегмент)** | [25 — Пилотное развёртывание](25-pilot-deployment.md) |
 
 ---
 

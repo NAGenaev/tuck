@@ -35,7 +35,7 @@
 | C4 | Seal через PKCS#11 / HSM, поддержка сертифицированного СКЗИ как `Suite` | P1 | ⬜ |
 | C5 | Привести `mlock` к единому поведению (сейчас различается по платформам) | P2 | ⬜ |
 | C6 | ГОСТ в Transit (`gost`-тип ключа, HMAC/хеш на Стрибоге) | P2 | ⬜ |
-| C7 | Показывать шифр барьера в `/v1/sys/health` / seal-status | P2 | ⬜ |
+| C7 | Шифр барьера в `GET /v1/sys/seal-status` (`barrier_cipher`) | P2 | ✅ |
 
 ## 3. Доставка секретов в кластеры
 
@@ -43,7 +43,7 @@
 |---|---|---|---|
 | D1 | Injector: логин по ServiceAccount (`tuck.io/auth: kubernetes`), пример в `deploy/webhook` переведён на него | P0 | ✅ |
 | D2 | CSI-провайдер: live-refresh есть, но только opt-in (`tuck.io/refresh-interval`); по умолчанию снимок при монтировании — зафиксировать в гайде для банка или сделать значением по умолчанию | P2 | 🟡 |
-| D3 | Helm: убрать формулировки про `TUCK_TOKEN` в values как «штатный» путь; показать Kubernetes auth + оператор | P1 | ⬜ |
+| D3 | Helm: статический `TUCK_TOKEN`/`tokenSecretName` у оператора убран (он логинится ServiceAccount), добавлен `operator.tuckCluster` | P1 | ✅ |
 | D4 | Несколько кластеров: `kubernetes.clusters` + роли по кластеру (`/v1/auth/kubernetes/clusters/{c}/role/...`), топология «Tuck на сегмент / общий Tuck / AppRole» описана в [guides/09](guides/09-kubernetes-auth.md). | P0 | ✅ |
 | D5 | Rollout привязки к namespace: инструкция миграции существующих ролей и токенов (уже выданные токены не привязаны) | P1 | 🟡 |
 | D6 | Роли, ссылающиеся на удалённый namespace — проверка/очистка | P2 | ⬜ |

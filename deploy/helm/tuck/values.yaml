@@ -138,8 +138,10 @@ operator:
   # -- Tuck server address. Defaults to the in-cluster service.
   tuckAddr: ""  # auto-computed from server.service if empty
 
-  # -- Name of the K8s Secret containing the operator's Tuck root token.
-  tokenSecretName: "tuck-operator-token"
+  # -- The operator logs in to Tuck with its own ServiceAccount (Kubernetes auth);
+  # no static token is used. Create a Tuck role for <release>-operator first.
+  # -- Tuck cluster entry for this operator (multi-cluster Tuck; empty = default).
+  tuckCluster: ""
 
   leaderElect: true
 

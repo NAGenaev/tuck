@@ -11,10 +11,11 @@ import (
 
 // sealStatusResponse is the JSON shape for GET /v1/sys/seal-status.
 type sealStatusResponse struct {
-	Sealed          bool   `json:"sealed"`
-	Type            string `json:"type"`
-	RequiredShards  int    `json:"required_shards,omitempty"`
-	ReceivedShards  int    `json:"received_shards,omitempty"`
+	Sealed         bool   `json:"sealed"`
+	Type           string `json:"type"`
+	BarrierCipher  string `json:"barrier_cipher,omitempty"`
+	RequiredShards int    `json:"required_shards,omitempty"`
+	ReceivedShards int    `json:"received_shards,omitempty"`
 }
 
 // unsealRequest is the JSON body for POST /v1/sys/unseal.
@@ -24,18 +25,19 @@ type unsealRequest struct {
 
 // unsealResponse is the JSON body returned by POST /v1/sys/unseal.
 type unsealResponse struct {
-	Sealed          bool   `json:"sealed"`
-	RequiredShards  int    `json:"required_shards,omitempty"`
-	ReceivedShards  int    `json:"received_shards,omitempty"`
-	Message         string `json:"message,omitempty"`
+	Sealed         bool   `json:"sealed"`
+	RequiredShards int    `json:"required_shards,omitempty"`
+	ReceivedShards int    `json:"received_shards,omitempty"`
+	Message        string `json:"message,omitempty"`
 }
 
 // getSealStatus handles GET /v1/sys/seal-status (no authentication required).
 func (s *Server) getSealStatus(w http.ResponseWriter, r *http.Request) {
 	info := s.core.SealStatus()
 	resp := sealStatusResponse{
-		Sealed: info.Sealed,
-		Type:   info.Type,
+		Sealed:        info.Sealed,
+		Type:          info.Type,
+		BarrierCipher: info.Cipher,
 	}
 	if info.Required > 0 {
 		resp.RequiredShards = info.Required

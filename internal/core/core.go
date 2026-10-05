@@ -66,6 +66,7 @@ var (
 type SealStatusInfo struct {
 	Sealed   bool   `json:"sealed"`
 	Type     string `json:"type"`
+	Cipher   string `json:"barrier_cipher,omitempty"`
 	Required int    `json:"required_shards,omitempty"` // non-zero for ShamirSeal only
 	Received int    `json:"received_shards,omitempty"` // non-zero for ShamirSeal only
 }
@@ -358,6 +359,7 @@ func (c *Core) SealStatus() SealStatusInfo {
 	info := SealStatusInfo{
 		Sealed: c.barrier.IsSealed(),
 		Type:   c.seal.Type(),
+		Cipher: c.barrier.CipherSuite(),
 	}
 	if su, ok := c.seal.(seal.SharableUnseal); ok {
 		info.Required, info.Received = su.ShardsProgress()

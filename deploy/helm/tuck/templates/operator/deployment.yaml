@@ -37,6 +37,9 @@ spec:
             {{- if .Values.operator.watchNamespace }}
             - --namespace={{ .Values.operator.watchNamespace }}
             {{- end }}
+            {{- if .Values.operator.tuckCluster }}
+            - --tuck-cluster={{ .Values.operator.tuckCluster }}
+            {{- end }}
             {{- if .Values.operator.enforceNamespacePaths }}
             - --enforce-namespace-paths
             {{- end }}
@@ -44,13 +47,6 @@ spec:
             - --leader-elect
             - --leader-namespace={{ .Values.operator.leaderNamespace | default (include "tuck.namespace" .) }}
             {{- end }}
-          env:
-            - name: TUCK_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.operator.tokenSecretName }}
-                  key: token
-                  optional: true
           ports:
             - name: health
               containerPort: 8081

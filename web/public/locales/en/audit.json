@@ -1,1 +1,126 @@
-{}
+{
+  "title": "Audit",
+  "eyebrow": "Operations / audit",
+  "h1a": "Audit",
+  "h1b": "log",
+  "lead": "Every request to Tuck leaves a record: <b>who, what, when and with what result</b>. Secret values never reach the log, and entries are linked in a hash chain, so after-the-fact edits show up immediately.",
+  "create": "New sink",
+  "loading": "waiting for response",
+  "tiles": {
+    "label": "Summary",
+    "sinks": "Sinks",
+    "sinksSub": "file: {{files}} · webhook: {{hooks}}",
+    "failing": "Failing sinks",
+    "failingOk": "every sink is accepting records",
+    "failingBad": "delivery to a sink is failing",
+    "errors": "Delivery errors",
+    "errorsOk": "counter since registration",
+    "errorsBad": "records did not reach the receiver"
+  },
+  "banner": {
+    "title": "No sinks",
+    "text": "<b>This is a blocker for a bank.</b> With no sink connected, secret access stays only in the primary Tuck log: there is no copy for SIEM or incident review.",
+    "cta": "Connect the first sink",
+    "li1": "SIEM cannot see who read <code>secret/payments/db</code>",
+    "li2": "Attempts to cross namespace isolation (403) never reach an external log",
+    "li3": "No data for a regulator report",
+    "li4": "Recommended: a rotating file and a webhook to SIEM"
+  },
+  "alert": {
+    "title": "A sink is not accepting records",
+    "text": "\"{{name}}\": {{count}} delivery errors. The primary log on disk is still written and nothing is lost, but the receiver does not see the records.",
+    "more": "{{count}} more sink(s) are failing.",
+    "refresh": "Refresh"
+  },
+  "plate": {
+    "title": "Sinks",
+    "new": "New",
+    "empty": "No sinks. No copy of the log is sent anywhere."
+  },
+  "cols": {
+    "name": "Name · target",
+    "type": "Type",
+    "status": "Status",
+    "params": "Settings",
+    "errors": "Errors"
+  },
+  "status": {
+    "ok": "Connected",
+    "fail": "Failing"
+  },
+  "meta": {
+    "rotation": "rotation {{size}} MB × {{backups}}",
+    "timeout": "timeout {{sec}} s"
+  },
+  "row": {
+    "copy": "Copy target",
+    "remove": "Delete sink \"{{name}}\"",
+    "errline": "{{count}} delivery errors since registration"
+  },
+  "guard": {
+    "title": "Never switches off silently",
+    "g1": "The <b>primary log</b> with its hash chain is always written, regardless of sinks.",
+    "g2": "A <b>sink failure</b> never blocks a request, but it is counted and flagged here in red.",
+    "g3": "<b>Deleting</b> the last sink requires typing its name."
+  },
+  "forbidden": {
+    "eyebrow": "Access denied",
+    "title": "Not enough rights to view audit",
+    "text": "The token does not allow reading audit sinks. The request was rejected, and the attempt itself has been logged.",
+    "request": "Request",
+    "need": "Required",
+    "retry": "Retry"
+  },
+  "error": {
+    "title": "Could not load sinks",
+    "message": "The server did not answer or returned an error. The primary audit log is not affected."
+  },
+  "drawer": {
+    "title": "New sink",
+    "hint": "A sink receives a copy of every request Tuck handles, for compliance, SIEM and debugging.",
+    "type": "Type",
+    "typeFile": "File",
+    "typeWebhook": "Webhook",
+    "name": "Sink name",
+    "namePlaceholder": "siem-ingest",
+    "overwrite": "A sink with this name already exists and will be updated.",
+    "url": "URL",
+    "urlPlaceholder": "https://siem.bank.internal/tuck/ingest",
+    "timeout": "Timeout, s",
+    "timeoutHint": "A sink that does not answer within the timeout counts an error, but the request is not delayed.",
+    "path": "File path",
+    "pathPlaceholder": "/var/log/tuck/audit.log",
+    "size": "Size before rotation, MB",
+    "backups": "Backups to keep",
+    "format": "Format",
+    "formatText": "one record per line",
+    "warn": "<b>Secret values are never written.</b> Only the path, method, status and token fingerprint are logged.",
+    "preview": "API request",
+    "cancel": "Cancel",
+    "submit": "Save sink",
+    "errNameRequired": "Enter a sink name",
+    "errNameChars": "Only a-z, 0-9 and hyphen, 2 to 32 characters",
+    "errPathRequired": "Enter a file path",
+    "errPathAbs": "The path must be absolute and start with /",
+    "errSize": "Whole number, at least 1 MB",
+    "errBackups": "Whole number, at least 1",
+    "errUrlRequired": "Enter the sink URL",
+    "errUrlFormat": "Expected an address like https://host/path",
+    "errTimeout": "From 1 to 60 seconds",
+    "warnHttp": "An http:// address sends the log unencrypted. A bank needs https://."
+  },
+  "delete": {
+    "title": "Delete sink?",
+    "message": "This deletes the audit sink \"{{name}}\". Data already written stays on the receiver's side.",
+    "last": "<b>This is the last sink.</b> After deletion no copy of the log is sent anywhere. For a bank that is a blocker.",
+    "confirm": "Delete"
+  },
+  "toast": {
+    "created": "Sink saved",
+    "createdMsg": "\"{{name}}\" accepted by the server",
+    "createFailed": "Could not save the sink",
+    "deleted": "Sink deleted",
+    "deletedMsg": "\"{{name}}\"",
+    "deleteFailed": "Could not delete the sink"
+  }
+}

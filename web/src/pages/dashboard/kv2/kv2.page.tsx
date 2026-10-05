@@ -1,438 +1,366 @@
-import {
-  Anchor,
-  Badge,
-  Button,
-  Card,
-  Group,
-  NumberInput,
-  Stack,
-  Table,
-  Text,
-  TextInput,
-  Textarea,
-} from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
-import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { useTranslation } from "react-i18next";
-import { TbFolder, TbFolders, TbPlus } from "react-icons/tb";
+// SPDX-License-Identifier: AGPL-3.0-only
+import { Button } from '@mantine/core'
+import { useQueryClient } from '@tanstack/react-query'
+import type { CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
-import {
-  destroyKVv2,
-  getKVv2,
-  getKVv2Meta,
-  listKVv2,
-  putKVv2,
-  softDeleteKVv2,
-  undeleteKVv2,
-} from "@shared/api/endpoints/kvv2";
-import { CopyableField } from "@shared/ui/copyable-field/copyable-field";
-import { EmptyState } from "@shared/ui/empty-state/empty-state";
-import { EntityModal } from "@shared/ui/entity-modal/entity-modal";
-import { Page } from "@shared/ui/page/page";
-import { PageHeader } from "@shared/ui/page-header/page-header";
-import { TableCard } from "@shared/ui/table-card/table-card";
-import { Pill } from "@shared/ui/tuck/tuck";
+import { getKVv2Meta, softDeleteKVv2 } from '@shared/api/endpoints/kvv2'
+import { ConfirmModal, CountUp, Icon, toast } from '@shared/ui/kit'
+import { Page } from '@shared/ui/page/page'
+import { Eyebrow } from '@shared/ui/tuck/tuck'
 
-function useKVv2List(prefix: string) {
-  return useQuery({
-    queryKey: ["kv2", "list", prefix],
-    queryFn: () => listKVv2(prefix),
-  });
-}
+import { errMessage, errStatus } from './api'
+import common from './common.module.css'
+import { Entry, ListStatus, SecretList } from './components/secret-list'
+import { EditSeed, SecretDrawer } from './components/secret-drawer'
+import { WriteModal } from './components/write-modal'
+import styles from './kv2.module.css'
+import { useKv2List } from './use-kv2'
 
-function WriteSecretForm({
-  prefix,
-  onDone,
-}: {
-  prefix: string;
-  onDone: (path: string) => void;
-}) {
-  const { t } = useTranslation();
-  const [name, setName] = useState("");
-  const [value, setValue] = useState("");
-  const [cas, setCas] = useState<number | string>("");
-  const [isSaving, setIsSaving] = useState(false);
+type Chip = 'all' | 'folder' | 'secret'
 
-  const handleSave = async () => {
-    if (!name) return;
-    setIsSaving(true);
-    try {
-      const path = `${prefix}${name}`;
-      await putKVv2(path, value, cas === "" ? undefined : Number(cas));
-      notifications.show({
-        color: "teal",
-        message: t("kv.wroteMessage", { path }),
-        title: t("common.saved"),
-      });
-      onDone(path);
-    } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } })?.response
-        ?.status;
-      notifications.show({
-        color: "red",
-        message: status === 409 ? t("kv2.casMismatch") : t("kv.writeFailed"),
-        title: t("common.error"),
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  return (
-    <Stack gap="sm">
-      <TextInput
-        autoFocus
-        label={t("common.name")}
-        onChange={(e) => setName(e.currentTarget.value)}
-        placeholder={t("kv.namePlaceholder")}
-        value={name}
-      />
-      <Textarea
-        autosize
-        label={t("kv.value")}
-        minRows={4}
-        onChange={(e) => setValue(e.currentTarget.value)}
-        value={value}
-      />
-      <NumberInput
-        description={t("kv2.casDescription")}
-        label={t("kv2.casVersion")}
-        onChange={setCas}
-        value={cas}
-      />
-      <Button fullWidth loading={isSaving} onClick={handleSave}>
-        {t("common.save")}
-      </Button>
-    </Stack>
-  );
-}
-
-function SecretDetail({
-  path,
-  onClose,
-}: {
-  path: string;
-  onClose: () => void;
-}) {
-  const { t } = useTranslation();
-  const queryClient = useQueryClient();
-  const [viewVersion, setViewVersion] = useState<number | undefined>(undefined);
-
-  const { data: current } = useQuery({
-    queryKey: ["kv2", "get", path, viewVersion],
-    queryFn: () => getKVv2(path, viewVersion),
-  });
-  const { data: meta } = useQuery({
-    queryKey: ["kv2", "meta", path],
-    queryFn: () => getKVv2Meta(path),
-  });
-
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ["kv2", "get", path] });
-    queryClient.invalidateQueries({ queryKey: ["kv2", "meta", path] });
-  };
-
-  const versions = meta?.versions
-    ? Object.entries(meta.versions).sort(([a], [b]) => Number(b) - Number(a))
-    : [];
-
-  const confirmAction = (
-    title: string,
-    message: string,
-    action: () => Promise<void>,
-  ) =>
-    modals.openConfirmModal({
-      title,
-      children: message,
-      labels: { confirm: t("common.confirm"), cancel: t("common.cancel") },
-      confirmProps: { color: "red" },
-      onConfirm: async () => {
-        await action();
-        invalidate();
-      },
-    });
-
-  return (
-    <Card>
-      <Stack gap="sm">
-        <Group justify="space-between">
-          <Text fw={600}>
-            {path}{" "}
-            {viewVersion
-              ? `(v${viewVersion})`
-              : `(v${meta?.current_version ?? "—"})`}
-          </Text>
-          <Anchor c="dimmed" component="button" onClick={onClose} size="sm">
-            {t("common.close")}
-          </Anchor>
-        </Group>
-        <CopyableField
-          label={t("kv.value")}
-          maskable
-          value={current?.value ?? ""}
-        />
-
-        <Text fw={600} mt="sm" size="sm">
-          {t("kv2.versions")}
-        </Text>
-        <Table verticalSpacing="xs">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("kv2.version")}</Table.Th>
-              <Table.Th>{t("kv2.created")}</Table.Th>
-              <Table.Th>{t("kv2.status")}</Table.Th>
-              <Table.Th />
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {versions.map(([v, info]) => (
-              <Table.Tr key={v}>
-                <Table.Td>{v}</Table.Td>
-                <Table.Td>
-                  <Text c="dimmed" size="xs">
-                    {info.created_at
-                      ? new Date(info.created_at).toLocaleString()
-                      : "—"}
-                  </Text>
-                </Table.Td>
-                <Table.Td>
-                  {info.destroyed ? (
-                    <Badge color="red" variant="light">
-                      {t("kv2.destroyed")}
-                    </Badge>
-                  ) : info.deleted_at ? (
-                    <Badge color="yellow" variant="light">
-                      {t("kv2.deletedBadge")}
-                    </Badge>
-                  ) : (
-                    <Badge color="teal" variant="light">
-                      {t("kv2.active")}
-                    </Badge>
-                  )}
-                </Table.Td>
-                <Table.Td>
-                  <Group gap="xs" justify="flex-end">
-                    <Anchor
-                      component="button"
-                      onClick={() => setViewVersion(Number(v))}
-                      size="xs"
-                    >
-                      {t("kv2.view")}
-                    </Anchor>
-                    {!info.destroyed && !info.deleted_at && (
-                      <Anchor
-                        c="yellow"
-                        component="button"
-                        onClick={() =>
-                          confirmAction(
-                            t("kv2.softDeleteTitle"),
-                            t("kv2.softDeleteConfirm", { version: v }),
-                            () => softDeleteKVv2(path, [Number(v)]),
-                          )
-                        }
-                        size="xs"
-                      >
-                        {t("common.delete")}
-                      </Anchor>
-                    )}
-                    {info.deleted_at && !info.destroyed && (
-                      <Anchor
-                        c="teal"
-                        component="button"
-                        onClick={() =>
-                          undeleteKVv2(path, [Number(v)]).then(invalidate)
-                        }
-                        size="xs"
-                      >
-                        {t("kv2.undelete")}
-                      </Anchor>
-                    )}
-                    {!info.destroyed && (
-                      <Anchor
-                        c="red"
-                        component="button"
-                        onClick={() =>
-                          confirmAction(
-                            t("kv2.destroyTitle"),
-                            t("kv2.destroyConfirm", { version: v }),
-                            () => destroyKVv2(path, [Number(v)]),
-                          )
-                        }
-                        size="xs"
-                      >
-                        {t("kv2.destroy")}
-                      </Anchor>
-                    )}
-                  </Group>
-                </Table.Td>
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
-      </Stack>
-    </Card>
-  );
+const isTyping = (el: EventTarget | null) => {
+    const n = el as HTMLElement | null
+    if (!n) return false
+    const tag = n.tagName
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || n.isContentEditable
 }
 
 export function KV2Page() {
-  const { t } = useTranslation();
-  const [prefix, setPrefix] = useState("");
-  const [manualPath, setManualPath] = useState("");
-  const [selected, setSelected] = useState<null | string>(null);
-  const [writing, { open: openWriting, close: closeWriting }] =
-    useDisclosure(false);
-  const { data: keys, isLoading } = useKVv2List(prefix);
-  const queryClient = useQueryClient();
+    const { t } = useTranslation('kv')
+    const qc = useQueryClient()
 
-  const crumbs = ["secret", ...prefix.split("/").filter(Boolean)];
+    const [prefix, setPrefix] = useState('')
+    const [slide, setSlide] = useState<null | 'back' | 'fwd'>(null)
+    const [filter, setFilter] = useState('')
+    const [chip, setChip] = useState<Chip>('all')
+    const [jump, setJump] = useState('')
+    const [selected, setSelected] = useState<Set<string>>(() => new Set())
+    const [drawerPath, setDrawerPath] = useState<null | string>(null)
+    const [writeOpen, setWriteOpen] = useState(false)
+    const [seed, setSeed] = useState<EditSeed | null>(null)
+    const [flash, setFlash] = useState<null | string>(null)
+    const [bulkOpen, setBulkOpen] = useState(false)
+    const [still, setStill] = useState(false)
+    const filterRef = useRef<HTMLInputElement | null>(null)
+    const seen = useRef(false)
 
-  return (
-    <Page title="KV v2">
-      <Stack gap="lg">
-        <PageHeader color="blue" icon={TbFolders} title={t("pages.kv2")} />
+    const list = useKv2List(prefix)
 
-        <Group justify="space-between" wrap="wrap">
-          <Group
-            gap={6}
-            style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 14 }}
-          >
-            {crumbs.map((crumb, i) => (
-              <Group gap={6} key={i}>
-                {i > 0 && (
-                  <Text c="dimmed" component="span">
-                    /
-                  </Text>
-                )}
-                <Text
-                  c={i === crumbs.length - 1 ? "bone" : "brass.5"}
-                  component="button"
-                  onClick={() =>
-                    setPrefix(
-                      i === 0
-                        ? ""
-                        : crumbs
-                            .slice(1, i + 1)
-                            .join("/")
-                            .concat("/"),
-                    )
-                  }
-                  style={{
-                    background: "none",
-                    border: 0,
-                    cursor: "pointer",
-                    padding: 0,
-                    font: "inherit",
-                  }}
-                >
-                  {crumb}
-                </Text>
-              </Group>
-            ))}
-          </Group>
-          <Button leftSection={<TbPlus size={16} />} onClick={openWriting}>
-            {t("kv.writeSecret")}
-          </Button>
-        </Group>
+    // the row entrance animation plays only for the first paint; later refreshes stay still
+    useEffect(() => {
+        if (list.isSuccess && !seen.current) {
+            seen.current = true
+            const id = window.setTimeout(() => setStill(true), 1400)
+            return () => window.clearTimeout(id)
+        }
+    }, [list.isSuccess])
 
-        <Group>
-          <TextInput
-            onChange={(e) => setManualPath(e.currentTarget.value)}
-            placeholder={t("kv.jumpToPrefix")}
-            style={{ flex: 1 }}
-            value={manualPath}
-          />
-          <Button
-            onClick={() =>
-              setPrefix(manualPath ? `${manualPath.replace(/\/$/, "")}/` : "")
+    const all = useMemo<Entry[]>(() => {
+        const items = (list.data ?? []).map((k) => {
+            const folder = k.endsWith('/')
+            return { folder, name: k, path: `${prefix}${k}` }
+        })
+        items.sort((a, b) => (a.folder === b.folder ? a.name.localeCompare(b.name) : a.folder ? -1 : 1))
+        return items
+    }, [list.data, prefix])
+
+    const status: ListStatus = list.isPending
+        ? 'loading'
+        : list.isError
+          ? errStatus(list.error) === 403
+              ? 'forbidden'
+              : 'error'
+          : 'ready'
+
+    const nFolders = all.filter((e) => e.folder).length
+    const nSecrets = all.length - nFolders
+
+    const shown = useMemo(() => {
+        const q = filter.trim().toLowerCase()
+        return all.filter(
+            (e) =>
+                (chip === 'all' || (chip === 'folder' ? e.folder : !e.folder)) &&
+                (!q || e.name.toLowerCase().includes(q))
+        )
+    }, [all, chip, filter])
+
+    const go = useCallback(
+        (next: string, dir: 'back' | 'fwd' = 'fwd') => {
+            setSlide(dir)
+            setPrefix(next)
+            setSelected(new Set())
+            setFilter('')
+            setChip('all')
+            setStill(false)
+            seen.current = false
+        },
+        []
+    )
+
+    const up = useCallback(() => {
+        if (!prefix) return
+        const parts = prefix.split('/').filter(Boolean)
+        parts.pop()
+        go(parts.length ? `${parts.join('/')}/` : '', 'back')
+    }, [go, prefix])
+
+    const crumbs = ['secret', ...prefix.split('/').filter(Boolean)]
+
+    const doJump = () => {
+        const v = jump.trim().replace(/^\/+/, '').replace(/^secret\//, '')
+        go(v ? `${v.replace(/\/+$/, '')}/` : '')
+        setJump('')
+    }
+
+    const openWrite = (s: EditSeed | null = null) => {
+        setSeed(s)
+        setWriteOpen(true)
+    }
+
+    const toggle = (path: string) =>
+        setSelected((s) => {
+            const n = new Set(s)
+            n.has(path) ? n.delete(path) : n.add(path)
+            return n
+        })
+
+    const toggleAll = () =>
+        setSelected((s) => {
+            const paths = shown.filter((e) => !e.folder).map((e) => e.path)
+            const every = paths.length > 0 && paths.every((p) => s.has(p))
+            const n = new Set(s)
+            paths.forEach((p) => (every ? n.delete(p) : n.add(p)))
+            return n
+        })
+
+    const bulkDelete = async () => {
+        const paths = [...selected]
+        let ok = 0
+        let failed = 0
+        for (const p of paths) {
+            try {
+                const m = await getKVv2Meta(p)
+                if (!m.current_version) throw new Error('no current version')
+                await softDeleteKVv2(p, [m.current_version])
+                ok++
+            } catch (err) {
+                failed++
+                if (failed === 1) toast.error(t('kv2.toast.failed'), `${p}: ${errMessage(err)}`)
             }
-            variant="light"
-          >
-            {t("kv.go")}
-          </Button>
-        </Group>
+        }
+        await Promise.all([
+            qc.invalidateQueries({ queryKey: ['kv2', 'get'] }),
+            qc.invalidateQueries({ queryKey: ['kv2', 'meta'] }),
+            qc.invalidateQueries({ queryKey: ['kv2', 'list'] })
+        ])
+        if (ok > 0) toast.success(t('kv2.toast.bulkDone', { count: ok }))
+        setSelected(new Set())
+        setBulkOpen(false)
+    }
 
-        <EntityModal
-          color="blue"
-          icon={TbFolders}
-          onClose={closeWriting}
-          opened={writing}
-          title={t("kv.writeSecret")}
-        >
-          <WriteSecretForm
-            onDone={(path) => {
-              closeWriting();
-              queryClient.invalidateQueries({
-                queryKey: ["kv2", "list", prefix],
-              });
-              // Also refresh an already-open SecretDetail panel for this
-              // same path — otherwise it keeps showing the pre-write
-              // version/value until manually closed and reopened.
-              queryClient.invalidateQueries({ queryKey: ["kv2", "get", path] });
-              queryClient.invalidateQueries({
-                queryKey: ["kv2", "meta", path],
-              });
-            }}
-            prefix={prefix}
-          />
-        </EntityModal>
+    const onSaved = (path: string) => {
+        // show the written secret in the list when it lives at the current level
+        if (path.startsWith(prefix) && !path.slice(prefix.length).includes('/')) {
+            setFlash(path)
+            window.setTimeout(() => setFlash(null), 2400)
+        }
+    }
 
-        {selected && (
-          <SecretDetail onClose={() => setSelected(null)} path={selected} />
-        )}
+    const overlayOpen = writeOpen || bulkOpen || drawerPath !== null
 
-        <TableCard>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("common.name")}</Table.Th>
-              <Table.Th w={140}>Тип</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {!isLoading && (keys?.length ?? 0) === 0 && (
-              <Table.Tr>
-                <Table.Td>
-                  <EmptyState icon={TbFolders} label={t("kv.empty")} />
-                </Table.Td>
-              </Table.Tr>
-            )}
-            {keys?.map((key) => {
-              const isFolder = key.endsWith("/");
-              return (
-                <Table.Tr
-                  key={key}
-                  onClick={() =>
-                    isFolder
-                      ? setPrefix(`${prefix}${key}`)
-                      : setSelected(`${prefix}${key}`)
-                  }
-                  style={{ cursor: "pointer" }}
-                >
-                  <Table.Td>
-                    <Group gap="sm">
-                      {isFolder ? (
-                        <TbFolder color="#d7a94b" size={16} />
-                      ) : (
-                        <TbFolders color="#45c9e6" size={16} />
-                      )}
-                      <Text ff="JetBrains Mono, monospace" size="sm">
-                        {key}
-                      </Text>
-                    </Group>
-                  </Table.Td>
-                  <Table.Td>
-                    <Pill tone={isFolder ? "brass" : "ice"}>
-                      {isFolder ? "папка" : "секрет"}
-                    </Pill>
-                  </Table.Td>
-                </Table.Tr>
-              );
-            })}
-          </Table.Tbody>
-        </TableCard>
-      </Stack>
-    </Page>
-  );
+    useEffect(() => {
+        const onKey = (ev: KeyboardEvent) => {
+            if (ev.metaKey || ev.ctrlKey || ev.altKey || overlayOpen || isTyping(ev.target)) return
+            if (ev.key === '/') {
+                ev.preventDefault()
+                filterRef.current?.focus()
+            } else if (ev.key === 'n') {
+                ev.preventDefault()
+                openWrite()
+            } else if (ev.key === 'Backspace' && prefix) {
+                ev.preventDefault()
+                up()
+            }
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [overlayOpen, prefix, up])
+
+    const folderSet = useMemo(() => new Set(all.filter((e) => e.folder).map((e) => e.path)), [all])
+    const delay = (n: number): CSSProperties => ({ ['--d' as string]: `${n}ms` })
+
+    return (
+        <Page title="KV v2">
+            <div className={styles.page}>
+                <div className={`${styles.headTop} ${styles.rv}`}>
+                    <div>
+                        <Eyebrow>{t('kv2.eyebrow')}</Eyebrow>
+                        <h1 className={styles.title}>
+                            {t('kv2.title1')}
+                            <br />
+                            <span className={styles.gold}>{t('kv2.title2')}</span>
+                        </h1>
+                        <p className={styles.sub}>{t('kv2.sub')}</p>
+                    </div>
+                    <div className={styles.stats}>
+                        <div className={styles.stat}>
+                            <b data-br>{status === 'ready' ? <CountUp value={nSecrets} /> : '—'}</b>
+                            {t('kv2.stats.secrets')}
+                        </div>
+                        <div className={styles.stat}>
+                            <b>{status === 'ready' ? <CountUp value={nFolders} /> : '—'}</b>
+                            {t('kv2.stats.folders')}
+                        </div>
+                    </div>
+                </div>
+
+                <div className={`${styles.bar} ${styles.rv}`} style={delay(80)}>
+                    <nav aria-label={t('kv2.crumbs')} className={styles.crumbs}>
+                        {crumbs.map((c, i) => {
+                            const last = i === crumbs.length - 1
+                            const target = i === 0 ? '' : `${crumbs.slice(1, i + 1).join('/')}/`
+                            return (
+                                <span key={`${i}-${c}`} style={{ display: 'contents' }}>
+                                    {i > 0 && <span className={styles.sl}>/</span>}
+                                    <button
+                                        aria-current={last ? 'page' : undefined}
+                                        onClick={() => !last && go(target, 'back')}
+                                        type="button"
+                                    >
+                                        {i === 0 && <Icon name="lock" size={14} />}
+                                        {c}
+                                    </button>
+                                </span>
+                            )
+                        })}
+                    </nav>
+                    <Button leftSection={<Icon name="plus" size={15} />} onClick={() => openWrite()}>
+                        {t('kv2.writeBtn')}
+                    </Button>
+                </div>
+
+                <div className={`${styles.tools} ${styles.rv}`} style={delay(140)}>
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault()
+                            doJump()
+                        }}
+                        style={{ display: 'contents' }}
+                    >
+                        <div className={common.inp}>
+                            <Icon name="right" size={15} style={{ color: 'var(--dim)' }} />
+                            <input
+                                aria-label={t('kv2.jump.label')}
+                                autoComplete="off"
+                                onChange={(e) => setJump(e.currentTarget.value)}
+                                placeholder={t('kv2.jump.placeholder')}
+                                spellCheck={false}
+                                value={jump}
+                            />
+                        </div>
+                        <Button type="submit" variant="default">
+                            {t('kv2.jump.go')}
+                        </Button>
+                    </form>
+                    <div className={`${common.inp} ${styles.grow2}`}>
+                        <Icon name="search" size={15} style={{ color: 'var(--dim)' }} />
+                        <input
+                            aria-label={t('kv2.filter.label')}
+                            autoComplete="off"
+                            onChange={(e) => setFilter(e.currentTarget.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Escape') {
+                                    setFilter('')
+                                    e.currentTarget.blur()
+                                }
+                            }}
+                            placeholder={t('kv2.filter.placeholder')}
+                            ref={filterRef}
+                            spellCheck={false}
+                            value={filter}
+                        />
+                        <span className={common.kbd}>/</span>
+                    </div>
+                    <div className={styles.chips} role="group">
+                        {(
+                            [
+                                ['all', all.length],
+                                ['folder', nFolders],
+                                ['secret', nSecrets]
+                            ] as Array<[Chip, number]>
+                        ).map(([k, n]) => (
+                            <button
+                                className={styles.chip}
+                                data-on={chip === k || undefined}
+                                key={k}
+                                onClick={() => setChip(k)}
+                                type="button"
+                            >
+                                {t(`kv2.chip.${k}`)}
+                                <em>{status === 'ready' ? n : '·'}</em>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div className={styles.rv} style={delay(200)}>
+                    <SecretList
+                        all={all}
+                        errorText={list.isError ? errMessage(list.error) : undefined}
+                        filter={filter.trim()}
+                        flash={flash}
+                        onBulkDelete={() => setBulkOpen(true)}
+                        onClearSel={() => setSelected(new Set())}
+                        onOpenFolder={(p) => go(p)}
+                        onOpenSecret={setDrawerPath}
+                        onResetFilter={() => {
+                            setFilter('')
+                            setChip('all')
+                        }}
+                        onRetry={() => void list.refetch()}
+                        onToggle={toggle}
+                        onToggleAll={toggleAll}
+                        onUp={up}
+                        onWrite={() => openWrite()}
+                        prefix={prefix}
+                        retrying={list.isFetching}
+                        selected={selected}
+                        shown={shown}
+                        slide={slide}
+                        status={status}
+                        still={still}
+                    />
+                </div>
+            </div>
+
+            <SecretDrawer
+                onClose={() => setDrawerPath(null)}
+                onEdit={(s) => openWrite(s)}
+                path={drawerPath}
+                suspended={writeOpen || bulkOpen}
+            />
+
+            <WriteModal
+                folders={folderSet}
+                onClose={() => setWriteOpen(false)}
+                onSaved={onSaved}
+                opened={writeOpen}
+                prefix={prefix}
+                seed={seed}
+            />
+
+            <ConfirmModal
+                cancelLabel={t('kv2.cancel')}
+                confirmLabel={t('kv2.bulk.confirm')}
+                destructive
+                message={t('kv2.bulk.text', { count: selected.size })}
+                onClose={() => setBulkOpen(false)}
+                onConfirm={bulkDelete}
+                opened={bulkOpen}
+                title={t('kv2.bulk.title', { count: selected.size })}
+            />
+        </Page>
+    )
 }

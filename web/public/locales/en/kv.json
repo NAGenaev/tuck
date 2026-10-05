@@ -1,1 +1,215 @@
-{}
+{
+  "kv2": {
+    "eyebrow": "Engine · secret/ · KV v2",
+    "title1": "Secrets",
+    "title2": "with history",
+    "sub": "Every write creates a new version. Delete is reversible, destroy is not. Values are masked until you reveal them.",
+    "crumbs": "Path",
+    "cancel": "Cancel",
+    "retry": "Retry",
+    "writeBtn": "Write secret",
+    "stats": {
+      "secrets": "Secrets here",
+      "folders": "Folders here"
+    },
+    "chip": {
+      "all": "All",
+      "folder": "Folders",
+      "secret": "Secrets"
+    },
+    "jump": {
+      "label": "Jump to a prefix",
+      "placeholder": "Jump to a prefix, e.g. apps/web",
+      "go": "Go"
+    },
+    "filter": {
+      "label": "Filter the list",
+      "placeholder": "Filter by name"
+    },
+    "list": {
+      "loading": "Loading the list",
+      "name": "Name",
+      "type": "Type",
+      "denied": "Access denied",
+      "failed": "Could not load the list",
+      "zero": "empty",
+      "selected_one": "{{count}} selected",
+      "selected_other": "{{count}} selected",
+      "bulkDelete": "Delete current versions",
+      "clear": "Clear",
+      "count_one": "{{shown}} of {{count}} entry",
+      "count_other": "{{shown}} of {{count}} entries",
+      "selectAll": "Select all secrets",
+      "select": "Select secret",
+      "folder": "folder",
+      "secret": "secret",
+      "up": "Up one level"
+    },
+    "forbidden": {
+      "title": "No access to this path",
+      "text": "Your token has no",
+      "text2": "capability on this prefix. Ask a policy owner to grant it.",
+      "comment": "minimal policy"
+    },
+    "empty": {
+      "title": "Nothing here yet",
+      "text": "holds no secrets. Write the first one."
+    },
+    "nomatch": {
+      "title": "No matches",
+      "text": "Nothing on this level matches",
+      "reset": "Reset filter"
+    },
+    "keys": {
+      "nav": "navigate",
+      "open": "open",
+      "select": "select",
+      "up": "up a level",
+      "filter": "filter",
+      "write": "new secret"
+    },
+    "state": {
+      "active": "Active",
+      "deleted": "Deleted",
+      "destroyed": "Destroyed",
+      "current": "current"
+    },
+    "drawer": {
+      "title": "Secret",
+      "copyPath": "Copy path",
+      "newVersion": "New version",
+      "updated": "updated {{when}}",
+      "loading": "Loading the secret",
+      "loadFailed": "Could not load the secret"
+    },
+    "tabs": {
+      "value": "Value",
+      "versions": "Versions",
+      "diff": "Compare",
+      "meta": "Metadata"
+    },
+    "value": {
+      "viewingTitle": "Viewing version {{version}}",
+      "viewingText": "This is not the current version (v{{current}}).",
+      "backToCurrent": "Back to current",
+      "destroyedTitle": "Version destroyed",
+      "deletedTitle": "Version deleted",
+      "destroyedText": "Data of v{{version}} was destroyed permanently and cannot be restored.",
+      "deletedText": "v{{version}} is soft-deleted. The data is kept and can be restored.",
+      "restore": "Restore v{{version}}",
+      "hide": "Hide",
+      "show": "Show",
+      "modeKv": "Key/value",
+      "plain": "Plain text",
+      "hidesIn": "Hides in {{sec}} s",
+      "hidden": "Hidden",
+      "hideAll": "Hide all",
+      "revealAll": "Reveal all",
+      "copy": "Copy",
+      "copyJson": "Copy JSON",
+      "copied": "Copied",
+      "copyFailed": "Could not copy",
+      "rawNote": "Raw JSON as stored. Values are shown in full.",
+      "autoHiddenTitle": "Values hidden",
+      "autoHiddenText": "Revealed values were hidden again after 30 seconds."
+    },
+    "ver": {
+      "read": "Read",
+      "compare": "Compare",
+      "delete": "Delete",
+      "undelete": "Restore",
+      "destroy": "Destroy",
+      "gone": "data removed"
+    },
+    "diff": {
+      "noneTitle": "Nothing to compare",
+      "noneText": "At least two readable versions are needed.",
+      "was": "Was",
+      "became": "Became",
+      "showValues": "Show values",
+      "hiddenNote": "Values are masked. Turn on \"Show values\" to see them."
+    },
+    "meta": {
+      "current": "Current version",
+      "oldest": "Oldest kept",
+      "created": "Created",
+      "updated": "Updated",
+      "less": "Decrease",
+      "more": "Increase",
+      "save": "Save",
+      "reset": "Reset",
+      "hint": "max_versions: how many versions are kept. 0 means unlimited. Older versions are dropped on the next write."
+    },
+    "confirm": {
+      "softTitle": "Delete version {{version}}?",
+      "softText": "v{{version}} will be marked as deleted. You can restore it later.",
+      "destroyTitle": "Destroy version?",
+      "destroyText": "v{{version}} will be removed permanently. This cannot be undone. Type {{version}} to confirm."
+    },
+    "bulk": {
+      "title_one": "Delete current version of {{count}} secret?",
+      "title_other": "Delete current versions of {{count}} secrets?",
+      "text_one": "The current version of the selected secret will be soft-deleted. It can be restored.",
+      "text_other": "The current versions of the selected secrets will be soft-deleted. They can be restored.",
+      "confirm": "Delete"
+    },
+    "toast": {
+      "saved": "Secret saved",
+      "failed": "Operation failed",
+      "restored": "Version restored",
+      "deleted": "Version deleted",
+      "destroyed": "Version destroyed",
+      "metaSaved": "max_versions saved",
+      "bulkDone_one": "{{count}} secret deleted",
+      "bulkDone_other": "{{count}} secrets deleted"
+    },
+    "write": {
+      "title": "Write secret",
+      "titleEdit": "New version",
+      "save": "Save",
+      "name": "Name",
+      "namePlaceholder": "db-password",
+      "nameHint": "Letters, digits and . _ - ; use / for subfolders.",
+      "nameEmpty": "Enter a name",
+      "nameFormat": "Only letters, digits and . _ - / are allowed",
+      "nameFolder": "{{path}}/ is a folder, pick another name",
+      "isFolder": "folder",
+      "isNew": "new secret",
+      "exists": "exists, now v{{version}}",
+      "value": "Value",
+      "keys_one": "{{count}} key",
+      "keys_other": "{{count}} keys",
+      "modePairs": "Key/value",
+      "modeText": "Text",
+      "keyN": "Key {{n}}",
+      "valueN": "Value {{n}}",
+      "keyPlaceholder": "KEY",
+      "valuePlaceholder": "value",
+      "keyEmpty": "A key cannot be empty",
+      "keyFormat": "Keys: letters, digits and . _ - only",
+      "keyDup": "Key {{key}} is used twice",
+      "valueEmpty": "A value cannot be empty",
+      "addKey": "Add key",
+      "removeKey": "Remove key",
+      "textPlaceholder": "Any text. JSON objects are split into keys.",
+      "textHint": "Stored as one string. Masked until you reveal it.",
+      "cas": "Check-and-set",
+      "optional": "optional",
+      "casPlaceholder": "version number",
+      "casFormat": "A whole number, 0 or greater",
+      "casOptional": "Write only if the current version matches.",
+      "casMissing": "New secret: use 0 to forbid overwriting.",
+      "casNow": "Current version is",
+      "casFill": "Use {{version}}",
+      "casEmptyB": "empty",
+      "casEmpty": " write always",
+      "cas0": " only if the secret does not exist",
+      "casN": " only if the current version is N",
+      "noCas": "Write without CAS",
+      "conflictTitle": "Version conflict",
+      "conflictText": "You gave version {{given}}, but the secret is now at v{{actual}}. Someone wrote to it in the meantime.",
+      "toast409": "Version conflict",
+      "toast409Text": "The secret changed. Check the CAS value."
+    }
+  }
+}

@@ -1,1 +1,215 @@
-{}
+{
+  "title": "Cluster",
+  "eyebrow": "Operate · Cluster · Raft",
+  "h1a": "Cluster",
+  "h1b": "quorum",
+  "lead": "Tuck replicates through <b>Raft</b>: one leader takes writes, followers confirm them. A majority of voters must be alive, otherwise writes stop.",
+  "loading": "reading cluster state…",
+  "snapshot": "Snapshot",
+  "followerNote": "This node is a follower. Join and remove requests must go to the leader: {{addr}}.",
+  "role": {
+    "leader": "Leader",
+    "follower": "Follower",
+    "nonvoter": "Non-voter",
+    "candidate": "Candidate"
+  },
+  "banner": {
+    "ok": {
+      "title": "Cluster healthy",
+      "text": "{{count}} voters, quorum {{quorum}}. Leader: {{leader}}."
+    },
+    "nofault": {
+      "title": "No fault tolerance",
+      "text": "{{count}} voters, quorum {{quorum}}. Losing any voter stops writes. Leader: {{leader}}."
+    },
+    "electing": {
+      "title": "Election in progress",
+      "text": "No leader right now. Writes are paused until the voters elect one."
+    },
+    "down": {
+      "title": "Node is shut down",
+      "text": "The Raft state of this node is Shutdown. It does not take part in the cluster."
+    }
+  },
+  "topo": {
+    "title": "Topology",
+    "caption_one": "{{count}} node",
+    "caption_other": "{{count}} nodes",
+    "aria": "Raft cluster topology: nodes on a ring around the voter count",
+    "voters": "VOTERS",
+    "quorum": "QUORUM"
+  },
+  "legend": {
+    "leader": "leader",
+    "follower": "voter",
+    "nonvoter": "non-voter",
+    "hint": "click a node for details"
+  },
+  "metrics": {
+    "role": "This node",
+    "roleHint": "answered the request",
+    "roleDown": "Down",
+    "leaderAddr": "Leader address",
+    "noLeader": "no leader",
+    "state": "Writes",
+    "writeOk": "Accepting",
+    "writeElect": "Paused",
+    "writeDown": "Stopped",
+    "tolerance": "Fault tolerance",
+    "toleranceHint": "voters {{voters}} · quorum {{quorum}}"
+  },
+  "quorum": {
+    "title": "Quorum",
+    "voters_one": "{{count}} voter",
+    "voters_other": "{{count}} voters",
+    "rule": "majority = {{quorum}}",
+    "even": "An even number of voters adds no fault tolerance. Prefer an odd count.",
+    "lt3": "Fewer than 3 voters: the cluster survives no node loss."
+  },
+  "nodes": {
+    "eyebrow": "Raft peers",
+    "title": "Nodes"
+  },
+  "filter": {
+    "all": "All",
+    "leader": "Leader",
+    "follower": "Others"
+  },
+  "bulk": {
+    "selected_one": "{{count}} node selected",
+    "selected_other": "{{count}} nodes selected",
+    "remove": "Remove",
+    "clear": "Clear",
+    "all": "Select all nodes",
+    "row": "Select node {{id}}",
+    "word": "remove"
+  },
+  "table": {
+    "id": "Node ID",
+    "addr": "Raft address",
+    "role": "Role",
+    "suffrage": "Suffrage",
+    "me": "this node",
+    "remove": "Remove",
+    "none": "The server reports no nodes.",
+    "noMatch": "No nodes match the filter."
+  },
+  "drawer": {
+    "thisNode": "this node",
+    "remove": "Remove from cluster",
+    "leaderNote": "The leader replicates every write to the followers. Removing it triggers a new election.",
+    "followerNote": "Removal is sent to the leader and takes effect once the configuration change is committed."
+  },
+  "remove": {
+    "title": "Remove node",
+    "titleMany": "Remove nodes",
+    "text": "Node {{id}} will be removed from the Raft configuration. It stops receiving replicated data.",
+    "textMany": "These nodes will be removed from the Raft configuration: {{ids}}.",
+    "confirm": "Remove node",
+    "confirmMany_one": "Remove {{count}} node",
+    "confirmMany_other": "Remove {{count}} nodes",
+    "warnTitle": "Result:",
+    "left_one": "{{count}} voter will remain.",
+    "left_other": "{{count}} voters will remain.",
+    "warnLt3": "Fewer than 3 voters leave no fault tolerance.",
+    "warnEven": "An even voter count adds no fault tolerance.",
+    "warnLeader": "The leader is among them, a new election will start.",
+    "warnNotLeader": "This node is not the leader. The request will be refused; send it to {{addr}}.",
+    "done": "Node removed",
+    "failed": "Could not remove node",
+    "failedHint": "The server did not accept the change"
+  },
+  "join": {
+    "open": "Add node",
+    "title": "Add node",
+    "hint": "Registers a node in the Raft configuration. Start the new node with the same cluster flags first.",
+    "notLeaderTitle": "Not the leader.",
+    "notLeader": "Joining must go through the leader: {{addr}}. The request will be refused here.",
+    "nodeId": "Node ID",
+    "raftAddr": "Raft address",
+    "errIdSpaces": "The ID must not contain spaces.",
+    "errIdExists": "A node with this ID already exists.",
+    "errAddrFormat": "Expected host:port, for example 10.0.0.2:8201.",
+    "errAddrExists": "A node with this address already exists.",
+    "cancel": "Cancel",
+    "submit": "Add node",
+    "done": "Node added",
+    "doneMsg": "{{id}} joined the configuration",
+    "failed": "Could not add node",
+    "failedHint": "The server did not accept the change"
+  },
+  "toast": {
+    "evenTitle": "Even number of voters",
+    "evenMsg_one": "{{count}} voter: consider adding another node.",
+    "evenMsg_other": "{{count}} voters: an even count adds no fault tolerance, consider another node."
+  },
+  "snap": {
+    "title": "Snapshot",
+    "sub": "Download a consistent copy of the data from this node.",
+    "pillDone": "downloaded",
+    "pillNone": "none yet",
+    "last": "Last download",
+    "size": "Size",
+    "session": "This session",
+    "download": "Download snapshot",
+    "busy": "Downloading {{size}}",
+    "done": "Snapshot saved",
+    "failed": "Snapshot failed",
+    "forbidden": "The token cannot read sys/snapshot.",
+    "unsupported": "Snapshots need cluster mode.",
+    "failedHint": "The server did not return a snapshot"
+  },
+  "add": {
+    "title": "Adding a node",
+    "sub": "Joining is done from the new node or through the API.",
+    "s1": "Start the new node with <code>--cluster</code> and its own <code>--cluster-node-id</code>.",
+    "s2": "Point it at the leader with <code>--cluster-join</code>, or press <b>Add node</b> above.",
+    "s3": "Keep an odd number of voters: 3 or 5."
+  },
+  "log": {
+    "eyebrow": "Observed",
+    "title": "Event log",
+    "count_one": "{{count}} event",
+    "count_other": "{{count}} events",
+    "note": "Built in this tab from changes between status polls. It is not the server log and resets on reload.",
+    "level": {
+      "i": "info",
+      "w": "warn",
+      "e": "error",
+      "o": "ok",
+      "v": "vote"
+    },
+    "ev": {
+      "connected": "Connected: {{count}} nodes, leader {{leader}}",
+      "leaderLost": "Leader {{id}} lost",
+      "leaderElected": "Leader elected: {{id}}",
+      "leaderChanged": "Leader changed: {{from}} to {{to}}",
+      "stateChanged": "State of this node: {{from}} to {{to}}",
+      "nodeJoined": "Node {{id}} joined ({{addr}})",
+      "suffrageChanged": "{{id}} is now {{to}}",
+      "nodeLeft": "Node {{id}} left the configuration"
+    }
+  },
+  "single": {
+    "bar": "single node",
+    "barState": "cluster mode off",
+    "eyebrow": "Cluster · not enabled",
+    "title": "Running on <em>one node</em>",
+    "text": "This server works without Raft. Add replicas to survive node loss and to take consistent snapshots.",
+    "s1": "Start the first node with <code>--cluster --cluster-bootstrap</code>.",
+    "s2": "Give every node a unique <code>--cluster-node-id</code> and a Raft <code>--cluster-bind-addr</code>.",
+    "s3": "Start the others with <code>--cluster-join</code> pointing at the leader."
+  },
+  "forbidden": {
+    "bar": "access denied",
+    "eyebrow": "403 · forbidden",
+    "title": "No access to the <b>cluster</b>",
+    "text": "Your token has no <code>read</code> capability on <code>sys/cluster</code>. Ask an administrator to extend its policy.",
+    "termComment": "what the server checked",
+    "retry": "Check again"
+  },
+  "error": {
+    "title": "Could not load the cluster",
+    "message": "The server did not return cluster status."
+  }
+}

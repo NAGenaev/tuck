@@ -1,1 +1,171 @@
-{}
+{
+  "title": "Mounts",
+  "eyebrow": "Engines · /v1/sys/mounts",
+  "h1a": "Mount",
+  "h1b": "points",
+  "lead": "Every secrets engine and auth method plugs into the <b>path bus</b> through its own socket. Mount an engine, tune its TTLs, or pull the plug, taking the data under the path with it.",
+  "create": "Mount engine",
+  "stats": {
+    "total": "Plugged into the bus",
+    "totalUnit": "mounts",
+    "totalHint": "{{builtin}} built-in · {{custom}} custom",
+    "types": "Breakdown by type",
+    "custom": "Custom",
+    "customUnit": "unmountable",
+    "customHint": "added by operators"
+  },
+  "filter": {
+    "all": "All",
+    "secrets": "Secrets",
+    "auth": "Auth",
+    "sys": "System"
+  },
+  "search": {
+    "label": "Search",
+    "placeholder": "Search by path or type"
+  },
+  "unit": {
+    "builtin": "built-in",
+    "noDesc": "No description",
+    "created": "Mounted",
+    "accessor": "Accessor",
+    "tune": "Tune {{path}}",
+    "unmount": "Unmount {{path}}",
+    "builtinLocked": "Built-in mount: cannot be unmounted",
+    "copyAccessor": "Copy accessor",
+    "experimental": "exp.",
+    "experimentalHint": "Experimental engine: off by default, needs the --enable-engine flag"
+  },
+  "detail": {
+    "accessor": "Accessor",
+    "mountedAt": "Mounted",
+    "defaultTtl": "Default lease TTL",
+    "maxTtl": "Max lease TTL",
+    "noCache": "force_no_cache",
+    "yes": "yes",
+    "no": "no",
+    "api": "Tuning API",
+    "loadFailed": "could not be read",
+    "copyPath": "Copy path",
+    "tune": "Tune"
+  },
+  "section": {
+    "all": "All mounts",
+    "found": "Found · {{count}}"
+  },
+  "noMatch": {
+    "title": "<em>Nothing</em> found",
+    "text": "No mounts match this filter. Clear the search or pick \"All\".",
+    "reset": "Reset"
+  },
+  "loading": "Reading /v1/sys/mounts…",
+  "empty": {
+    "eyebrow": "Empty bus",
+    "title": "No <em>mounts</em> yet",
+    "text": "Nothing is plugged into the path bus. Mount a secrets engine or an auth method, and add the rest as you need it.",
+    "cta": "Mount the first engine"
+  },
+  "forbidden": {
+    "eyebrow": "GET /v1/sys/mounts",
+    "title": "Access <em>denied</em>",
+    "text": "Your token is not allowed to read the list of mounts. Ask an administrator to add the lines below to your policy. The list appears right away, no re-login needed.",
+    "policyTitle": "policy rule",
+    "policyState": "not assigned",
+    "retry": "Try again",
+    "copyPolicy": "Copy rule"
+  },
+  "error": {
+    "title": "Could not read mounts",
+    "message": "The server did not answer or returned an error. Check the connection and try again."
+  },
+  "wizard": {
+    "eyebrow": "New mount · step {{n}} of 3",
+    "steps": {
+      "type": "Type",
+      "typeHint": "catalog",
+      "path": "Path",
+      "pathHint": "and description",
+      "review": "Review",
+      "reviewHint": "mount"
+    },
+    "titles": {
+      "0": "Pick an engine type",
+      "1": "Where to plug it in",
+      "2": "Review and mount"
+    },
+    "intro": "Mount a new secrets engine or auth method at any path. Existing mounts are not affected. TTLs and other settings are tuned after mounting.",
+    "catalogLabel": "Engine catalog",
+    "types": {
+      "kv": { "name": "KV", "desc": "Key-value store for application secrets.", "tag": "secrets" },
+      "transit": { "name": "Transit", "desc": "Encryption as a service: the app never sees the key.", "tag": "stores no data" },
+      "database": { "name": "Database", "desc": "Dynamic credentials for databases.", "tag": "dynamic secrets" },
+      "kubernetes": { "name": "Kubernetes", "desc": "ServiceAccount login through TokenReview.", "tag": "auth · clusters" },
+      "approle": { "name": "AppRole", "desc": "Machine login with role_id and secret_id for CI/CD.", "tag": "auth · machines" },
+      "jwt": { "name": "JWT / OIDC", "desc": "Login with a JWT from the corporate identity provider.", "tag": "auth · SSO" },
+      "pki": { "name": "PKI", "desc": "Certificates from your own CA for internal use (mTLS, tests).", "tag": "experimental" },
+      "ssh": { "name": "SSH", "desc": "Signed SSH certificates for host access.", "tag": "experimental" },
+      "totp": { "name": "TOTP", "desc": "Generate and verify one-time codes (RFC 6238).", "tag": "experimental" },
+      "custom": { "name": "Other type", "desc": "Any other type the server understands.", "tag": "manual" }
+    },
+    "expPill": "off",
+    "expTitle": "The {{type}}/ engine is off by default.",
+    "expText": "This is an experimental subsystem. You can register the mount, but its API answers 404 until the server is started with the flag:",
+    "customType": "Engine type",
+    "customTypePlaceholder": "e.g. kv",
+    "customTypeHint": "Lowercase latin letters, digits, \"-\" and \"_\".",
+    "errCustomType": "Only lowercase latin letters, digits, \"-\" and \"_\"",
+    "path": "Mount path",
+    "pathErrEmpty": "Enter a path, for example {{example}}/",
+    "pathErrChars": "Lowercase latin letters, digits, \"-\" and \"_\" only; separate segments with \"/\"",
+    "pathErrLen": "At most 64 characters",
+    "pathErrTaken": "Path {{path}} is taken: {{type}} is mounted there",
+    "willMount": "Will be mounted at:",
+    "description": "Description",
+    "descPlaceholder": "What this engine is for, visible to every admin",
+    "descHint": "Optional · up to 120 characters",
+    "slip": {
+      "type": "Type",
+      "path": "Path",
+      "desc": "Description"
+    },
+    "request": "request",
+    "back": "← Back",
+    "next": "Next →",
+    "cancel": "Cancel",
+    "mount": "Mount"
+  },
+  "tune": {
+    "title": "Tune {{path}}",
+    "current": "Current: default <b>{{def}}</b>, max <b>{{max}}</b>",
+    "loadFailed": "Could not read the current settings. Saving will overwrite them with the values below.",
+    "accessor": "Accessor",
+    "reveal": "Show / hide",
+    "copy": "Copy accessor",
+    "defaultTtl": "Default lease TTL",
+    "maxTtl": "Max lease TTL",
+    "ttlHint": "0 means no override: system defaults apply.",
+    "noCache": "Do not cache responses",
+    "noCacheDesc": "force_no_cache · for data that must not be held in memory",
+    "errOrder": "Max TTL cannot be lower than the default TTL",
+    "cancel": "Cancel",
+    "save": "Save tuning"
+  },
+  "unmount": {
+    "title": "Unmount?",
+    "message": "This unmounts \"{{path}}\" together with its data.",
+    "warnTitle": "Irreversible.",
+    "warn": "All data under {{path}} is lost for good, and clients using this path lose access. It can only be restored from a snapshot.",
+    "confirm": "Unmount"
+  },
+  "toast": {
+    "mounted": "Mounted",
+    "mountedMsg": "{{path}} is plugged into the bus",
+    "mountFailed": "Mount failed",
+    "unmounted": "Unmounted",
+    "unmountedMsg": "{{path}} and its data were removed",
+    "unmountFailed": "Unmount failed",
+    "tuned": "Saved",
+    "tunedMsg": "Settings of {{path}} saved",
+    "tuneFailed": "Could not save the tuning"
+  }
+}

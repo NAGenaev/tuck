@@ -106,3 +106,36 @@ func decrypt(key, data []byte) ([]byte, error) {
 	s, _ := LookupSuite("")
 	return s.open(key, data, nil)
 }
+
+// FuzzSuiteOpen: no registered suite may panic on arbitrary ciphertext/AAD,
+// and anything it seals must open back to the same plaintext.
+func FuzzSuiteOpen(f *testing.F) {
+	f.Add([]byte("payload"), []byte("barrier/x"), []byte{})
+	f.Add([]byte{}, []byte{}, make([]byte, 40))
+	f.Add([]byte("x"), []byte("aad"), make([]byte, 16))
+
+	f.Fuzz(func(t *testing.T, plaintext, aad, garbage []byte) {
+		for _, name := range SuiteNames() {
+			s, err := LookupSuite(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			key := make([]byte, keySize)
+			if _, err := io.ReadFull(rand.Reader, key); err != nil {
+				t.Fatal(err)
+			}
+			_, _ = s.open(key, garbage, aad) // must not panic
+			ct, err := s.seal(key, plaintext, aad)
+			if err != nil {
+				t.Fatalf("%s seal: %v", name, err)
+			}
+			got, err := s.open(key, ct, aad)
+			if err != nil || string(got) != string(plaintext) {
+				t.Fatalf("%s roundtrip: %v", name, err)
+			}
+			if _, err := s.open(key, ct, append(append([]byte{}, aad...), 'x')); err == nil {
+				t.Fatalf("%s accepted ciphertext under different AAD", name)
+			}
+		}
+	})
+}

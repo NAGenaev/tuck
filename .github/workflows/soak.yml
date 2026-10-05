@@ -47,6 +47,30 @@ jobs:
              ./internal/kvsecret/...
              ./internal/token/...
 
+  fuzz:
+    name: Fuzzing (time-boxed)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Fuzz barrier, shamir, policy, token, kv (60s each)
+        run: |
+          set -e
+          fuzz() { go test -run='^$' -fuzz="^$2\$" -fuzztime=60s "$1"; }
+          fuzz ./internal/barrier FuzzDecryptBytes
+          fuzz ./internal/barrier FuzzSuiteOpen
+          fuzz ./internal/barrier FuzzBarrierUnseal
+          fuzz ./internal/shamir FuzzCombine
+          fuzz ./internal/policy FuzzGlobMatch
+          fuzz ./internal/token FuzzUnmarshalToken
+          fuzz ./internal/kvv2 FuzzMetaJSON
+
   coverage-gate:
     name: Security-Critical Coverage Gate
     runs-on: ubuntu-latest

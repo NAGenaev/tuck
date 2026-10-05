@@ -214,3 +214,24 @@ func TestGitHubRoleNamespaceRoundTrip(t *testing.T) {
 		t.Fatalf("unknown namespace: %d %s", s, b)
 	}
 }
+
+// A role bound to a namespace that was later deleted must stop logging in.
+func TestLoginRefusedWhenBoundNamespaceDeleted(t *testing.T) {
+	reviewer := &mockReviewer{result: &k8sauth.ReviewResult{
+		Authenticated: true,
+		Username:      "system:serviceaccount:default:myapp",
+	}}
+	ts, _, root := newTestServerWithK8s(t, reviewer)
+	seedTeams(t, ts, root)
+	if s, b := nsReq(t, ts, http.MethodPut, "/v1/auth/kubernetes/role/default/myapp", `{"policies":["rd"],"tuck_namespace":"team-a"}`, root, ""); s != http.StatusNoContent {
+		t.Fatalf("put role: %d %s", s, b)
+	}
+	if s, b := nsReq(t, ts, http.MethodDelete, "/v1/sys/namespaces/team-a", "", root, ""); s >= 300 {
+		t.Fatalf("delete namespace: %d %s", s, b)
+	}
+	resp := loginK8s(t, ts, "sa")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("login into deleted namespace: got %d, want 403", resp.StatusCode)
+	}
+}

@@ -816,6 +816,9 @@ func (c *Core) LoginK8sCluster(ctx context.Context, cluster, saToken string) (*t
 	if cluster != "" {
 		who = cluster + ":" + who
 	}
+	if err := c.checkLoginNamespace(ctx, role.TuckNamespace); err != nil {
+		return nil, err
+	}
 	tok, err := c.CreateToken(ctx, "k8s:"+who, role.Policies, ttl, loginTokenOpts(role.TuckNamespace)...)
 	if err != nil {
 		return nil, err
@@ -1080,6 +1083,9 @@ func (c *Core) LoginJWT(ctx context.Context, tokenStr string) (*token.Token, err
 	if err != nil {
 		return nil, err
 	}
+	if err := c.checkLoginNamespace(ctx, result.TuckNamespace); err != nil {
+		return nil, err
+	}
 	tok, err := c.CreateToken(ctx, "jwt:"+result.Subject, result.Policies, result.TTL, loginTokenOpts(result.TuckNamespace)...)
 	if err != nil {
 		return nil, err
@@ -1120,6 +1126,9 @@ func (c *Core) LoginGitHub(ctx context.Context, tokenStr, roleName string) (*tok
 	provider := ghauth.NewProvider()
 	result, err := provider.Login(ctx, tokenStr, role)
 	if err != nil {
+		return nil, err
+	}
+	if err := c.checkLoginNamespace(ctx, result.TuckNamespace); err != nil {
 		return nil, err
 	}
 	tok, err := c.CreateToken(ctx, "github:"+result.Subject, result.Policies, result.TTL, loginTokenOpts(result.TuckNamespace)...)
@@ -1285,6 +1294,9 @@ func (c *Core) DestroySecretID(ctx context.Context, id string) error {
 func (c *Core) LoginAppRole(ctx context.Context, roleID, secretID, remoteIP string) (*token.Token, error) {
 	result, err := c.approleStore.Login(ctx, roleID, secretID, remoteIP)
 	if err != nil {
+		return nil, err
+	}
+	if err := c.checkLoginNamespace(ctx, result.TuckNamespace); err != nil {
 		return nil, err
 	}
 	tok, err := c.CreateToken(ctx, result.Subject, result.Policies, result.TTL, loginTokenOpts(result.TuckNamespace)...)
@@ -1568,6 +1580,9 @@ func (c *Core) LoginLDAP(ctx context.Context, username, password string) (*token
 	auth := authlda.NewAuthenticator(*cfg, authOpts...)
 	result, err := auth.Login(ctx, roles, username, password)
 	if err != nil {
+		return nil, err
+	}
+	if err := c.checkLoginNamespace(ctx, result.TuckNamespace); err != nil {
 		return nil, err
 	}
 	tok, err := c.CreateToken(ctx, "ldap:"+result.Username, result.Policies, result.TTL, loginTokenOpts(result.TuckNamespace)...)
@@ -1885,4 +1900,19 @@ func (c *Core) PutSysConfig(ctx context.Context, cfg sysconfig.Config) error {
 // version and the number of entries rewritten.
 func (c *Core) RotateDataKey(ctx context.Context, reencrypt bool) (uint32, int, error) {
 	return c.barrier.RotateDataKey(ctx, reencrypt)
+}
+
+// checkLoginNamespace refuses to mint a token for a role bound to a namespace
+// that no longer exists, instead of issuing a token into a dangling scope.
+func (c *Core) checkLoginNamespace(ctx context.Context, ns string) error {
+	if ns == "" || ns == namespace.RootNamespace {
+		return nil
+	}
+	if _, err := c.namespaces.Get(ctx, ns); err != nil {
+		if errors.Is(err, namespace.ErrNotFound) {
+			return ErrUnauthorized
+		}
+		return fmt.Errorf("check namespace: %w", err)
+	}
+	return nil
 }

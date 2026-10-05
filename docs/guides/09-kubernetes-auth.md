@@ -72,6 +72,40 @@ Sidecar или init-скрипт:
 | read `secret/app/*` | 200 |
 | read `secret/admin/*` | 403 |
 
+## Много кластеров: топология
+
+Один Tuck доверяет **одному** кластеру по умолчанию (`--k8s-api`): роль определяется парой `namespace/serviceaccount`, и в двух кластерах `prod/api` – это одна и та же роль. Для банка с несколькими кластерами есть три схемы:
+
+| Схема | Когда | Что делать |
+|---|---|---|
+| **Tuck на сегмент** (рекомендуется для пилота) | сегменты изолированы сетью и ИБ | на каждый сегмент свой Tuck со своим `--k8s-api`; ничего не пересекается |
+| **Один Tuck, несколько кластеров** | общий Tuck-кластер (Raft), кластеры одного уровня доверия | перечислить кластеры в конфиге (ниже), роли создавать под `clusters/<имя>` |
+| **AppRole / JWT-OIDC** | кластеры без доступа Tuck к их TokenReview API | см. [10](10-approle.md), [11](11-jwt-oidc.md) |
+
+Несколько кластеров в одном Tuck:
+
+```yaml
+kubernetes:
+  api: https://k8s-dc1.bank.local:6443          # кластер по умолчанию
+  token_file: /etc/tuck/k8s/dc1.token
+  ca_file: /etc/tuck/k8s/dc1.ca
+  clusters:
+    - name: dc2
+      api: https://k8s-dc2.bank.local:6443
+      token_file: /etc/tuck/k8s/dc2.token      # SA токен с правом create tokenreviews
+      ca_file: /etc/tuck/k8s/dc2.ca
+```
+
+Роль в конкретном кластере (в кластере по умолчанию путь прежний):
+
+```bash
+curl -X PUT -H "X-Tuck-Token: $ROOT" $TUCK/v1/auth/kubernetes/clusters/dc2/role/prod/api \n  -d '{"policies":["prod-read"],"tuck_namespace":"prod"}'
+```
+
+Логин: в теле добавляется `"cluster":"dc2"` (пусто = кластер по умолчанию). Подам этого не нужно знать вручную: `tuck.io/auth: kubernetes` + `tuck.io/cluster: dc2` в Injector, `TUCK_K8S_CLUSTER=dc2` в агенте. Токен, выданный кластером dc2, не пройдёт проверку в другом кластере, поэтому Pod не может выдать себя за кластер, которого нет в его аннотации. Политики можно ограничивать по кластеру путём `auth/k8s/cluster/dc2/role/*`.
+
+Ограничения: список кластеров читается при старте (изменение – рестарт); Operator выбирает кластер флагом `--tuck-cluster`.
+
 ## Дальше
 
 - [08 — Injector](08-webhook-injector.md) + scoped token

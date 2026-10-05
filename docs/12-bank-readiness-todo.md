@@ -44,7 +44,7 @@
 | D1 | Injector: логин по ServiceAccount (`tuck.io/auth: kubernetes`), пример в `deploy/webhook` переведён на него | P0 | ✅ |
 | D2 | CSI-провайдер: live-refresh есть, но только opt-in (`tuck.io/refresh-interval`); по умолчанию снимок при монтировании — зафиксировать в гайде для банка или сделать значением по умолчанию | P2 | 🟡 |
 | D3 | Helm: убрать формулировки про `TUCK_TOKEN` в values как «штатный» путь; показать Kubernetes auth + оператор | P1 | ⬜ |
-| D4 | Kubernetes auth знает один `--k8s-api` — нет измерения «кластер». Для банка с многими кластерами: Tuck на сегмент либо JWT/AppRole; документировать топологию | P0 | ⬜ |
+| D4 | Несколько кластеров: `kubernetes.clusters` + роли по кластеру (`/v1/auth/kubernetes/clusters/{c}/role/...`), топология «Tuck на сегмент / общий Tuck / AppRole» описана в [guides/09](guides/09-kubernetes-auth.md). | P0 | ✅ |
 | D5 | Rollout привязки к namespace: инструкция миграции существующих ролей и токенов (уже выданные токены не привязаны) | P1 | 🟡 |
 | D6 | Роли, ссылающиеся на удалённый namespace — проверка/очистка | P2 | ⬜ |
 

@@ -18,6 +18,8 @@ import (
 func main() {
 	tuckAddr := flag.String("tuck-addr", "https://tuck.tuck.svc:8200",
 		"address of the Tuck server")
+	tuckCluster := flag.String("tuck-cluster", "",
+		"Tuck kubernetes-auth cluster entry for this operator's ServiceAccount (multi-cluster Tuck; empty = default)")
 	namespace := flag.String("namespace", "",
 		"namespace to watch (empty = all namespaces)")
 	saTokenFile := flag.String("sa-token-file",
@@ -58,7 +60,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	tuckClient := operator.NewTuckClient(*tuckAddr, *saTokenFile)
+	tuckClient := operator.NewTuckClient(*tuckAddr, *saTokenFile).WithCluster(*tuckCluster)
 	ctrl := operator.New(kubeClient, tuckClient, *namespace)
 	ctrl.EnforceNamespacePaths(*enforcePaths)
 

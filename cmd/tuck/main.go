@@ -119,6 +119,7 @@ func main() {
 
 	// Load config file and apply values for flags that were NOT set on the CLI.
 	// Priority: CLI flag > env var > config file > built-in default.
+	var k8sClusters []config.K8sCluster
 	cfg, resolvedCfgPath, cfgErr := config.Load(*configFile)
 	if cfgErr != nil {
 		log.Fatalf("config: %v", cfgErr)
@@ -190,6 +191,7 @@ func main() {
 		apply("k8s-api", cfg.Kubernetes.API)
 		apply("k8s-token-file", cfg.Kubernetes.TokenFile)
 		apply("k8s-ca-file", cfg.Kubernetes.CAFile)
+		k8sClusters = cfg.Kubernetes.Clusters
 
 		apply("otel-endpoint", cfg.Telemetry.OtelEndpoint)
 		apply("barrier-cipher", cfg.Barrier.Cipher)
@@ -338,6 +340,19 @@ func main() {
 	c := core.NewWithK8s(backend, s, reviewer)
 	if err := c.SetBarrierCipher(*barrierCipher); err != nil {
 		log.Fatalf("barrier cipher: %v", err)
+	}
+	for _, cl := range k8sClusters {
+		if cl.API == "" || cl.TokenFile == "" {
+			log.Fatalf("kubernetes cluster %q: api and token_file are required", cl.Name)
+		}
+		r, buildErr := k8sauth.NewClientFromFiles(cl.API, cl.TokenFile, cl.CAFile)
+		if buildErr != nil {
+			log.Fatalf("kubernetes cluster %q: %v", cl.Name, buildErr)
+		}
+		if addErr := c.AddK8sCluster(cl.Name, r); addErr != nil {
+			log.Fatalf("kubernetes cluster: %v", addErr)
+		}
+		log.Printf("tuck: kubernetes cluster %q enabled (%s)", cl.Name, cl.API)
 	}
 
 	// --- Audit log ---

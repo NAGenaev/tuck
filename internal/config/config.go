@@ -77,6 +77,9 @@ type Config struct {
 		API       string `yaml:"api"`
 		TokenFile string `yaml:"token_file"`
 		CAFile    string `yaml:"ca_file"`
+		// Clusters lists additional trusted clusters (multi-cluster setups).
+		// The top-level api/token_file/ca_file stay the default cluster.
+		Clusters []K8sCluster `yaml:"clusters"`
 	} `yaml:"kubernetes"`
 
 	Barrier struct {
@@ -119,4 +122,14 @@ func Load(path string) (*Config, string, error) {
 		return nil, "", fmt.Errorf("parse config %q: %w", path, err)
 	}
 	return &cfg, path, nil
+}
+
+// K8sCluster is one extra trusted Kubernetes cluster. Tuck verifies
+// ServiceAccount tokens against its TokenReview API using TokenFile, a
+// reviewer token that must be allowed to create tokenreviews there.
+type K8sCluster struct {
+	Name      string `yaml:"name"`
+	API       string `yaml:"api"`
+	TokenFile string `yaml:"token_file"`
+	CAFile    string `yaml:"ca_file"`
 }

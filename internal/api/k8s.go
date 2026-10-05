@@ -20,6 +20,7 @@ type putK8sRoleReq struct {
 }
 
 type k8sRoleResp struct {
+	Cluster        string   `json:"cluster,omitempty"`
 	Namespace      string   `json:"namespace"`
 	ServiceAccount string   `json:"service_account"`
 	Policies       []string `json:"policies"`
@@ -37,6 +38,7 @@ func (s *Server) loginK8s(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Token string `json:"token"`
+		Cluster string `json:"cluster"`
 	}
 	if !decodeJSON(w, body, &req) {
 		return
@@ -45,8 +47,12 @@ func (s *Server) loginK8s(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "field 'token' is required"})
 		return
 	}
-	tok, err := s.core.LoginK8s(r.Context(), req.Token)
+	tok, err := s.core.LoginK8sCluster(r.Context(), req.Cluster, req.Token)
 	if err != nil {
+		if errors.Is(err, core.ErrK8sUnknownCluster) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown kubernetes cluster"})
+			return
+		}
 		if errors.Is(err, core.ErrK8sAuthDisabled) {
 			writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "kubernetes auth is not configured"})
 			return
@@ -58,8 +64,12 @@ func (s *Server) loginK8s(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) putK8sRole(w http.ResponseWriter, r *http.Request) {
-	namespace, sa := r.PathValue("namespace"), r.PathValue("sa")
-	enforcePath := "auth/k8s/role/" + namespace + "/" + sa
+	cluster, namespace, sa := r.PathValue("cluster"), r.PathValue("namespace"), r.PathValue("sa")
+	if cluster != "" && !k8sauth.ValidClusterName(cluster) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid cluster name"})
+		return
+	}
+	enforcePath := k8sRolePolicyPath(cluster, namespace, sa)
 	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), enforcePath, policy.CapWrite); err != nil {
 		writeErr(w, err)
 		return
@@ -89,6 +99,7 @@ func (s *Server) putK8sRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	role := &k8sauth.K8sRole{
+		Cluster:        cluster,
 		Namespace:      namespace,
 		ServiceAccount: sa,
 		Policies:       req.Policies,
@@ -96,6 +107,10 @@ func (s *Server) putK8sRole(w http.ResponseWriter, r *http.Request) {
 		TuckNamespace:  tuckNS,
 	}
 	if err := s.core.CreateK8sRole(r.Context(), role); err != nil {
+		if errors.Is(err, core.ErrK8sUnknownCluster) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown kubernetes cluster"})
+			return
+		}
 		writeErr(w, err)
 		return
 	}
@@ -103,13 +118,17 @@ func (s *Server) putK8sRole(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getK8sRole(w http.ResponseWriter, r *http.Request) {
-	namespace, sa := r.PathValue("namespace"), r.PathValue("sa")
-	enforcePath := "auth/k8s/role/" + namespace + "/" + sa
+	cluster, namespace, sa := r.PathValue("cluster"), r.PathValue("namespace"), r.PathValue("sa")
+	if cluster != "" && !k8sauth.ValidClusterName(cluster) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid cluster name"})
+		return
+	}
+	enforcePath := k8sRolePolicyPath(cluster, namespace, sa)
 	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), enforcePath, policy.CapRead); err != nil {
 		writeErr(w, err)
 		return
 	}
-	role, err := s.core.GetK8sRole(r.Context(), namespace, sa)
+	role, err := s.core.GetK8sRole(r.Context(), cluster, namespace, sa)
 	if err != nil {
 		if errors.Is(err, k8sauth.ErrRoleNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "k8s role not found"})
@@ -123,6 +142,7 @@ func (s *Server) getK8sRole(w http.ResponseWriter, r *http.Request) {
 		ttlStr = role.TTL.String()
 	}
 	writeJSON(w, http.StatusOK, k8sRoleResp{
+		Cluster:        role.Cluster,
 		Namespace:      role.Namespace,
 		ServiceAccount: role.ServiceAccount,
 		Policies:       role.Policies,
@@ -132,15 +152,38 @@ func (s *Server) getK8sRole(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteK8sRole(w http.ResponseWriter, r *http.Request) {
-	namespace, sa := r.PathValue("namespace"), r.PathValue("sa")
-	enforcePath := "auth/k8s/role/" + namespace + "/" + sa
+	cluster, namespace, sa := r.PathValue("cluster"), r.PathValue("namespace"), r.PathValue("sa")
+	if cluster != "" && !k8sauth.ValidClusterName(cluster) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid cluster name"})
+		return
+	}
+	enforcePath := k8sRolePolicyPath(cluster, namespace, sa)
 	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), enforcePath, policy.CapDelete); err != nil {
 		writeErr(w, err)
 		return
 	}
-	if err := s.core.DeleteK8sRole(r.Context(), namespace, sa); err != nil {
+	if err := s.core.DeleteK8sRole(r.Context(), cluster, namespace, sa); err != nil {
 		writeErr(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// k8sRolePolicyPath is the ACL path guarding a role. Default-cluster roles keep
+// the legacy path; named clusters get their own, so policies can be scoped per
+// cluster.
+func k8sRolePolicyPath(cluster, namespace, sa string) string {
+	if cluster == "" {
+		return "auth/k8s/role/" + namespace + "/" + sa
+	}
+	return "auth/k8s/cluster/" + cluster + "/role/" + namespace + "/" + sa
+}
+
+// listK8sClusters returns the names of the extra trusted clusters.
+func (s *Server) listK8sClusters(w http.ResponseWriter, r *http.Request) {
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/k8s/cluster", policy.CapList); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"clusters": s.core.K8sClusters()})
 }

@@ -222,3 +222,25 @@ func TestInjectKubernetesAuthMountsNoStaticToken(t *testing.T) {
 		t.Fatalf("expected TUCK_AUTH=kubernetes env: %s", s)
 	}
 }
+
+func TestInjectKubernetesAuthClusterEnv(t *testing.T) {
+	h := NewHandler("ghcr.io/nagenaev/tuck-agent:latest", nil)
+	pod := Pod{
+		Metadata: ObjectMeta{Annotations: map[string]string{
+			AnnotationInject:  "true",
+			AnnotationAddr:    "https://tuck.svc:8200",
+			AnnotationSecrets: "db/password:password",
+			AnnotationAuth:    "kubernetes",
+			AnnotationCluster: "dc2",
+		}},
+		Spec: PodSpec{Containers: []Container{{Name: "app", Image: "nginx"}}},
+	}
+	resp := callWebhook(t, h, admissionBody(t, pod))
+	raw, err := base64.StdEncoding.DecodeString(string(resp.Response.Patch))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(raw, []byte(`"TUCK_K8S_CLUSTER"`)) || !bytes.Contains(raw, []byte(`"dc2"`)) {
+		t.Fatalf("expected TUCK_K8S_CLUSTER=dc2 env: %s", raw)
+	}
+}

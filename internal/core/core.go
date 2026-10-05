@@ -53,6 +53,7 @@ var (
 	ErrTokenInvalid    = errors.New("invalid or expired token")
 	ErrNotRenewable    = errors.New("token is not renewable")
 	ErrK8sAuthDisabled = errors.New("kubernetes auth is not configured")
+	ErrK8sUnknownCluster = errors.New("unknown kubernetes cluster")
 
 	// ErrNeedsUnseal is returned by Start when the seal requires interactive
 	// shard collection (e.g. ShamirSeal). The server remains running; callers
@@ -117,6 +118,7 @@ type Core struct {
 	// optional — nil means k8s auth is disabled
 	k8sReviewer k8sauth.Reviewer
 	k8sRoles    *k8sauth.RoleStore
+	k8sClusters map[string]k8sauth.Reviewer // named extra clusters; set at startup, read-only afterwards
 
 	// ldapDialerFn, when non-nil, overrides the real LDAP dial. Tests inject a
 	// fake Conn via SetLDAPDialer so they don't need a live directory server.
@@ -728,10 +730,62 @@ func (c *Core) ListPolicies(ctx context.Context, ns string) ([]string, error) {
 // LoginK8s validates a Kubernetes ServiceAccount JWT via the configured
 // Reviewer, looks up the bound role, and returns a short-lived Tuck token.
 func (c *Core) LoginK8s(ctx context.Context, saToken string) (*token.Token, error) {
-	if c.k8sReviewer == nil {
-		return nil, ErrK8sAuthDisabled
+	return c.LoginK8sCluster(ctx, "", saToken)
+}
+
+// AddK8sCluster registers an additional trusted cluster under name. Call it
+// during startup, before serving requests. The default cluster (empty name)
+// is the reviewer passed to NewWithK8s.
+func (c *Core) AddK8sCluster(name string, r k8sauth.Reviewer) error {
+	if !k8sauth.ValidClusterName(name) {
+		return fmt.Errorf("invalid cluster name %q", name)
 	}
-	result, err := c.k8sReviewer.Review(saToken)
+	if r == nil {
+		return fmt.Errorf("cluster %q: nil reviewer", name)
+	}
+	if _, dup := c.k8sClusters[name]; dup {
+		return fmt.Errorf("duplicate cluster %q", name)
+	}
+	if c.k8sClusters == nil {
+		c.k8sClusters = map[string]k8sauth.Reviewer{}
+	}
+	c.k8sClusters[name] = r
+	return nil
+}
+
+// K8sClusters lists the names of the additionally registered clusters.
+func (c *Core) K8sClusters() []string {
+	names := make([]string, 0, len(c.k8sClusters))
+	for n := range c.k8sClusters {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func (c *Core) k8sReviewerFor(cluster string) (k8sauth.Reviewer, error) {
+	if cluster == "" {
+		if c.k8sReviewer == nil {
+			return nil, ErrK8sAuthDisabled
+		}
+		return c.k8sReviewer, nil
+	}
+	r, ok := c.k8sClusters[cluster]
+	if !ok {
+		return nil, ErrK8sUnknownCluster
+	}
+	return r, nil
+}
+
+// LoginK8sCluster is LoginK8s for a named cluster ("" = the default one). The
+// role is looked up within that cluster only, so identical namespace/SA names
+// in different clusters never share a role.
+func (c *Core) LoginK8sCluster(ctx context.Context, cluster, saToken string) (*token.Token, error) {
+	reviewer, err := c.k8sReviewerFor(cluster)
+	if err != nil {
+		return nil, err
+	}
+	result, err := reviewer.Review(saToken)
 	if err != nil {
 		return nil, fmt.Errorf("k8s token review: %w", err)
 	}
@@ -742,7 +796,7 @@ func (c *Core) LoginK8s(ctx context.Context, saToken string) (*token.Token, erro
 	if err != nil {
 		return nil, ErrTokenInvalid
 	}
-	role, err := c.k8sRoles.Get(ctx, namespace, sa)
+	role, err := c.k8sRoles.Get(ctx, cluster, namespace, sa)
 	if err != nil {
 		if errors.Is(err, k8sauth.ErrRoleNotFound) {
 			return nil, ErrUnauthorized
@@ -756,27 +810,36 @@ func (c *Core) LoginK8s(ctx context.Context, saToken string) (*token.Token, erro
 	if ttl <= 0 {
 		ttl = time.Hour
 	}
-	tok, err := c.CreateToken(ctx, "k8s:"+namespace+"/"+sa, role.Policies, ttl, loginTokenOpts(role.TuckNamespace)...)
+	who := namespace + "/" + sa
+	if cluster != "" {
+		who = cluster + ":" + who
+	}
+	tok, err := c.CreateToken(ctx, "k8s:"+who, role.Policies, ttl, loginTokenOpts(role.TuckNamespace)...)
 	if err != nil {
 		return nil, err
 	}
-	c.attachEntityToToken(ctx, tok, "auth_kubernetes", namespace+"/"+sa, nil)
+	c.attachEntityToToken(ctx, tok, "auth_kubernetes", who, nil)
 	return tok, nil
 }
 
 // CreateK8sRole stores a role binding for a Kubernetes ServiceAccount.
 func (c *Core) CreateK8sRole(ctx context.Context, role *k8sauth.K8sRole) error {
+	if role.Cluster != "" {
+		if _, err := c.k8sReviewerFor(role.Cluster); err != nil {
+			return err
+		}
+	}
 	return c.k8sRoles.Put(ctx, role)
 }
 
 // GetK8sRole retrieves the role bound to a Kubernetes ServiceAccount.
-func (c *Core) GetK8sRole(ctx context.Context, namespace, sa string) (*k8sauth.K8sRole, error) {
-	return c.k8sRoles.Get(ctx, namespace, sa)
+func (c *Core) GetK8sRole(ctx context.Context, cluster, namespace, sa string) (*k8sauth.K8sRole, error) {
+	return c.k8sRoles.Get(ctx, cluster, namespace, sa)
 }
 
 // DeleteK8sRole removes the role binding for a Kubernetes ServiceAccount.
-func (c *Core) DeleteK8sRole(ctx context.Context, namespace, sa string) error {
-	return c.k8sRoles.Delete(ctx, namespace, sa)
+func (c *Core) DeleteK8sRole(ctx context.Context, cluster, namespace, sa string) error {
+	return c.k8sRoles.Delete(ctx, cluster, namespace, sa)
 }
 
 // --- KV secrets ---

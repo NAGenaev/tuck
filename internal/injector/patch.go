@@ -22,6 +22,10 @@ const (
 	// with the Pod's ServiceAccount token (requires a Tuck Kubernetes auth role
 	// for that ServiceAccount) and mounts no static token. Default: token Secret.
 	AnnotationAuth = "tuck.io/auth"
+	// AnnotationCluster names the Tuck-side cluster entry the Pod's ServiceAccount
+	// belongs to (multi-cluster Tuck). Only used with tuck.io/auth: kubernetes;
+	// empty = Tuck's default cluster.
+	AnnotationCluster = "tuck.io/cluster"
 	// AnnotationImage overrides the tuck-agent container image.
 	AnnotationImage = "tuck.io/agent-image"
 	// AnnotationOutputDir overrides the secrets output directory inside the Pod.
@@ -43,6 +47,7 @@ type InjectConfig struct {
 	Secrets        string // raw annotation value
 	TokenSecret    string
 	KubernetesAuth bool
+	Cluster        string
 	Image          string
 	OutputDir      string
 	Insecure       bool
@@ -62,6 +67,7 @@ func ParseAnnotations(ann map[string]string, defaultImage string) (InjectConfig,
 		OutputDir:      ann[AnnotationOutputDir],
 		Insecure:       ann[AnnotationInsecure] == "true",
 		KubernetesAuth: ann[AnnotationAuth] == "kubernetes",
+		Cluster:        ann[AnnotationCluster],
 	}
 	if cfg.TokenSecret == "" {
 		cfg.TokenSecret = defaultTokenSecret
@@ -220,6 +226,9 @@ func buildEnv(cfg InjectConfig) []EnvVar {
 	}
 	if cfg.KubernetesAuth {
 		env = append(env, EnvVar{Name: "TUCK_AUTH", Value: "kubernetes"})
+		if cfg.Cluster != "" {
+			env = append(env, EnvVar{Name: "TUCK_K8S_CLUSTER", Value: cfg.Cluster})
+		}
 	} else {
 		env = append(env, EnvVar{Name: "TUCK_TOKEN_FILE", Value: "/tuck/token/token"})
 	}

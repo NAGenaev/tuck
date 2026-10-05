@@ -11,6 +11,7 @@
 //	TUCK_AUTH        "kubernetes": log in with the Pod's ServiceAccount token instead
 //	                 of a static Tuck token (requires a Tuck Kubernetes auth role)
 //	TUCK_K8S_JWT_FILE  ServiceAccount token path (default /var/run/secrets/kubernetes.io/serviceaccount/token)
+//	TUCK_K8S_CLUSTER   Tuck cluster entry for this Pod's ServiceAccount (multi-cluster Tuck; default: none)
 //	TUCK_SECRETS     Comma-separated "tuckPath:filename" pairs
 //	TUCK_OUTPUT_DIR  Directory to write secret files (default /tuck/secrets)
 //	TUCK_INSECURE    Skip TLS certificate verification ("true" = skip)
@@ -162,7 +163,7 @@ func loginKubernetes(addr string, opts []client.Option) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	res, err := client.New(addr, "", opts...).Auth().LoginKubernetes(ctx, strings.TrimSpace(string(jwt)))
+	res, err := client.New(addr, "", opts...).Auth().LoginKubernetesCluster(ctx, os.Getenv("TUCK_K8S_CLUSTER"), strings.TrimSpace(string(jwt)))
 	if err != nil {
 		return "", fmt.Errorf("kubernetes login: %w", err)
 	}

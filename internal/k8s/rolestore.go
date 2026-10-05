@@ -25,11 +25,11 @@ func (s *RoleStore) Put(ctx context.Context, role *K8sRole) error {
 	if err != nil {
 		return fmt.Errorf("marshal k8s role: %w", err)
 	}
-	return s.barrier.Put(ctx, &physical.Entry{Key: roleKey(role.Namespace, role.ServiceAccount), Value: data})
+	return s.barrier.Put(ctx, &physical.Entry{Key: roleKey(role.Cluster, role.Namespace, role.ServiceAccount), Value: data})
 }
 
-func (s *RoleStore) Get(ctx context.Context, namespace, sa string) (*K8sRole, error) {
-	e, err := s.barrier.Get(ctx, roleKey(namespace, sa))
+func (s *RoleStore) Get(ctx context.Context, cluster, namespace, sa string) (*K8sRole, error) {
+	e, err := s.barrier.Get(ctx, roleKey(cluster, namespace, sa))
 	if err != nil {
 		return nil, err
 	}
@@ -43,10 +43,15 @@ func (s *RoleStore) Get(ctx context.Context, namespace, sa string) (*K8sRole, er
 	return &role, nil
 }
 
-func (s *RoleStore) Delete(ctx context.Context, namespace, sa string) error {
-	return s.barrier.Delete(ctx, roleKey(namespace, sa))
+func (s *RoleStore) Delete(ctx context.Context, cluster, namespace, sa string) error {
+	return s.barrier.Delete(ctx, roleKey(cluster, namespace, sa))
 }
 
-func roleKey(namespace, sa string) string {
-	return "auth/k8s/role/" + namespace + "/" + sa
+// roleKey keeps the legacy single-cluster layout for the default (empty) cluster
+// so existing roles stay valid; named clusters get their own key space.
+func roleKey(cluster, namespace, sa string) string {
+	if cluster == "" {
+		return "auth/k8s/role/" + namespace + "/" + sa
+	}
+	return "auth/k8s/cluster/" + cluster + "/role/" + namespace + "/" + sa
 }

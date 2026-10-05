@@ -200,6 +200,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /v1/auth/kubernetes/role/{namespace}/{sa}", s.requireToken(s.putK8sRole))
 	mux.HandleFunc("GET /v1/auth/kubernetes/role/{namespace}/{sa}", s.requireToken(s.getK8sRole))
 	mux.HandleFunc("DELETE /v1/auth/kubernetes/role/{namespace}/{sa}", s.requireToken(s.deleteK8sRole))
+	mux.HandleFunc("GET /v1/auth/kubernetes/clusters", s.requireToken(s.listK8sClusters))
+	mux.HandleFunc("PUT /v1/auth/kubernetes/clusters/{cluster}/role/{namespace}/{sa}", s.requireToken(s.putK8sRole))
+	mux.HandleFunc("GET /v1/auth/kubernetes/clusters/{cluster}/role/{namespace}/{sa}", s.requireToken(s.getK8sRole))
+	mux.HandleFunc("DELETE /v1/auth/kubernetes/clusters/{cluster}/role/{namespace}/{sa}", s.requireToken(s.deleteK8sRole))
 
 	// JWT/OIDC auth — login is unauthenticated; config and role management require a token
 	mux.HandleFunc("POST /v1/auth/jwt/login", s.loginJWT)

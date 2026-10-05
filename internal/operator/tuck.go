@@ -21,6 +21,7 @@ const (
 type TuckClient struct {
 	serverURL   string
 	saTokenFile string // operator's k8s SA token used to log in to Tuck
+	cluster     string // Tuck cluster entry for this operator's SA; "" = default
 	httpClient  *http.Client
 
 	mu          sync.Mutex
@@ -37,6 +38,12 @@ func NewTuckClient(serverURL, saTokenFile string) *TuckClient {
 }
 
 // GetSecret fetches the secret at path, refreshing the Tuck token if needed.
+// WithCluster selects the Tuck cluster entry used at login (multi-cluster Tuck).
+func (c *TuckClient) WithCluster(name string) *TuckClient {
+	c.cluster = name
+	return c
+}
+
 func (c *TuckClient) GetSecret(ctx context.Context, path string) ([]byte, error) {
 	token, err := c.ensureToken(ctx)
 	if err != nil {
@@ -89,7 +96,11 @@ func (c *TuckClient) login(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("read SA token file: %w", err)
 	}
 
-	body, err := json.Marshal(map[string]string{"token": strings.TrimSpace(string(saJWT))})
+	login := map[string]string{"token": strings.TrimSpace(string(saJWT))}
+	if c.cluster != "" {
+		login["cluster"] = c.cluster
+	}
+	body, err := json.Marshal(login)
 	if err != nil {
 		return "", fmt.Errorf("marshal login request: %w", err)
 	}

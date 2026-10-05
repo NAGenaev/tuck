@@ -76,6 +76,16 @@ func (c *Client) RenewSelf(ctx context.Context, ttl time.Duration) (*Token, erro
 // LoginKubernetes authenticates with a Kubernetes ServiceAccount JWT. The
 // server derives the role from the token's namespace and ServiceAccount.
 func (a *AuthClient) LoginKubernetes(ctx context.Context, saJWT string) (*LoginResult, error) {
+	return a.LoginKubernetesCluster(ctx, "", saJWT)
+}
+
+// LoginKubernetesCluster is LoginKubernetes for a named trusted cluster; an
+// empty cluster selects the server's default one.
+func (a *AuthClient) LoginKubernetesCluster(ctx context.Context, cluster, saJWT string) (*LoginResult, error) {
 	var res LoginResult
-	return &res, a.c.post(ctx, "/v1/auth/kubernetes/login", map[string]string{"token": saJWT}, &res)
+	body := map[string]string{"token": saJWT}
+	if cluster != "" {
+		body["cluster"] = cluster
+	}
+	return &res, a.c.post(ctx, "/v1/auth/kubernetes/login", body, &res)
 }

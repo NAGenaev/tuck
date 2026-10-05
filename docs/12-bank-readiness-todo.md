@@ -34,7 +34,7 @@
 | C3 | Шифрование **путей** записей в backend (детерминированное, обратимое; [11 §1.1](11-barrier-and-ciphers.md)) | P1 | ✅ |
 | C4 | Seal через PKCS#11 / HSM, поддержка сертифицированного СКЗИ как `Suite` | P1 | ⬜ |
 | C5 | `mlock`: единое поведение — предупреждение либо отказ запуска (`--require-mlock` / `require_mlock`), на Linux ещё отключаются core dump | P2 | ✅ |
-| C6 | ГОСТ в Transit (`gost`-тип ключа, HMAC/хеш на Стрибоге) | P2 | ⬜ |
+| C6 | ГОСТ в Transit: ключ `kuznyechik-mgm` (encrypt/decrypt/rewrap), HMAC на Стрибоге (`streebog-256/512`). ГОСТ Р 34.10 (подпись) не реализован | P2 | 🟡 |
 | C7 | Шифр барьера в `GET /v1/sys/seal-status` (`barrier_cipher`) | P2 | ✅ |
 
 ## 3. Доставка секретов в кластеры

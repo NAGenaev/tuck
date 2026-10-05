@@ -179,7 +179,7 @@ LIST            /v1/<engine>/lease/             — список leases
 | POST | `/v1/transit/encrypt/{name}` · `decrypt` · `rewrap` | Шифрование / дешифрование / rewrap |
 | POST | `/v1/transit/sign/{name}` · `verify` · `hmac` | Подпись / проверка / HMAC |
 
-Типы ключей: `aes256-gcm96`, `ecdsa-p256`, `ed25519`, `rsa-2048`, `rsa-4096`. Формат: `vault:v{N}:{base64url}`.
+Типы ключей: `aes256-gcm96`, `kuznyechik-mgm` (ГОСТ «Кузнечик» + MGM, не сертифицирован; encrypt/decrypt/rewrap/hmac), `ecdsa-p256`, `ed25519`, `rsa-2048`, `rsa-4096`. Формат: `vault:v{N}:{base64url}`.
 
 ### SSH (`/v1/ssh`)
 | Метод | Путь | Auth | Описание |

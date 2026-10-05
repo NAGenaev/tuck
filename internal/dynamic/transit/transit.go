@@ -5,6 +5,8 @@
 //
 // Supported key types:
 //   - aes256-gcm96  — symmetric AES-256-GCM (encrypt/decrypt/rewrap/hmac)
+//   - kuznyechik-mgm — GOST «Кузнечик» + MGM, symmetric AEAD (encrypt/decrypt/rewrap/hmac);
+//     NOT FSB-certified
 //   - ecdsa-p256    — ECDSA P-256 (sign/verify/hmac)
 //   - ed25519       — Ed25519 (sign/verify/hmac)
 //   - rsa-2048      — RSA-PSS 2048-bit (sign/verify/hmac)
@@ -36,6 +38,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NAGenaev/tuck/internal/gost/kuznyechik"
+	"github.com/NAGenaev/tuck/internal/gost/mgm"
+	"github.com/NAGenaev/tuck/internal/gost/streebog"
 	"github.com/NAGenaev/tuck/internal/physical"
 )
 
@@ -206,7 +211,7 @@ func (m *Manager) Encrypt(ctx context.Context, name string, plaintext []byte) (s
 	if err != nil {
 		return "", err
 	}
-	encoded, err := aesEncrypt(keyBytes, plaintext)
+	encoded, err := aeadEncrypt(rec.Type, keyBytes, plaintext)
 	if err != nil {
 		return "", err
 	}
@@ -237,7 +242,7 @@ func (m *Manager) Decrypt(ctx context.Context, name string, ciphertext string) (
 	if err != nil {
 		return nil, err
 	}
-	return aesDecrypt(keyBytes, encoded)
+	return aeadDecrypt(rec.Type, keyBytes, encoded)
 }
 
 // Rewrap decrypts a ciphertext with its original key version and re-encrypts
@@ -303,8 +308,8 @@ func (m *Manager) Verify(ctx context.Context, name string, input []byte, sigToke
 }
 
 // HMAC computes an HMAC of input under the named key's latest version.
-// hashAlg: "sha2-256" (default), "sha2-384", "sha2-512".
-// Returns "vault:v{N}:{base64url-mac}".
+// hashAlg: "sha2-256" (default), "sha2-384", "sha2-512", "streebog-256", "streebog-512"
+// (HMAC-Streebog, GOST R 34.11-2012). Returns "vault:v{N}:{base64url-mac}".
 func (m *Manager) HMAC(ctx context.Context, name string, input []byte, hashAlg string) (string, error) {
 	rec, err := m.loadKey(ctx, name)
 	if err != nil {
@@ -329,7 +334,7 @@ func (m *Manager) HMAC(ctx context.Context, name string, input []byte, hashAlg s
 func generateKeyMaterial(keyType string) (string, error) {
 	var raw []byte
 	switch keyType {
-	case "aes256-gcm96":
+	case "aes256-gcm96", kuznyechikMGM:
 		raw = make([]byte, 32)
 		if _, err := rand.Read(raw); err != nil {
 			return "", fmt.Errorf("transit: generate AES key: %w", err)
@@ -412,12 +417,26 @@ func aesKeyBytes(rec *keyRecord, version int) ([]byte, error) {
 	return base64.RawURLEncoding.DecodeString(kv.RawKey)
 }
 
-func aesEncrypt(key, plaintext []byte) (string, error) {
+const kuznyechikMGM = "kuznyechik-mgm"
+
+// newAEAD builds the AEAD for a symmetric key type.
+func newAEAD(keyType string, key []byte) (cipher.AEAD, error) {
+	if keyType == kuznyechikMGM {
+		block, err := kuznyechik.NewCipher(key)
+		if err != nil {
+			return nil, fmt.Errorf("transit: kuznyechik cipher: %w", err)
+		}
+		return mgm.New(block)
+	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return "", fmt.Errorf("transit: aes cipher: %w", err)
+		return nil, fmt.Errorf("transit: aes cipher: %w", err)
 	}
-	gcm, err := cipher.NewGCM(block)
+	return cipher.NewGCM(block)
+}
+
+func aeadEncrypt(keyType string, key, plaintext []byte) (string, error) {
+	gcm, err := newAEAD(keyType, key)
 	if err != nil {
 		return "", err
 	}
@@ -425,20 +444,19 @@ func aesEncrypt(key, plaintext []byte) (string, error) {
 	if _, err := rand.Read(nonce); err != nil {
 		return "", err
 	}
+	if keyType == kuznyechikMGM {
+		nonce[0] &= 0x7f // MGM nonces are 127 bits
+	}
 	ct := gcm.Seal(nonce, nonce, plaintext, nil)
 	return base64.RawURLEncoding.EncodeToString(ct), nil
 }
 
-func aesDecrypt(key []byte, encoded string) ([]byte, error) {
+func aeadDecrypt(keyType string, key []byte, encoded string) ([]byte, error) {
 	data, err := base64.RawURLEncoding.DecodeString(encoded)
 	if err != nil {
 		return nil, ErrInvalidCiphertext
 	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	gcm, err := cipher.NewGCM(block)
+	gcm, err := newAEAD(keyType, key)
 	if err != nil {
 		return nil, err
 	}
@@ -498,6 +516,14 @@ func verifyWith(priv crypto.PrivateKey, input, sig []byte, hashAlg string) (bool
 
 func computeHMAC(keyBytes, input []byte, hashAlg string) []byte {
 	switch strings.ToLower(hashAlg) {
+	case "streebog-256":
+		h := gohmac.New(streebog.New256, keyBytes)
+		h.Write(input)
+		return h.Sum(nil)
+	case "streebog-512":
+		h := gohmac.New(streebog.New512, keyBytes)
+		h.Write(input)
+		return h.Sum(nil)
 	case "sha2-384":
 		h := gohmac.New(sha512.New384, keyBytes)
 		h.Write(input)
@@ -558,7 +584,7 @@ func parseVaultToken(s string) (version int, payload string, err error) {
 	return version, rest[idx+1:], nil
 }
 
-func isEncryptionKey(t string) bool { return t == "aes256-gcm96" }
+func isEncryptionKey(t string) bool { return t == "aes256-gcm96" || t == kuznyechikMGM }
 
 func isSigningKey(t string) bool {
 	switch t {

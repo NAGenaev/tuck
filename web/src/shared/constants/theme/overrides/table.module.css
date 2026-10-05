@@ -11,3 +11,13 @@
 .tr {
     border-bottom: 1px solid var(--mantine-color-dark-4);
 }
+
+.td {
+    font-family: var(--mantine-font-family-monospace);
+    font-size: 0.8125rem;
+    color: var(--mantine-color-dark-2);
+}
+
+.td:first-child {
+    color: var(--mantine-color-dark-0);
+}

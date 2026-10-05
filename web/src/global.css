@@ -5,6 +5,29 @@ body {
     min-height: 100vh;
 }
 
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image:
+        radial-gradient(ellipse 60% 40% at 85% 0%, rgba(215, 169, 75, 0.1), transparent 70%),
+        linear-gradient(var(--mantine-color-dark-5) 1px, transparent 1px),
+        linear-gradient(90deg, var(--mantine-color-dark-5) 1px, transparent 1px);
+    background-size:
+        auto,
+        64px 64px,
+        64px 64px;
+    opacity: 0.35;
+    mask-image: linear-gradient(180deg, #000, transparent 70%);
+}
+
+#root {
+    position: relative;
+    z-index: 1;
+}
+
 .root {
     height: 100vh;
 

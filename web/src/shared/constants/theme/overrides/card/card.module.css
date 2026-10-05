@@ -1,12 +1,36 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Forked from github.com/remnawave/frontend (commit 9d671520067f73b2beb96c282f2ce2ff7b7a9a00). */
 .root {
-    background: linear-gradient(160deg, var(--mantine-color-dark-5), var(--mantine-color-dark-6));
+    position: relative;
+    background:
+        radial-gradient(circle at 100% 0%, rgba(215, 169, 75, 0.07), transparent 55%),
+        linear-gradient(160deg, var(--mantine-color-dark-5), var(--mantine-color-dark-6));
     animation: fadeIn 200ms linear both;
 }
 
 .root[data-with-border='true'] {
     border: 1px solid var(--mantine-color-dark-4);
+}
+
+.root::before,
+.root::after {
+    content: '';
+    position: absolute;
+    top: 6px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #4a4532, #17150c);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.15);
+    pointer-events: none;
+}
+
+.root::before {
+    left: 6px;
+}
+
+.root::after {
+    right: 6px;
 }
 
 @keyframes fadeIn {

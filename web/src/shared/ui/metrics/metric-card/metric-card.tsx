@@ -24,13 +24,27 @@ export function MetricCard({
         <Card withBorder>
             <Group gap="md" wrap="nowrap">
                 {IconComponent && (
-                    <ThemeIcon color={iconColor} radius="md" size={40} variant="light">
+                    <ThemeIcon
+                        c={`${iconColor ?? 'brass'}.5`}
+                        radius="md"
+                        size={40}
+                        style={{ borderColor: 'var(--mantine-color-dark-3)' }}
+                        variant="default"
+                    >
                         <IconComponent size={20} />
                     </ThemeIcon>
                 )}
 
                 <Stack gap={0} miw={0}>
-                    <Text c="dimmed" size="xs" truncate="end">
+                    <Text
+                        c="dimmed"
+                        ff="Oswald, Impact, sans-serif"
+                        fw={600}
+                        size="xs"
+                        style={{ letterSpacing: '0.16em' }}
+                        truncate="end"
+                        tt="uppercase"
+                    >
                         {title}
                     </Text>
                     {isLoading ? (

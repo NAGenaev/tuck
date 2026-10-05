@@ -51,6 +51,8 @@ export const theme = createTheme({
         green: ramp(tokens.mint),
         blue: ramp(tokens.ice),
         violet: ramp(tokens.violet),
+        grape: ramp(tokens.violet),
+        indigo: ramp(tokens.ice),
         gray: ramp(tokens.mute)
     },
     primaryShade: 5,

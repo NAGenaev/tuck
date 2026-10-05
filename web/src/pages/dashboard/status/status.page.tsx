@@ -130,7 +130,14 @@ export function StatusPage() {
                         <Card withBorder>
                             <Group justify="space-between" wrap="nowrap">
                                 <Stack gap={0}>
-                                    <Text c="dimmed" size="xs">
+                                    <Text
+                                        c="dimmed"
+                                        ff="Oswald, Impact, sans-serif"
+                                        fw={600}
+                                        size="xs"
+                                        style={{ letterSpacing: '0.16em' }}
+                                        tt="uppercase"
+                                    >
                                         {t('status.shards')}
                                     </Text>
                                     <Text fw={600} size="lg">
@@ -144,7 +151,7 @@ export function StatusPage() {
                                     roundCaps
                                     sections={[
                                         {
-                                            color: 'orange',
+                                            color: 'brass',
                                             value:
                                                 sealStatus && sealStatus.required_shards
                                                     ? ((sealStatus.received_shards ?? 0) / sealStatus.required_shards) * 100

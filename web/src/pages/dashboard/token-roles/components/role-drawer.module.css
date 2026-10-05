@@ -1,0 +1,632 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+.body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
+    gap: 24px;
+    align-items: start;
+}
+
+.form {
+    display: grid;
+    gap: 18px;
+    align-content: start;
+    min-width: 0;
+}
+
+.prev {
+    position: sticky;
+    top: 0;
+    min-width: 0;
+    padding: 20px;
+    background:
+        radial-gradient(circle at 80% 0, rgba(215, 169, 75, 0.1), transparent 55%),
+        var(--vault);
+    border: 1px solid var(--line2);
+}
+
+.mtabs {
+    display: none;
+}
+
+@media (max-width: 900px) {
+    .body {
+        grid-template-columns: 1fr;
+    }
+    .prev {
+        position: static;
+    }
+    .mtabs {
+        display: flex;
+        margin: -4px 0 16px;
+        border-bottom: 1px solid var(--line2);
+    }
+    .mtabs button {
+        flex: 1;
+        padding: 12px;
+        background: transparent;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        font: 600 11px var(--label);
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--mute);
+        cursor: pointer;
+    }
+    .mtabs button.on {
+        color: var(--brass);
+        border-color: var(--brass);
+    }
+    .body[data-pane='form'] .prev,
+    .body[data-pane='prev'] .form {
+        display: none;
+    }
+}
+
+/* footer */
+.foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+.sum {
+    margin-right: auto;
+    font: 500 11px var(--mono);
+    color: var(--dim);
+}
+.sumBad {
+    color: var(--alarm);
+}
+
+/* groups */
+.grp {
+    position: relative;
+    border: 1px solid var(--line2);
+    background: var(--vault);
+}
+.grp > header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s;
+}
+.grpClosed > header {
+    border-bottom: 0;
+}
+.grp > header:hover {
+    background: var(--vault2);
+}
+.gico {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--line2);
+    color: var(--brass);
+    transition: all 0.25s;
+}
+.grp:focus-within .gico {
+    border-color: var(--brass);
+    box-shadow: 0 0 14px -2px rgba(215, 169, 75, 0.5);
+}
+.grp h4 {
+    margin: 0;
+    font: 700 12px var(--label);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--bone);
+}
+.ghint {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+    font: 500 11px var(--mono);
+    color: var(--dim);
+}
+.chev {
+    transition: transform 0.3s var(--ease);
+}
+.grpClosed .chev {
+    transform: rotate(-90deg);
+}
+.gb {
+    display: grid;
+    gap: 16px;
+    padding: 16px;
+}
+
+.row2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+@media (max-width: 560px) {
+    .row2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* fields */
+.fld {
+    min-width: 0;
+}
+.fld label {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 7px;
+    font: 600 10.5px var(--label);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--mute);
+}
+.fld label i {
+    font: 400 10px var(--mono);
+    letter-spacing: 0;
+    text-transform: none;
+    font-style: normal;
+    color: var(--dim);
+}
+.help {
+    margin-top: 6px;
+    font: 400 11.5px/1.45 var(--body);
+    color: var(--dim);
+}
+.err {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 6px;
+    font: 500 11.5px/1.4 var(--mono);
+    color: var(--alarm);
+    animation: shake 0.35s;
+}
+.err svg {
+    flex: none;
+    margin-top: 1px;
+}
+.fldBad .inp,
+.fldBad .tags {
+    border-color: var(--alarm);
+    box-shadow: 0 0 0 3px rgba(255, 90, 77, 0.12);
+}
+@keyframes shake {
+    25% {
+        transform: translateX(-4px);
+    }
+    75% {
+        transform: translateX(4px);
+    }
+}
+
+.inp {
+    width: 100%;
+    padding: 11px 12px;
+    background: var(--void);
+    border: 1px solid var(--line2);
+    border-radius: 0;
+    color: var(--bone);
+    font: 400 13px var(--mono);
+    transition:
+        border-color 0.18s,
+        box-shadow 0.18s;
+}
+.inp::placeholder {
+    color: var(--dim);
+}
+.inp:focus {
+    outline: none;
+    border-color: var(--brass);
+    box-shadow: 0 0 0 3px rgba(215, 169, 75, 0.14);
+}
+.inp:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+.suffix {
+    position: relative;
+}
+.suffix .inp {
+    padding-right: 64px;
+}
+.suffix span {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font: 500 11px var(--mono);
+    color: var(--dim);
+    pointer-events: none;
+}
+.dur {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 8px;
+}
+.dur button {
+    padding: 2px 8px;
+    background: transparent;
+    border: 1px solid var(--line);
+    font: 500 11px var(--mono);
+    color: var(--dim);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.dur button:hover {
+    border-color: var(--brass);
+    color: var(--brassL);
+}
+
+/* tags */
+.tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-height: 44px;
+    padding: 7px;
+    background: var(--void);
+    border: 1px solid var(--line2);
+    cursor: text;
+    transition:
+        border-color 0.18s,
+        box-shadow 0.18s;
+}
+.tags:focus-within {
+    border-color: var(--brass);
+    box-shadow: 0 0 0 3px rgba(215, 169, 75, 0.14);
+}
+.tg {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 4px 3px 8px;
+    border: 1px solid var(--line2);
+    font: 500 12px var(--mono);
+    color: var(--brassL);
+    animation: pop 0.25s var(--ease);
+}
+.tgBad {
+    border-color: var(--alarm);
+    color: var(--alarm);
+    background: rgba(255, 90, 77, 0.08);
+}
+.tg button {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font-size: 15px;
+    line-height: 1;
+    opacity: 0.6;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+.tg button:hover {
+    opacity: 1;
+}
+.tags input {
+    flex: 1;
+    min-width: 120px;
+    padding: 4px;
+    background: transparent;
+    border: 0;
+    outline: none;
+    color: var(--bone);
+    font: 400 12px var(--mono);
+}
+@keyframes pop {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+}
+.sugg {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 8px;
+}
+.sugg button {
+    padding: 2px 8px;
+    background: transparent;
+    border: 1px dashed var(--line2);
+    font: 500 11px var(--mono);
+    color: var(--mute);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.sugg button:hover {
+    border-color: var(--brass);
+    border-style: solid;
+    color: var(--brassL);
+}
+
+/* switch */
+.tgl {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    padding: 12px 14px;
+    background: var(--void);
+    border: 1px solid var(--line);
+    cursor: pointer;
+    transition:
+        border-color 0.2s,
+        background 0.2s;
+}
+.tgl:hover {
+    border-color: var(--line2);
+}
+.tglOn {
+    border-color: rgba(215, 169, 75, 0.5);
+    background: rgba(215, 169, 75, 0.05);
+}
+.sw {
+    position: relative;
+    flex: none;
+    width: 40px;
+    height: 22px;
+    margin-top: 2px;
+    background: var(--vault);
+    border: 1px solid var(--line2);
+    transition: all 0.25s var(--ease);
+}
+.sw::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 14px;
+    height: 14px;
+    background: var(--dim);
+    transition: all 0.25s var(--ease);
+}
+.tglOn .sw {
+    border-color: var(--brass);
+    background: rgba(215, 169, 75, 0.15);
+}
+.tglOn .sw::after {
+    left: 21px;
+    background: var(--brass);
+    box-shadow: 0 0 10px var(--brass);
+}
+.tgl b {
+    display: block;
+    font: 600 13px var(--body);
+    color: var(--bone);
+}
+.tgl small {
+    display: block;
+    margin-top: 2px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--dim);
+}
+.callout {
+    display: flex;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px dashed var(--line2);
+    font: 400 12.5px/1.5 var(--body);
+    color: var(--mute);
+}
+.callout svg {
+    flex: none;
+    margin-top: 2px;
+}
+.warn {
+    border-color: rgba(215, 169, 75, 0.5);
+    color: var(--brassL);
+}
+
+/* preview */
+.pv {
+    display: grid;
+    gap: 18px;
+}
+.pvSec {
+    border: 1px solid var(--line2);
+    background: var(--void);
+}
+.pvSec > h5 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 0;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line);
+    font: 600 10px var(--label);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--dim);
+}
+.pvSec > h5 em {
+    font: 500 10px var(--mono);
+    letter-spacing: 0;
+    text-transform: none;
+    font-style: normal;
+    color: var(--mute);
+}
+.ringbox {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 20px;
+    align-items: center;
+    padding: 20px 16px;
+}
+@media (max-width: 480px) {
+    .ringbox {
+        grid-template-columns: 1fr;
+        justify-items: center;
+        text-align: center;
+    }
+}
+.bigring {
+    position: relative;
+    flex: none;
+    width: 176px;
+    height: 176px;
+}
+.bigring svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+.rTr {
+    fill: none;
+    stroke: var(--line);
+    stroke-width: 10;
+}
+.rMx {
+    fill: none;
+    stroke: var(--line2);
+    stroke-width: 10;
+    stroke-dasharray: 2 6;
+}
+.rVl {
+    fill: none;
+    stroke-width: 10;
+    transform: rotate(-90deg);
+    transform-origin: 50% 50%;
+    transition:
+        stroke-dashoffset 0.9s var(--ease),
+        stroke 0.3s;
+    filter: drop-shadow(0 0 8px rgba(215, 169, 75, 0.55));
+}
+.ringBad .rVl {
+    stroke: var(--alarm);
+    filter: drop-shadow(0 0 8px rgba(255, 90, 77, 0.6));
+}
+.ringPer .rVl {
+    stroke: var(--mint);
+    stroke-dasharray: 6 8;
+    filter: drop-shadow(0 0 8px rgba(73, 224, 164, 0.5));
+    animation: march 3s linear infinite;
+}
+@keyframes march {
+    to {
+        stroke-dashoffset: -140;
+    }
+}
+.core {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    text-align: center;
+}
+.core b {
+    font: 800 26px/1 var(--disp);
+    letter-spacing: -0.03em;
+    color: var(--bone);
+    font-variant-numeric: tabular-nums;
+}
+.core small {
+    margin-top: 6px;
+    font: 600 9.5px var(--label);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--mute);
+}
+.hand {
+    position: absolute;
+    inset: 0;
+    transition: transform 0.9s var(--ease);
+    pointer-events: none;
+}
+.hand::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: -6px;
+    width: 8px;
+    height: 8px;
+    margin-left: -4px;
+    background: var(--brassL);
+    box-shadow: 0 0 12px var(--brass);
+    transform: rotate(45deg);
+}
+.legend {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+    font: 400 12px var(--mono);
+    color: var(--mute);
+}
+.legend > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-bottom: 7px;
+    border-bottom: 1px solid var(--line);
+}
+.legend > div:last-child {
+    border: 0;
+}
+.legend span {
+    font: 600 10px var(--label);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--dim);
+}
+.legend b {
+    font-weight: 500;
+    text-align: right;
+    color: var(--bone);
+}
+.legend b.legendBad,
+.legendBad {
+    color: var(--alarm);
+}
+
+.json {
+    margin: 0;
+    padding: 16px 18px;
+    overflow-x: auto;
+    font: 400 12px/1.7 var(--mono);
+    color: var(--mute);
+    white-space: pre;
+}
+.jk {
+    color: var(--ice);
+}
+.js {
+    color: var(--mint);
+}
+.jn {
+    color: var(--brassL);
+}
+.jb {
+    color: var(--violet);
+}
+.flash {
+    animation: flash 0.9s;
+}
+@keyframes flash {
+    from {
+        background: rgba(215, 169, 75, 0.35);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rVl,
+    .hand,
+    .tg,
+    .err,
+    .flash,
+    .ringPer .rVl {
+        animation: none;
+        transition: none;
+    }
+}

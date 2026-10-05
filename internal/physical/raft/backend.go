@@ -31,6 +31,8 @@ type Config struct {
 	// AdvertiseAddr is the address other nodes use to reach this node.
 	// Defaults to BindAddr when empty.
 	AdvertiseAddr string
+	// TLS, if set, turns on mutual TLS for Raft RPC.
+	TLS *TLSConfig
 	// DataDir is the directory for Raft logs, snapshots, and FSM state.
 	DataDir string
 	// Bootstrap creates a new single-node cluster or bootstraps a multi-node cluster
@@ -131,7 +133,15 @@ func Open(cfg Config) (*Backend, error) {
 		_ = machine.db.Close()
 		return nil, fmt.Errorf("raft: resolve advertise addr %q: %w", advertise, err)
 	}
-	transport, err := hraft.NewTCPTransport(cfg.BindAddr, advAddr, 5, 10*time.Second, nil)
+	var transport *hraft.NetworkTransport
+	if cfg.TLS != nil {
+		var stream *tlsStream
+		if stream, err = newTLSStream(cfg.BindAddr, advAddr, cfg.TLS); err == nil {
+			transport = hraft.NewNetworkTransport(stream, 5, 10*time.Second, nil)
+		}
+	} else {
+		transport, err = hraft.NewTCPTransport(cfg.BindAddr, advAddr, 5, 10*time.Second, nil)
+	}
 	if err != nil {
 		_ = logStore.Close()
 		_ = machine.db.Close()

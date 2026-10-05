@@ -54,6 +54,11 @@ type Config struct {
 		Bootstrap bool   `yaml:"bootstrap"`
 		Join      string `yaml:"join"`
 		Peers     string `yaml:"peers"`
+
+		TLSCert       string `yaml:"tls_cert"`
+		TLSKey        string `yaml:"tls_key"`
+		TLSCA         string `yaml:"tls_ca"`
+		TLSServerName string `yaml:"tls_server_name"`
 	} `yaml:"cluster"`
 
 	Kubernetes struct {

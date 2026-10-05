@@ -68,6 +68,10 @@ func main() {
 	clusterDir       := flag.String("cluster-dir", "tuck-raft", "directory for Raft logs, snapshots, and FSM state")
 	clusterBootstrap := flag.Bool("cluster-bootstrap", false, "bootstrap a new cluster (first node only; ignored on restarts)")
 	clusterJoin      := flag.String("cluster-join", "", "leader HTTP address to join an existing cluster (e.g. https://leader:8200)")
+	clusterTLSCert   := flag.String("cluster-tls-cert", "", "Raft mTLS: node certificate (PEM); enables TLS on Raft RPC together with --cluster-tls-key and --cluster-tls-ca")
+	clusterTLSKey    := flag.String("cluster-tls-key", "", "Raft mTLS: node private key (PEM)")
+	clusterTLSCA     := flag.String("cluster-tls-ca", "", "Raft mTLS: CA bundle (PEM) that signs all node certificates")
+	clusterTLSName   := flag.String("cluster-tls-server-name", "", "Raft mTLS: expected peer certificate name (empty = verify chain only)")
 	clusterPeers     := flag.String("cluster-peers", "", "comma-separated bootstrap peers: id=raftAddr,... (used with --cluster-bootstrap)")
 
 	// Barrier cipher + experimental engines
@@ -160,6 +164,10 @@ func main() {
 		applyBool("cluster-bootstrap", cfg.Cluster.Bootstrap)
 		apply("cluster-join", cfg.Cluster.Join)
 		apply("cluster-peers", cfg.Cluster.Peers)
+		apply("cluster-tls-cert", cfg.Cluster.TLSCert)
+		apply("cluster-tls-key", cfg.Cluster.TLSKey)
+		apply("cluster-tls-ca", cfg.Cluster.TLSCA)
+		apply("cluster-tls-server-name", cfg.Cluster.TLSServerName)
 
 		apply("k8s-api", cfg.Kubernetes.API)
 		apply("k8s-token-file", cfg.Kubernetes.TokenFile)
@@ -205,7 +213,19 @@ func main() {
 				}
 			}
 		}
+		var raftTLS *physraft.TLSConfig
+		switch {
+		case *clusterTLSCert != "" || *clusterTLSKey != "" || *clusterTLSCA != "":
+			if *clusterTLSCert == "" || *clusterTLSKey == "" || *clusterTLSCA == "" {
+				log.Fatalf("--cluster-tls-cert, --cluster-tls-key and --cluster-tls-ca must be provided together")
+			}
+			raftTLS = &physraft.TLSConfig{CertFile: *clusterTLSCert, KeyFile: *clusterTLSKey, CAFile: *clusterTLSCA, ServerName: *clusterTLSName}
+			log.Printf("tuck: Raft RPC secured with mutual TLS")
+		default:
+			log.Printf("tuck: WARNING Raft RPC is plain TCP; set --cluster-tls-cert/-key/-ca on untrusted networks")
+		}
 		rb, raftErr := physraft.Open(physraft.Config{
+			TLS:           raftTLS,
 			NodeID:        nodeID,
 			BindAddr:      *clusterBindAddr,
 			AdvertiseAddr: *clusterAdvertise,

@@ -1,0 +1,314 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+import { Button } from '@mantine/core'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
+import { createMount, type MountEntry } from '@shared/api/endpoints/mounts'
+import { CopyButton, cx, Icon, Modal, toast } from '@shared/ui/kit'
+import { Eyebrow, Pill } from '@shared/ui/tuck/tuck'
+
+import { CATALOG, isExperimental, normPath, PATH_RE, serverMessage, TYPE_RE, withSlash } from '../lib'
+import styles from '../mounts.module.css'
+import { TypeIcon } from './type-icon'
+
+const CUSTOM = 'custom'
+const DESC_MAX = 120
+
+function cardKind(id: string, auth?: boolean): string | undefined {
+    if (id === CUSTOM) return styles.custom
+    if (auth) return styles.auth
+    if (['pki', 'ssh', 'totp', 'transit'].includes(id)) return styles.crypto
+    return undefined
+}
+
+export function CreateWizard({
+    mounts,
+    onClose,
+    onCreated,
+    opened
+}: {
+    mounts: MountEntry[]
+    onClose: () => void
+    onCreated: (path: string) => void
+    opened: boolean
+}) {
+    const { t } = useTranslation('mounts')
+    const queryClient = useQueryClient()
+
+    const [step, setStep] = useState(0)
+    const [typeId, setTypeId] = useState<null | string>(null)
+    const [customType, setCustomType] = useState('')
+    const [path, setPath] = useState('')
+    const [desc, setDesc] = useState('')
+    const [serverErr, setServerErr] = useState('')
+
+    useEffect(() => {
+        if (!opened) return
+        setStep(0)
+        setTypeId(null)
+        setCustomType('')
+        setPath('')
+        setDesc('')
+        setServerErr('')
+    }, [opened])
+
+    const type = typeId === CUSTOM ? customType.trim() : (typeId ?? '')
+    const norm = normPath(path)
+    const full = withSlash(norm || '…')
+    const suggest = CATALOG.find((c) => c.id === typeId)?.suggest ?? 'my-mount'
+
+    let pathErr = ''
+    if (!norm) pathErr = t('wizard.pathErrEmpty', { example: suggest })
+    else if (!PATH_RE.test(norm)) pathErr = t('wizard.pathErrChars')
+    else if (norm.length > 64) pathErr = t('wizard.pathErrLen')
+    else {
+        const hit = mounts.find((m) => normPath(m.path) === norm)
+        if (hit) pathErr = t('wizard.pathErrTaken', { path: withSlash(norm), type: hit.type })
+    }
+    const typeErr = typeId === CUSTOM && customType.trim() && !TYPE_RE.test(customType.trim())
+    const typeOk = !!typeId && (typeId !== CUSTOM || (!!customType.trim() && !typeErr))
+
+    const canNext = step === 0 ? typeOk : step === 1 ? !pathErr : true
+
+    const mutation = useMutation({
+        mutationFn: () => createMount(norm, type, desc.trim() || undefined),
+        onSuccess: async () => {
+            const created = withSlash(norm)
+            toast.success(t('toast.mounted'), t('toast.mountedMsg', { path: created }))
+            onClose()
+            await queryClient.invalidateQueries({ queryKey: ['mounts', 'list'] })
+            onCreated(created)
+        },
+        onError: (err) => {
+            const msg = serverMessage(err)
+            setServerErr(msg ?? '')
+            toast.error(t('toast.mountFailed'), msg)
+        }
+    })
+
+    const pick = (id: string) => {
+        const prev = CATALOG.find((c) => c.id === typeId)?.suggest ?? ''
+        const next = CATALOG.find((c) => c.id === id)?.suggest ?? ''
+        setTypeId(id)
+        if (!path || path === prev) setPath(next)
+    }
+
+    const go = (to: number) => {
+        setServerErr('')
+        setStep(to)
+    }
+
+    const cards = [...CATALOG.map((c) => ({ auth: c.auth, icon: c.icon, id: c.id })), { icon: 'plug', id: CUSTOM }]
+    const expType = isExperimental(type) ? type : ''
+
+    return (
+        <Modal
+            busy={mutation.isPending}
+            footer={
+                <>
+                    <Button
+                        disabled={mutation.isPending}
+                        onClick={() => (step ? go(step - 1) : onClose())}
+                        variant="default"
+                    >
+                        {step ? t('wizard.back') : t('wizard.cancel')}
+                    </Button>
+                    {step < 2 ? (
+                        <Button disabled={!canNext} onClick={() => go(step + 1)}>
+                            {t('wizard.next')}
+                        </Button>
+                    ) : (
+                        <Button
+                            leftSection={<Icon name="plus" size={14} />}
+                            loading={mutation.isPending}
+                            onClick={() => mutation.mutate()}
+                        >
+                            {t('wizard.mount')}
+                        </Button>
+                    )}
+                </>
+            }
+            icon="plus"
+            onClose={onClose}
+            opened={opened}
+            size={780}
+            title={t(`wizard.titles.${step}`)}
+        >
+            <Eyebrow>{t('wizard.eyebrow', { n: step + 1 })}</Eyebrow>
+            <div className={styles.steps} style={{ marginTop: 14 }}>
+                {(['type', 'path', 'review'] as const).map((k, i) => (
+                    <div className={i === step ? styles.on : i < step ? styles.done : undefined} key={k}>
+                        {i + 1} · {t(`wizard.steps.${k}`)}
+                        <small>{t(`wizard.steps.${k}Hint`)}</small>
+                    </div>
+                ))}
+            </div>
+
+            <div className={styles.pane} key={step}>
+                {step === 0 && (
+                    <>
+                        <p className={styles.intro}>{t('wizard.intro')}</p>
+                        <div aria-label={t('wizard.catalogLabel')} className={styles.cat} role="listbox">
+                            {cards.map((c) => {
+                                const exp = isExperimental(c.id)
+                                return (
+                                    <button
+                                        aria-selected={typeId === c.id}
+                                        className={cx(
+                                            styles.card,
+                                            cardKind(c.id, 'auth' in c ? c.auth : undefined),
+                                            typeId === c.id && styles.sel,
+                                            exp && styles.exp
+                                        )}
+                                        key={c.id}
+                                        onClick={() => pick(c.id)}
+                                        role="option"
+                                        type="button"
+                                    >
+                                        <span className={styles.ico}>
+                                            <TypeIcon name={c.icon} />
+                                        </span>
+                                        {exp && (
+                                            <span className={styles.expPill}>
+                                                <Pill size="sm" tone="r">
+                                                    {t('wizard.expPill')}
+                                                </Pill>
+                                            </span>
+                                        )}
+                                        <h4>{t(`wizard.types.${c.id}.name`)}</h4>
+                                        <p>{t(`wizard.types.${c.id}.desc`)}</p>
+                                        <span className={styles.tg}>{t(`wizard.types.${c.id}.tag`)}</span>
+                                    </button>
+                                )
+                            })}
+                        </div>
+                        {typeId === CUSTOM && (
+                            <div className={styles.fld} style={{ marginTop: 18 }}>
+                                <label className={styles.lab} htmlFor="mw-type">
+                                    {t('wizard.customType')}
+                                </label>
+                                <input
+                                    autoComplete="off"
+                                    className={cx(styles.inp, !!typeErr && styles.bad)}
+                                    data-autofocus
+                                    id="mw-type"
+                                    onChange={(e) => setCustomType(e.currentTarget.value)}
+                                    placeholder={t('wizard.customTypePlaceholder')}
+                                    spellCheck={false}
+                                    value={customType}
+                                />
+                                {typeErr ? (
+                                    <div className={styles.err}>{t('wizard.errCustomType')}</div>
+                                ) : (
+                                    <div className={styles.hint}>{t('wizard.customTypeHint')}</div>
+                                )}
+                            </div>
+                        )}
+                        {expType && <ExperimentalNote type={expType} />}
+                    </>
+                )}
+
+                {step === 1 && (
+                    <>
+                        <div className={styles.fld}>
+                            <label className={styles.lab} htmlFor="mw-path">
+                                {t('wizard.path')}
+                            </label>
+                            <div className={cx(styles.pathin, !!path && !!pathErr && styles.bad)}>
+                                <input
+                                    autoComplete="off"
+                                    data-autofocus
+                                    id="mw-path"
+                                    onChange={(e) => setPath(e.currentTarget.value)}
+                                    placeholder={suggest}
+                                    spellCheck={false}
+                                    value={path}
+                                />
+                                <em>/</em>
+                            </div>
+                            {path && pathErr && <div className={styles.err}>{pathErr}</div>}
+                            <div className={styles.hint}>
+                                {t('wizard.willMount')} <b>{full}</b>
+                            </div>
+                        </div>
+                        <div className={styles.fld}>
+                            <label className={styles.lab} htmlFor="mw-desc">
+                                {t('wizard.description')}
+                            </label>
+                            <input
+                                autoComplete="off"
+                                className={styles.inp}
+                                id="mw-desc"
+                                maxLength={DESC_MAX}
+                                onChange={(e) => setDesc(e.currentTarget.value)}
+                                placeholder={t('wizard.descPlaceholder')}
+                                value={desc}
+                            />
+                            <div className={styles.hint}>{t('wizard.descHint')}</div>
+                        </div>
+                    </>
+                )}
+
+                {step === 2 && (
+                    <>
+                        <div aria-hidden className={styles.miniBus}>
+                            <i className={styles.l} />
+                            <i className={styles.c} />
+                            <u />
+                            <b>{full}</b>
+                        </div>
+                        <div className={styles.slip}>
+                            <div className={styles.rw}>
+                                <small>{t('wizard.slip.type')}</small>
+                                <b>{type}</b>
+                            </div>
+                            <div className={styles.rw}>
+                                <small>{t('wizard.slip.path')}</small>
+                                <b>{full}</b>
+                            </div>
+                            <div className={styles.rw}>
+                                <small>{t('wizard.slip.desc')}</small>
+                                <b>{desc.trim() || '—'}</b>
+                            </div>
+                        </div>
+                        <div className={styles.term}>
+                            <div className={styles.termTop}>
+                                <span>{t('wizard.request')}</span>
+                                <em>sys/mounts</em>
+                            </div>
+                            <pre>
+                                <span className="p">POST</span> <span className="w">/v1/sys/mounts/{full}</span>
+                                {'\n'}
+                                <span className="k">
+                                    {JSON.stringify(desc.trim() ? { type, description: desc.trim() } : { type })}
+                                </span>
+                            </pre>
+                        </div>
+                        {expType && <ExperimentalNote type={expType} />}
+                        {serverErr && <div className={styles.err}>{serverErr}</div>}
+                    </>
+                )}
+            </div>
+        </Modal>
+    )
+}
+
+function ExperimentalNote({ type }: { type: string }) {
+    const { t } = useTranslation('mounts')
+    const cmd = `tuck --enable-engine=${type}`
+    return (
+        <div style={{ marginTop: 18 }}>
+            <div className={styles.callout}>
+                <Icon name="lock" size={18} />
+                <div>
+                    <b>{t('wizard.expTitle', { type })}</b> {t('wizard.expText')}
+                </div>
+            </div>
+            <div className={styles.cmdRow}>
+                <code>{cmd}</code>
+                <CopyButton size={36} value={cmd} />
+            </div>
+        </div>
+    )
+}

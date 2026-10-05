@@ -40,7 +40,7 @@ export async function getMountConfig(path: string): Promise<MountConfig> {
 
 export async function putMountConfig(
     path: string,
-    body: { default_lease_ttl?: string; max_lease_ttl?: string }
+    body: { default_lease_ttl?: string; force_no_cache?: boolean; max_lease_ttl?: string }
 ): Promise<void> {
     await instance.post(`/v1/sys/mounts-tune/${path}`, body)
 }

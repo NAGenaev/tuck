@@ -1,1 +1,113 @@
-{}
+{
+    "pill": {
+        "remove": "Убрать"
+    },
+    "copy": {
+        "copy": "Копировать",
+        "copied": "Скопировано",
+        "failed": "Не удалось скопировать",
+        "copyValue": "Копировать {{value}}"
+    },
+    "state": {
+        "retry": "Повторить",
+        "error": {
+            "title": "Не удалось загрузить",
+            "message": "Сервер ответил ошибкой. Проверьте соединение и повторите запрос."
+        },
+        "forbidden": {
+            "title": "Нет доступа",
+            "message": "У вашего токена нет права на это действие. Обратитесь к администратору."
+        },
+        "loading": {
+            "title": "Загрузка",
+            "message": "Получаем данные…"
+        }
+    },
+    "confirm": {
+        "cancel": "Отмена",
+        "delete": "Удалить",
+        "ok": "Подтвердить",
+        "typeToConfirm": "Для подтверждения введите",
+        "matched": "Совпало. Можно продолжать.",
+        "hint": "Кнопка станет активной после точного совпадения."
+    },
+    "reveal": {
+        "hidden": "Значение скрыто",
+        "show": "Показать значение",
+        "hide": "Скрыть значение"
+    },
+    "countdown": {
+        "expired": "Истёк",
+        "day": "д"
+    },
+    "kv": {
+        "key": "Ключ",
+        "value": "Значение",
+        "valuePlaceholder": "значение",
+        "empty": "Пар пока нет",
+        "remove": "Удалить пару",
+        "add": "Добавить пару",
+        "problem": {
+            "duplicate": "Дубликат ключа",
+            "badKey": "Допустимы A–Z, 0–9, _ . -, без цифры в начале",
+            "noKey": "У значения нет ключа"
+        },
+        "ok_one": "{{count}} пара · ошибок нет",
+        "ok_few": "{{count}} пары · ошибок нет",
+        "ok_many": "{{count}} пар · ошибок нет",
+        "ok_other": "{{count}} пары · ошибок нет"
+    },
+    "ttl": {
+        "amount": "Срок жизни",
+        "unit": {
+            "label": "Единица",
+            "second": "сек",
+            "minute": "мин",
+            "hour": "ч",
+            "day": "дн"
+        },
+        "human": {
+            "zero": "0 секунд",
+            "second_one": "{{count}} секунда",
+            "second_few": "{{count}} секунды",
+            "second_many": "{{count}} секунд",
+            "second_other": "{{count}} секунды",
+            "minute_one": "{{count}} минута",
+            "minute_few": "{{count}} минуты",
+            "minute_many": "{{count}} минут",
+            "minute_other": "{{count}} минуты",
+            "hour_one": "{{count}} час",
+            "hour_few": "{{count}} часа",
+            "hour_many": "{{count}} часов",
+            "hour_other": "{{count}} часа",
+            "day_one": "{{count}} день",
+            "day_few": "{{count}} дня",
+            "day_many": "{{count}} дней",
+            "day_other": "{{count}} дня"
+        },
+        "until": "до {{date}}",
+        "max": "Максимум: {{max}}.",
+        "over": "Больше максимума ({{max}}), значение будет обрезано."
+    },
+    "code": {
+        "valid": "JSON корректен",
+        "error": "Ошибка в строке {{line}}: {{message}}",
+        "lines_one": "{{count}} строка",
+        "lines_few": "{{count}} строки",
+        "lines_many": "{{count}} строк",
+        "lines_other": "{{count}} строки",
+        "format": "Форматировать",
+        "minify": "Сжать",
+        "cannotFormat": "Нельзя обработать",
+        "fixFirst": "Сначала исправьте ошибку в JSON."
+    },
+    "table": {
+        "selectAll": "Выбрать все",
+        "selectRow": "Выбрать строку",
+        "selected_one": "Выбрана {{count}} строка",
+        "selected_few": "Выбрано {{count}} строки",
+        "selected_many": "Выбрано {{count}} строк",
+        "selected_other": "Выбрано {{count}} строки",
+        "showing": "Показано {{from}}–{{to}} из {{total}}"
+    }
+}

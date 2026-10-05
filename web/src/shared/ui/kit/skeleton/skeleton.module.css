@@ -1,0 +1,58 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+.sk {
+    position: relative;
+    display: block;
+    height: 12px;
+    background: var(--vault2);
+    overflow: hidden;
+}
+
+.sk::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(100deg, transparent 20%, rgba(215, 169, 75, 0.13) 50%, transparent 80%);
+    transform: translateX(-100%);
+    animation: shim 1.5s infinite;
+}
+
+.card {
+    display: grid;
+    gap: 12px;
+    padding: 18px;
+    background: var(--vault);
+    border: 1px solid var(--line);
+}
+
+.spin {
+    display: inline-block;
+    flex: none;
+    border: 2px solid var(--line2);
+    border-top-color: var(--brass);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+
+@keyframes shim {
+    to {
+        transform: translateX(100%);
+    }
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sk::after {
+        animation: none;
+        transform: none;
+        opacity: 0.4;
+    }
+
+    .spin {
+        animation-duration: 2.4s;
+    }
+}

@@ -1,30 +1,153 @@
-.button {
-    font-family: 'Oswald', Impact, sans-serif;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Buttons after the forms-kit artifact: Oswald caps, hover lift + light sweep,
+   brass focus halo. Danger (color="red" filled) fills with alarm on hover. */
+.button,
+.actionIcon {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
     transition:
-        transform 120ms ease,
-        border-color 120ms ease,
-        background-color 120ms ease;
+        transform 0.15s var(--ease),
+        border-color 0.15s,
+        background-color 0.15s,
+        box-shadow 0.2s,
+        color 0.15s;
 }
 
-.button:hover:not(:disabled):not([data-disabled]) {
-    transform: translateY(-1px);
+.button::after,
+.actionIcon::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.2) 50%, transparent 70%);
+    transform: translateX(-120%);
 }
 
-.button[data-variant='filled'] {
-    color: #1a1200;
+.button {
+    font-family: var(--label);
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
 }
 
 .buttonLabel {
-    font-size: 0.78rem;
+    font-size: 0.75rem;
+}
+
+.button:hover:not(:disabled):not([data-disabled]):not([data-loading])::after,
+.actionIcon:hover:not(:disabled):not([data-disabled]):not([data-loading])::after {
+    transform: translateX(120%);
+    transition: transform 0.7s var(--ease);
+}
+
+.button:hover:not(:disabled):not([data-disabled]):not([data-loading]) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px -10px rgba(215, 169, 75, 0.5);
+}
+
+.button[data-variant='filled']:hover:not(:disabled):not([data-disabled]):not([data-loading]) {
+    box-shadow: 0 10px 30px -8px rgba(215, 169, 75, 0.7);
+}
+
+.button[data-variant='filled'][style*='255, 90, 77']:hover:not(:disabled):not([data-disabled]),
+.button[data-variant='outline'][style*='255, 90, 77']:hover:not(:disabled):not([data-disabled]) {
+    box-shadow: 0 8px 26px -8px rgba(255, 90, 77, 0.6);
+}
+
+.button:active:not(:disabled):not([data-disabled]),
+.actionIcon:active:not(:disabled):not([data-disabled]) {
+    transform: translateY(0) scale(0.98);
+    box-shadow: none;
+}
+
+.button.button:focus-visible,
+.actionIcon.actionIcon:focus-visible {
+    outline: none;
+    box-shadow:
+        0 0 0 2px var(--void),
+        0 0 0 4px var(--brass),
+        0 0 22px rgba(215, 169, 75, 0.45);
+}
+
+.button:disabled,
+.button[data-disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: var(--button-bg, transparent);
+    color: var(--button-color, var(--mute));
+    border-color: var(--line2);
+    transform: none;
+}
+
+.actionIcon:disabled,
+.actionIcon[data-disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: var(--ai-bg, transparent);
+    color: var(--ai-color, var(--mute));
+    border-color: var(--line2);
+    transform: none;
+}
+
+/* default variant = the artifact's plain .btn */
+.button[data-variant='default'] {
+    --button-bg: var(--void);
+    --button-bd: 1px solid var(--line2);
+    --button-color: var(--bone);
+    --button-hover: var(--void);
+}
+
+.button[data-variant='default']:hover:not(:disabled):not([data-disabled]),
+.actionIcon[data-variant='default']:hover:not(:disabled):not([data-disabled]) {
+    border-color: var(--brass);
+}
+
+/* subtle = .btn.ghost */
+.button[data-variant='subtle'],
+.actionIcon[data-variant='subtle'] {
+    --button-bg: transparent;
+    --ai-bg: transparent;
+    --button-color: var(--mute);
+    --ai-color: var(--mute);
+}
+
+.button[data-variant='subtle']:hover:not(:disabled):not([data-disabled]),
+.actionIcon[data-variant='subtle']:hover:not(:disabled):not([data-disabled]) {
+    --button-hover: rgba(215, 169, 75, 0.08);
+    --ai-hover: rgba(215, 169, 75, 0.08);
+    --button-hover-color: var(--bone);
+    --ai-hover-color: var(--bone);
+    box-shadow: none;
 }
 
 .actionIcon {
-    border-color: var(--mantine-color-dark-4);
+    border-color: var(--line2);
+    background-color: var(--void);
 }
 
 .actionIcon:hover:not(:disabled):not([data-disabled]) {
-    border-color: var(--mantine-color-brass-5);
+    border-color: var(--brass);
+    transform: translateY(-1px);
+}
+
+.closeButton {
+    color: var(--dim);
+    background: transparent;
+    transition:
+        color 0.15s,
+        background-color 0.15s;
+}
+
+.closeButton:hover:not(:disabled):not([data-disabled]) {
+    color: var(--bone);
+    background: var(--line);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .button:hover:not(:disabled):not([data-disabled]),
+    .actionIcon:hover:not(:disabled):not([data-disabled]) {
+        transform: none;
+    }
 }

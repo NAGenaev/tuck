@@ -1,19 +1,221 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Text-like fields after the forms-kit artifact: void well, line2 frame, brass
+   focus halo, alarm / mint validation states. */
+.root {
+    --input-asterisk-color: var(--alarm);
+}
+
 .label {
-    font-family: 'Oswald', Impact, sans-serif;
-    font-size: 0.72rem;
+    font-family: var(--label);
+    font-size: 11.5px;
     font-weight: 600;
     letter-spacing: 0.14em;
+    line-height: 1;
     text-transform: uppercase;
-    color: var(--mantine-color-dimmed);
-    margin-bottom: 4px;
+    color: var(--mute);
+    margin-bottom: 8px;
+    transition: color 0.15s;
+}
+
+.root:focus-within .label {
+    color: var(--brass);
+}
+
+.required {
+    color: var(--alarm);
+}
+
+.description {
+    font-size: 12px;
+    color: var(--dim);
+    margin-bottom: 6px;
+}
+
+.error {
+    font-family: var(--body);
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--alarm);
+    margin-top: 6px;
 }
 
 .input {
-    background: var(--mantine-color-dark-7);
-    border-color: var(--mantine-color-dark-4);
+    background-color: var(--void);
+    border-color: var(--line2);
+    color: var(--bone);
+    font-family: var(--body);
+    transition:
+        border-color 0.15s,
+        box-shadow 0.2s,
+        background-color 0.15s;
+}
+
+.input::placeholder {
+    color: var(--dim);
+}
+
+.input:hover:not(:disabled):not([data-disabled]) {
+    border-color: var(--tk-hover-line);
 }
 
 .input:focus,
 .input:focus-within {
-    border-color: var(--mantine-color-brass-5);
+    border-color: var(--brass);
+    background-color: #0d0e13;
+    box-shadow: var(--tk-glow);
+}
+
+.input[data-error] {
+    border-color: var(--alarm);
+    color: var(--bone);
+}
+
+.input[data-error]:focus,
+.input[data-error]:focus-within {
+    border-color: var(--alarm);
+    box-shadow: var(--tk-glow-err);
+}
+
+.input[data-success] {
+    border-color: var(--mint);
+}
+
+.input[data-success]:focus,
+.input[data-success]:focus-within {
+    box-shadow: var(--tk-glow-ok);
+}
+
+.input:disabled,
+.input[data-disabled],
+.input:has(input:disabled) {
+    opacity: 0.45;
+    background-color: var(--vault);
+    color: var(--bone);
+}
+
+.input[readonly] {
+    background-color: var(--vault);
+}
+
+.input[data-monospace] {
+    font-family: var(--mono);
+}
+
+/* the real <input> inside PasswordInput */
+.innerInput {
+    color: var(--bone);
+    font-family: var(--body);
+}
+
+.innerInput::placeholder {
+    color: var(--dim);
+}
+
+.section {
+    color: var(--dim);
+    transition: color 0.15s;
+}
+
+.wrapper:focus-within .section[data-position='left'] {
+    color: var(--brass);
+}
+
+.wrapper[data-error] .section {
+    color: var(--alarm);
+}
+
+.visibilityToggle {
+    color: var(--dim);
+    transition:
+        color 0.15s,
+        background-color 0.15s;
+}
+
+.visibilityToggle:hover {
+    color: var(--brass);
+    background: rgba(215, 169, 75, 0.08);
+}
+
+/* chevron of Select / MultiSelect: flips when the list is open */
+.section[data-position='right'] svg {
+    transition:
+        transform 0.25s var(--ease),
+        color 0.15s;
+}
+
+.input[aria-expanded='true'] ~ .section[data-position='right'] svg {
+    transform: rotate(180deg);
+    color: var(--brass);
+}
+
+/* NumberInput steppers = .num-steps */
+.control {
+    border-inline-start: 1px solid var(--line2);
+    color: var(--mute);
+    transition:
+        background-color 0.15s,
+        color 0.15s;
+}
+
+.control + .control {
+    border-top: 1px solid var(--line2);
+}
+
+.control:hover:not(:disabled) {
+    background-color: var(--brass);
+    color: var(--ink);
+}
+
+.control:active:not(:disabled) {
+    transform: scale(0.9);
+}
+
+/* pills inside MultiSelect / TagsInput / PillsInput = .chip */
+.pill {
+    font-family: var(--label);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--brassL);
+    border: 1px solid rgba(215, 169, 75, 0.5);
+    background: rgba(215, 169, 75, 0.07);
+    height: 24px;
+    padding-inline: 9px 0;
+    animation: pop 0.25s var(--ease) both;
+}
+
+.pill[data-disabled] {
+    padding-inline: 9px;
+}
+
+.pillRemove {
+    width: 22px;
+    min-width: 22px;
+    padding: 0;
+    color: inherit;
+    transition:
+        background-color 0.15s,
+        color 0.15s;
+}
+
+.pillRemove:hover {
+    background: var(--alarm);
+    color: #1a0402;
+}
+
+.pillsField {
+    color: var(--bone);
+    font-family: var(--body);
+}
+
+@keyframes pop {
+    from {
+        transform: scale(0.7);
+        opacity: 0;
+    }
+    to {
+        transform: none;
+        opacity: 1;
+    }
 }

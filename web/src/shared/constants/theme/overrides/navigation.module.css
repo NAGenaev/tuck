@@ -1,0 +1,210 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Tabs, segmented control and pagination after the forms-kit artifact. */
+
+/* ---------- tabs ---------- */
+.tabsRoot.tabsRoot {
+    --tab-border-color: var(--line2);
+    --tab-hover-color: rgba(255, 255, 255, 0.025);
+    --tabs-color: var(--brass);
+}
+
+.tabsList {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+}
+
+.tabsList::-webkit-scrollbar {
+    display: none;
+}
+
+.tab.tab {
+    padding: 12px 16px;
+    font-family: var(--label);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--dim);
+    background-color: transparent;
+    transition:
+        color 0.15s,
+        background-color 0.15s,
+        border-color 0.2s,
+        box-shadow 0.25s;
+}
+
+.tab.tab:hover:not([data-disabled]):not([data-active]) {
+    color: var(--bone);
+    background-color: rgba(255, 255, 255, 0.025);
+}
+
+.tab.tab[data-active] {
+    color: var(--brass);
+    box-shadow: 0 6px 12px -8px var(--brass);
+}
+
+.tab.tab:focus-visible {
+    outline: 2px solid var(--brass);
+    outline-offset: -2px;
+}
+
+.tabLabel {
+    line-height: 1;
+}
+
+.tabSection.tabSection {
+    color: inherit;
+}
+
+@keyframes rise {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+.panel {
+    padding-top: 18px;
+    color: var(--mute);
+    font-size: 14px;
+    animation: rise 0.35s var(--ease) both;
+}
+
+/* pills variant = the artifact's boxed tabs (.tabs.box) */
+.tabsRoot[data-variant='pills'] .tabsList {
+    gap: 0;
+    width: max-content;
+    max-width: 100%;
+    background: var(--vault);
+    border: 1px solid var(--line2);
+}
+
+.tabsRoot[data-variant='pills'] .tab.tab {
+    border: 0;
+    border-right: 1px solid var(--line2);
+    border-radius: 0;
+}
+
+.tabsRoot[data-variant='pills'] .tab.tab:last-of-type {
+    border-right: 0;
+}
+
+.tabsRoot[data-variant='pills'] .tab.tab[data-active] {
+    background: linear-gradient(180deg, rgba(215, 169, 75, 0.16), rgba(215, 169, 75, 0.04));
+    color: var(--brassL);
+    box-shadow: inset 0 -2px 0 var(--brass);
+}
+
+/* outline variant: square, line2 frame */
+.tabsRoot[data-variant='outline'] .tab.tab[data-active] {
+    color: var(--brassL);
+    background-color: var(--vault);
+    box-shadow: none;
+}
+
+/* ---------- segmented control ---------- */
+.segRoot.segRoot {
+    background: var(--vault);
+    border: 1px solid var(--line2);
+    padding: 3px;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.segIndicator.segIndicator {
+    background: rgba(215, 169, 75, 0.14);
+    border: 1px solid var(--brass);
+    box-shadow: 0 0 18px -4px rgba(215, 169, 75, 0.5);
+    border-radius: 0;
+}
+
+.segLabel.segLabel {
+    padding: 9px 16px;
+    border-radius: 0;
+    font-family: var(--label);
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--dim);
+    transition: color 0.15s;
+}
+
+.segLabel.segLabel:hover:not([data-disabled]):not([data-active]) {
+    color: var(--bone);
+}
+
+.segLabel.segLabel[data-active] {
+    color: var(--brassL);
+}
+
+.segLabel.segLabel[data-active]::before {
+    background: rgba(215, 169, 75, 0.14);
+    border: 1px solid var(--brass);
+    border-radius: 0;
+}
+
+.segRoot[data-size='xs'] .segLabel.segLabel,
+.segRoot[data-size='sm'] .segLabel.segLabel {
+    padding: 6px 12px;
+    font-size: 10.5px;
+}
+
+.segInput:focus-visible + .segLabel.segLabel {
+    outline: 2px solid var(--brass);
+    outline-offset: -2px;
+}
+
+/* ---------- pagination ---------- */
+.pgControl.pgControl {
+    min-width: 34px;
+    height: 34px;
+    padding: 0 8px;
+    background: var(--void);
+    border: 1px solid var(--line2);
+    border-radius: 0;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--mute);
+    transition:
+        border-color 0.15s,
+        color 0.15s,
+        background-color 0.15s,
+        transform 0.15s;
+}
+
+.pgControl.pgControl:hover:not(:disabled):not([data-disabled]):not([data-active]) {
+    background: var(--void);
+    border-color: var(--brass);
+    color: var(--bone);
+    transform: translateY(-1px);
+}
+
+.pgControl.pgControl[data-active] {
+    background: var(--brass);
+    border-color: var(--brass);
+    color: var(--ink);
+}
+
+.pgControl.pgControl:disabled,
+.pgControl.pgControl[data-disabled] {
+    opacity: 0.35;
+}
+
+.pgDots.pgDots {
+    min-width: 24px;
+    height: 34px;
+    color: var(--dim);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pgControl.pgControl:hover {
+        transform: none;
+    }
+}

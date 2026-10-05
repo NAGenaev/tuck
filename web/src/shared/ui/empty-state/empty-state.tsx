@@ -1,22 +1,15 @@
-import { Stack, Text, ThemeIcon } from '@mantine/core'
+// SPDX-License-Identifier: AGPL-3.0-only
 import { ElementType } from 'react'
-import { TbInbox } from 'react-icons/tb'
 
+import { StateBlock } from '../kit/state-block/state-block'
+
+/** Quiet "nothing here" one-liner. For titled / retry / 403 variants use StateBlock directly. */
 export function EmptyState({
-    icon: Icon = TbInbox,
+    icon,
     label
 }: {
     icon?: ElementType<{ size: number }>
     label: string
 }) {
-    return (
-        <Stack align="center" gap={6} py="lg">
-            <ThemeIcon color="gray" radius="xl" size={40} variant="light">
-                <Icon size={20} />
-            </ThemeIcon>
-            <Text c="dimmed" size="sm">
-                {label}
-            </Text>
-        </Stack>
-    )
+    return <StateBlock compact icon={icon} kind="empty" message={label} />
 }

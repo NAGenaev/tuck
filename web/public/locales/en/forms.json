@@ -1,1 +1,99 @@
-{}
+{
+    "pill": {
+        "remove": "Remove"
+    },
+    "copy": {
+        "copy": "Copy",
+        "copied": "Copied",
+        "failed": "Could not copy",
+        "copyValue": "Copy {{value}}"
+    },
+    "state": {
+        "retry": "Retry",
+        "error": {
+            "title": "Failed to load",
+            "message": "The server returned an error. Check the connection and try again."
+        },
+        "forbidden": {
+            "title": "Access denied",
+            "message": "Your token has no permission for this action. Ask an administrator."
+        },
+        "loading": {
+            "title": "Loading",
+            "message": "Fetching data…"
+        }
+    },
+    "confirm": {
+        "cancel": "Cancel",
+        "delete": "Delete",
+        "ok": "Confirm",
+        "typeToConfirm": "To confirm, type",
+        "matched": "Matched. You can proceed.",
+        "hint": "The button unlocks after an exact match."
+    },
+    "reveal": {
+        "hidden": "Value hidden",
+        "show": "Show value",
+        "hide": "Hide value"
+    },
+    "countdown": {
+        "expired": "Expired",
+        "day": "d"
+    },
+    "kv": {
+        "key": "Key",
+        "value": "Value",
+        "valuePlaceholder": "value",
+        "empty": "No pairs yet",
+        "remove": "Remove pair",
+        "add": "Add pair",
+        "problem": {
+            "duplicate": "Duplicate key",
+            "badKey": "Allowed: A–Z, 0–9, _ . -, no leading digit",
+            "noKey": "This value has no key"
+        },
+        "ok_one": "{{count}} pair · no errors",
+        "ok_other": "{{count}} pairs · no errors"
+    },
+    "ttl": {
+        "amount": "Time to live",
+        "unit": {
+            "label": "Unit",
+            "second": "sec",
+            "minute": "min",
+            "hour": "h",
+            "day": "d"
+        },
+        "human": {
+            "zero": "0 seconds",
+            "second_one": "{{count}} second",
+            "second_other": "{{count}} seconds",
+            "minute_one": "{{count}} minute",
+            "minute_other": "{{count}} minutes",
+            "hour_one": "{{count}} hour",
+            "hour_other": "{{count}} hours",
+            "day_one": "{{count}} day",
+            "day_other": "{{count}} days"
+        },
+        "until": "until {{date}}",
+        "max": "Maximum: {{max}}.",
+        "over": "Over the maximum ({{max}}), the value will be clamped."
+    },
+    "code": {
+        "valid": "JSON is valid",
+        "error": "Error on line {{line}}: {{message}}",
+        "lines_one": "{{count}} line",
+        "lines_other": "{{count}} lines",
+        "format": "Format",
+        "minify": "Minify",
+        "cannotFormat": "Cannot process",
+        "fixFirst": "Fix the JSON error first."
+    },
+    "table": {
+        "selectAll": "Select all",
+        "selectRow": "Select row",
+        "selected_one": "{{count}} row selected",
+        "selected_other": "{{count}} rows selected",
+        "showing": "Showing {{from}}–{{to}} of {{total}}"
+    }
+}

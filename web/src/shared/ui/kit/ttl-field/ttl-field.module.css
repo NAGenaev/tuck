@@ -1,0 +1,98 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+.ttl {
+    display: grid;
+    gap: 12px;
+}
+
+.row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.num {
+    width: 140px;
+    flex: none;
+}
+
+.num input {
+    font-family: var(--mono);
+}
+
+.presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.out {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    padding: 12px 14px;
+    background: var(--vault);
+    border: 1px dashed var(--line2);
+}
+
+.human {
+    font: 800 15px var(--disp);
+    letter-spacing: -0.01em;
+    color: var(--brassL);
+}
+
+.out[data-over] .human {
+    color: var(--alarm);
+}
+
+.secs {
+    font: 500 12px var(--mono);
+    color: var(--mute);
+}
+
+.until {
+    margin-left: auto;
+    font: 500 11.5px var(--mono);
+    color: var(--dim);
+}
+
+.track {
+    height: 4px;
+    background: var(--line);
+    overflow: hidden;
+}
+
+.track i {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, var(--brass), var(--brassL));
+    box-shadow: 0 0 10px var(--brass);
+    transition:
+        width 0.35s var(--ease),
+        background-color 0.2s;
+}
+
+.out[data-over] ~ .track i {
+    background: var(--alarm);
+    box-shadow: 0 0 10px var(--alarm);
+}
+
+.hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--dim);
+}
+
+.hint[data-err] {
+    color: var(--alarm);
+}
+
+@media (max-width: 480px) {
+    .until {
+        margin-left: 0;
+        flex-basis: 100%;
+    }
+}

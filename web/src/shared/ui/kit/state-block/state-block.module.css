@@ -1,0 +1,116 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+.state {
+    --c: var(--line2);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 40px 24px;
+    text-align: center;
+    border: 1px dashed var(--line2);
+    background: repeating-linear-gradient(
+        135deg,
+        transparent 0 12px,
+        rgba(255, 255, 255, 0.012) 12px 13px
+    );
+}
+
+.ico {
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    border: 1px solid var(--line2);
+    background: var(--vault);
+    color: var(--mute);
+    transition:
+        transform 0.3s var(--ease),
+        border-color 0.2s,
+        color 0.2s;
+}
+
+.state:hover .ico {
+    transform: translateY(-3px) rotate(-4deg);
+    border-color: var(--brass);
+    color: var(--brass);
+}
+
+.title {
+    margin: 4px 0 0;
+    font: 700 14px/1.3 var(--disp);
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+    color: var(--bone);
+}
+
+.text {
+    margin: 0;
+    max-width: 36ch;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--mute);
+}
+
+.text code,
+.details {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--brassL);
+}
+
+.details {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    color: var(--dim);
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.state[data-kind='error'] {
+    border-color: rgba(255, 90, 77, 0.45);
+}
+
+.state[data-kind='error'] .ico {
+    border-color: rgba(255, 90, 77, 0.55);
+    color: var(--alarm);
+}
+
+.state[data-kind='forbidden'] .ico {
+    border-color: rgba(215, 169, 75, 0.5);
+    color: var(--brass);
+}
+
+/* compact: the old EmptyState look, a quiet one-liner */
+.state[data-compact] {
+    gap: 8px;
+    padding: 20px 16px;
+}
+
+.state[data-compact] .ico {
+    width: 40px;
+    height: 40px;
+}
+
+.state[data-compact] .text {
+    font-size: 13px;
+    color: var(--dim);
+    max-width: none;
+}
+
+@media (max-width: 480px) {
+    .state {
+        padding: 28px 16px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .state:hover .ico {
+        transform: none;
+    }
+}

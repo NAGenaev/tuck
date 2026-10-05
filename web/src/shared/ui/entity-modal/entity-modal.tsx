@@ -1,6 +1,13 @@
-import { Group, Modal, Text, ThemeIcon } from '@mantine/core'
+// SPDX-License-Identifier: AGPL-3.0-only
+import { Modal } from '@mantine/core'
 import { ElementType, ReactNode } from 'react'
 
+import modalStyles from '../kit/modal/modal.module.css'
+
+/**
+ * Legacy modal with a react-icons glyph in the header. Same frame as the kit's Modal;
+ * new code should prefer `Modal` from '@shared/ui/kit' (footer slot, busy state, tones).
+ */
 export function EntityModal({
     opened,
     onClose,
@@ -18,22 +25,20 @@ export function EntityModal({
     size?: 'lg' | 'md' | 'sm' | 'xl'
     title: string
 }) {
+    const danger = color === 'red' || color === 'pink'
     return (
         <Modal
-            centered
+            data-danger={danger || undefined}
             onClose={onClose}
             opened={opened}
-            padding="lg"
             size={size}
             title={
-                <Group gap="sm">
-                    <ThemeIcon color={color} radius="md" size={32} variant="light">
-                        <Icon size={18} />
-                    </ThemeIcon>
-                    <Text fw={700} size="lg">
-                        {title}
-                    </Text>
-                </Group>
+                <span className={modalStyles.head}>
+                    <span className={modalStyles.ico} data-tone={danger ? 'danger' : 'brass'}>
+                        <Icon size={16} />
+                    </span>
+                    <span className={modalStyles.headText}>{title}</span>
+                </span>
             }
         >
             {children}

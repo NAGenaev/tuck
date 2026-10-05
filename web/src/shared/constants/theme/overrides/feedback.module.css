@@ -1,0 +1,209 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Notification, alert, skeleton, progress, ring progress and badge after the forms-kit artifact. */
+
+/* ---------- notification (toast) ---------- */
+.toast.toast {
+    padding: 14px 12px 16px 14px;
+    background: var(--vault2);
+    border: 1px solid var(--line2);
+    border-left: 3px solid var(--notification-color);
+    border-radius: 0;
+    box-shadow:
+        0 20px 50px rgba(0, 0, 0, 0.7),
+        0 0 30px -10px var(--notification-color);
+    align-items: flex-start;
+}
+
+.toast.toast::before {
+    display: none;
+}
+
+/* auto-close progress line: the kit's toast.* helpers set --tk-life to the delay */
+.toast.toast[style*='--tk-life']::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 2px;
+    background: var(--notification-color);
+    box-shadow: 0 0 8px var(--notification-color);
+    transform-origin: left;
+    animation: life var(--tk-life, 5s) linear forwards;
+    pointer-events: none;
+}
+
+/* Mantine restarts the close timer on mouse leave, so reset the line the same way */
+.toast.toast[style*='--tk-life']:hover::after {
+    animation: none;
+}
+
+.toastIcon.toastIcon {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    margin-inline-end: 12px;
+    border-radius: 0;
+    background: transparent;
+    border: 1px solid var(--notification-color);
+    color: var(--notification-color);
+}
+
+.toastBody {
+    margin-inline-end: 8px;
+}
+
+.toastTitle.toastTitle {
+    margin: 0;
+    padding-top: 2px;
+    font-family: var(--label);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    line-height: 1.3;
+    text-transform: uppercase;
+    color: var(--bone);
+}
+
+.toastDescription.toastDescription {
+    margin-top: 3px;
+    font-size: 13px;
+    color: var(--mute);
+    white-space: normal;
+}
+
+.toastDescription.toastDescription code {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--brassL);
+}
+
+.toastClose.toastClose {
+    color: var(--dim);
+    border-radius: 0;
+}
+
+.toastClose.toastClose:hover {
+    color: var(--bone);
+    background: var(--line);
+}
+
+@keyframes life {
+    from {
+        transform: scaleX(1);
+    }
+    to {
+        transform: scaleX(0);
+    }
+}
+
+/* ---------- alert ---------- */
+.alert.alert {
+    padding: 14px 16px;
+    border: 1px solid color-mix(in srgb, var(--alert-color) 45%, transparent);
+    background:
+        linear-gradient(90deg, color-mix(in srgb, var(--alert-color) 10%, transparent), transparent 70%),
+        var(--vault);
+    color: var(--mute);
+}
+
+.alertIcon.alertIcon {
+    color: var(--alert-color);
+    margin-inline-end: 14px;
+}
+
+.alertTitle.alertTitle {
+    margin-bottom: 3px;
+    font-family: var(--label);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--alert-color);
+}
+
+.alertMessage.alertMessage {
+    font-size: 13.5px;
+    color: var(--mute);
+}
+
+.alertClose.alertClose {
+    color: var(--dim);
+    border-radius: 0;
+}
+
+.alertClose.alertClose:hover {
+    color: var(--bone);
+    background: transparent;
+}
+
+/* ---------- skeleton ---------- */
+.skeleton.skeleton[data-visible]::before {
+    background: var(--vault2);
+}
+
+.skeleton.skeleton[data-visible]::after {
+    background: linear-gradient(100deg, transparent 20%, rgba(215, 169, 75, 0.13) 50%, transparent 80%);
+    transform: translateX(-100%);
+    animation: shim 1.5s infinite;
+}
+
+@keyframes shim {
+    to {
+        transform: translateX(100%);
+    }
+}
+
+/* ---------- progress ---------- */
+.progress.progress {
+    background: var(--vault2);
+    border: 1px solid var(--line);
+    border-radius: 0;
+}
+
+.progressSection.progressSection {
+    border-radius: 0;
+    box-shadow: 0 0 10px -2px var(--progress-section-color);
+}
+
+.progressLabel.progressLabel {
+    font-family: var(--mono);
+    color: var(--ink);
+}
+
+/* ---------- ring progress ---------- */
+.ringCurve.ringCurve {
+    --rp-curve-root-color: var(--line2);
+}
+
+.ringLabel.ringLabel {
+    font-family: var(--mono);
+    color: var(--bone);
+}
+
+/* ---------- badge = .pill ---------- */
+.badge.badge {
+    font-family: var(--label);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    border-radius: 0;
+}
+
+.badgeLabel.badgeLabel {
+    font-weight: inherit;
+    letter-spacing: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .skeleton.skeleton[data-visible]::after {
+        animation: none;
+        transform: none;
+        opacity: 0.4;
+    }
+
+    .toast.toast[style*='--tk-life']::after {
+        animation-duration: var(--tk-life, 5s);
+    }
+}

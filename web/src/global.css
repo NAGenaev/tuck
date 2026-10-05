@@ -88,3 +88,59 @@ pre {
 code {
     color: var(--mantine-color-brass-3);
 }
+
+/* ------------------------------------------------------------------ *
+ * Tuck design tokens (from the approved UI artifacts).               *
+ * Unprefixed aliases exist so artifact CSS can be ported verbatim.   *
+ * ------------------------------------------------------------------ */
+:root {
+    --void: #0a0b0e;
+    --vault: #121420;
+    --vault2: #1a1d29;
+    --line: #272b38;
+    --line2: #3b4154;
+    --bone: #edeae2;
+    --mute: #9096a8;
+    --dim: #575c70;
+    --brass: #d7a94b;
+    --brassL: #f0c772;
+    --alarm: #ff5a4d;
+    --mint: #49e0a4;
+    --ice: #45c9e6;
+    --violet: #9c8cff;
+    --ink: #1a1200;
+    --disp: 'Unbounded', 'Arial Black', Impact, sans-serif;
+    --label: 'Oswald', Impact, sans-serif;
+    --body: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+    --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+    /* focus glow shared by every field-like control */
+    --tk-glow: 0 0 0 3px rgba(215, 169, 75, 0.16), 0 0 24px -4px rgba(215, 169, 75, 0.35);
+    --tk-glow-err: 0 0 0 3px rgba(255, 90, 77, 0.18), 0 0 24px -4px rgba(255, 90, 77, 0.4);
+    --tk-glow-ok: 0 0 0 3px rgba(73, 224, 164, 0.15);
+    --tk-hover-line: #5a6178;
+    color-scheme: dark;
+}
+
+button,
+input,
+textarea,
+select {
+    font-family: inherit;
+}
+
+:focus-visible {
+    outline: 2px solid var(--brass);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001s !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001s !important;
+        scroll-behavior: auto !important;
+    }
+}

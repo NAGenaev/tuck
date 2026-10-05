@@ -19,7 +19,7 @@ export function PageHeader({
             pb="lg"
             pt="md"
             style={{
-                borderBottom: '1px solid var(--mantine-color-dark-4)',
+                borderBottom: '1px solid var(--line)',
                 position: 'relative'
             }}
         >

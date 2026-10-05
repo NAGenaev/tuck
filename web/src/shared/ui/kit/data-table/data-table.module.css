@@ -1,0 +1,79 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+.sortable.sortable {
+    cursor: pointer;
+    transition: color 0.15s;
+}
+
+.sortable.sortable:hover,
+.sortable.sortable[data-sorted] {
+    color: var(--bone);
+}
+
+.sortable.sortable:focus-visible {
+    outline-offset: -2px;
+}
+
+.arrow {
+    display: inline-block;
+    margin-left: 6px;
+    vertical-align: -1px;
+    opacity: 0.35;
+    transition:
+        transform 0.2s var(--ease),
+        opacity 0.15s,
+        color 0.15s;
+}
+
+.arrow[data-dir] {
+    opacity: 1;
+    color: var(--brass);
+}
+
+.arrow[data-dir='desc'] {
+    transform: rotate(180deg);
+}
+
+.ck.ck {
+    width: 44px;
+    padding-right: 0;
+}
+
+.trunc {
+    display: inline-block;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+.selBar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px 16px;
+    background: rgba(215, 169, 75, 0.08);
+    border-bottom: 1px solid rgba(215, 169, 75, 0.35);
+    font: 600 11px var(--label);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--brassL);
+}
+
+.selBar > span {
+    margin-right: auto;
+}
+
+.tfoot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--line);
+    background: var(--vault);
+    font: 500 12px var(--mono);
+    color: var(--dim);
+}

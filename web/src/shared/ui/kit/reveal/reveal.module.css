@@ -1,0 +1,99 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+.root {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    min-width: 0;
+    height: 36px;
+    background: var(--vault);
+    border: 1px solid var(--line2);
+    transition:
+        border-color 0.15s,
+        box-shadow 0.2s;
+}
+
+.root:hover,
+.root[data-shown] {
+    border-color: var(--brass);
+}
+
+.root[data-shown] {
+    box-shadow: var(--tk-glow);
+}
+
+.text {
+    flex: 1;
+    min-width: 0;
+    padding: 0 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: 500 13px var(--mono);
+    letter-spacing: 0.02em;
+    color: var(--dim);
+}
+
+.root[data-shown] .text {
+    color: var(--brassL);
+}
+
+.left {
+    flex: none;
+    padding-right: 8px;
+    font: 500 11px var(--mono);
+    color: var(--dim);
+    font-variant-numeric: tabular-nums;
+}
+
+.eye {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    border-left: 1px solid var(--line);
+    color: var(--mute);
+    cursor: pointer;
+    transition:
+        color 0.15s,
+        background-color 0.15s;
+}
+
+.eye:hover {
+    color: var(--brassL);
+    background: rgba(215, 169, 75, 0.08);
+}
+
+/* the copy button sits flush inside the frame instead of having its own box */
+.copy.copy {
+    height: 34px;
+    width: 34px;
+    border: 0;
+    border-left: 1px solid var(--line);
+}
+
+.bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 2px;
+    background: linear-gradient(90deg, var(--alarm), var(--brass) 60%);
+    box-shadow: 0 0 8px var(--brass);
+    transform-origin: left;
+    animation: drain linear forwards;
+    pointer-events: none;
+}
+
+@keyframes drain {
+    from {
+        transform: scaleX(1);
+    }
+    to {
+        transform: scaleX(0);
+    }
+}

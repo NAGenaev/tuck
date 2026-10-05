@@ -44,7 +44,7 @@ export const theme = createTheme({
         ],
         brass,
         cyan: brass,
-        teal: brass,
+        teal: ramp(tokens.mint),
         yellow: brass,
         orange: ramp('#E8883F'),
         red: ramp(tokens.alarm),

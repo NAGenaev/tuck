@@ -1,0 +1,77 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+.btn {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--line2);
+    color: var(--mute);
+    cursor: pointer;
+    transition:
+        color 0.15s,
+        border-color 0.15s,
+        background-color 0.15s,
+        box-shadow 0.2s;
+}
+
+.btn:hover {
+    color: var(--brassL);
+    border-color: var(--brass);
+    background: rgba(215, 169, 75, 0.08);
+}
+
+.btn[data-done] {
+    color: var(--mint);
+    border-color: var(--mint);
+    background: rgba(73, 224, 164, 0.08);
+}
+
+.value {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    padding: 1px 4px;
+    margin: -1px -4px;
+    background: transparent;
+    border: 1px dashed transparent;
+    font: 500 12.5px/1.4 var(--mono);
+    color: inherit;
+    cursor: pointer;
+    transition:
+        color 0.15s,
+        border-color 0.15s,
+        background-color 0.15s;
+}
+
+.valueText {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.value svg {
+    flex: none;
+    opacity: 0.5;
+    transition: opacity 0.15s;
+}
+
+.value:hover {
+    color: var(--brassL);
+    border-color: var(--line2);
+    background: rgba(215, 169, 75, 0.06);
+}
+
+.value:hover svg {
+    opacity: 1;
+}
+
+.value[data-done] {
+    color: var(--mint);
+}
+
+.value[data-done] svg {
+    opacity: 1;
+}

@@ -38,7 +38,7 @@ export function App() {
                 <AuthProvider>
                     <MantineProvider defaultColorScheme="dark" theme={theme}>
                         <ModalsProvider>
-                            <Notifications position="top-right" />
+                            <Notifications position="bottom-right" />
                             <Router />
                         </ModalsProvider>
                     </MantineProvider>

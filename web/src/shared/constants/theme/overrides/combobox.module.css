@@ -1,0 +1,77 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Dropdown lists (Select, MultiSelect, Autocomplete, TagsInput) after the artifact's .dd / .opt. */
+.dropdown {
+    background: var(--vault2);
+    border: 1px solid var(--line2);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.65);
+    padding: 0;
+}
+
+.options {
+    padding: 0;
+}
+
+.option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 13px;
+    font-family: var(--body);
+    font-size: 14px;
+    color: var(--mute);
+    border-left: 2px solid transparent;
+    transition:
+        background-color 0.12s,
+        color 0.12s,
+        padding 0.15s;
+}
+
+.option:hover:not([data-disabled]),
+.option[data-combobox-selected]:not([data-checked]) {
+    background: rgba(215, 169, 75, 0.09);
+    color: var(--bone);
+    padding-left: 17px;
+}
+
+.option[data-checked] {
+    color: var(--brassL);
+    border-left-color: var(--brass);
+    background: transparent;
+}
+
+.option[data-checked][data-combobox-selected],
+.option[data-checked]:hover {
+    background: rgba(215, 169, 75, 0.09);
+    padding-left: 17px;
+}
+
+.option[data-combobox-disabled],
+.option[data-disabled] {
+    opacity: 0.4;
+}
+
+.option svg {
+    color: var(--brass);
+}
+
+.empty {
+    padding: 12px 13px;
+    text-align: center;
+    color: var(--dim);
+    font-size: 13px;
+}
+
+.groupLabel {
+    padding: 8px 13px 6px;
+    font-family: var(--label);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--dim);
+}
+
+.search {
+    background: var(--void);
+    border-color: var(--line2);
+}

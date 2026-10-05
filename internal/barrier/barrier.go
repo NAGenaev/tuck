@@ -5,20 +5,26 @@
 //
 // Key hierarchy (envelope encryption):
 //
-//	root key  --(AES-GCM)-->  barrier key (DEK)  --(AES-GCM)-->  secret data
+//	root key  --(AEAD)-->  barrier key (DEK)  --(AEAD)-->  secret data
 //
-// The root key lives only in memory and is supplied by a Seal at unseal time.
-// The barrier key is generated once at Initialize, wrapped with the root key,
-// and stored in the backend as the "keyring". Secret values are encrypted with
-// the barrier key. To rotate the root key later you only re-wrap the keyring —
-// you never have to re-encrypt the data.
+// The AEAD is a pluggable cipher suite chosen when the store is initialised
+// (see Suite): AES-256-GCM by default, or GOST R 34.12-2015 "Kuznyechik" in
+// MGM mode. The root key lives only in memory and is supplied by a Seal at
+// unseal time. The barrier key is generated once at Initialize, wrapped with
+// the root key, and stored in the backend as the "keyring". Secret values are
+// encrypted with the barrier key. To rotate the root key later you only
+// re-wrap the keyring — you never have to re-encrypt the data.
+//
+// Stores created by this version bind every ciphertext to its storage key as
+// AEAD associated data, so a ciphertext cannot be moved to another key.
+// Stores created before cipher suites existed have no metadata record and are
+// read as AES-256-GCM without associated data.
 package barrier
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -31,7 +37,7 @@ import (
 // "barrier/" prefix is reserved for internal use and must not hold secret data.
 const keyringPath = "barrier/keyring"
 
-const keySize = 32 // AES-256
+const keySize = suiteKeySize
 
 // Errors returned by the barrier.
 var (
@@ -45,8 +51,10 @@ var (
 type Barrier struct {
 	backend physical.Backend
 
-	mu  sync.RWMutex
-	key []byte // barrier key (DEK); nil when sealed
+	mu      sync.RWMutex
+	key     []byte // barrier key (DEK); nil when sealed
+	suite   Suite  // cipher suite protecting this store
+	bindAAD bool   // authenticate the storage key as AEAD associated data
 }
 
 // New creates a Barrier over the given backend. It starts sealed.
@@ -64,8 +72,20 @@ func (b *Barrier) Initialized(ctx context.Context) (bool, error) {
 }
 
 // Initialize generates a fresh barrier key, wraps it with rootKey, and
-// persists it. It must be called exactly once for the life of a backend.
+// persists it using the default cipher suite. It must be called exactly once
+// for the life of a backend.
 func (b *Barrier) Initialize(ctx context.Context, rootKey []byte) error {
+	return b.InitializeWithSuite(ctx, rootKey, "")
+}
+
+// InitializeWithSuite is Initialize with an explicit cipher suite name
+// ("" = aes-256-gcm). The choice is recorded in the store and cannot change
+// afterwards.
+func (b *Barrier) InitializeWithSuite(ctx context.Context, rootKey []byte, suiteName string) error {
+	suite, err := LookupSuite(suiteName)
+	if err != nil {
+		return err
+	}
 	if len(rootKey) != keySize {
 		return fmt.Errorf("root key must be %d bytes, got %d", keySize, len(rootKey))
 	}
@@ -81,9 +101,17 @@ func (b *Barrier) Initialize(ctx context.Context, rootKey []byte) error {
 	if _, err := io.ReadFull(rand.Reader, barrierKey); err != nil {
 		return fmt.Errorf("generate barrier key: %w", err)
 	}
-	wrapped, err := encrypt(rootKey, barrierKey)
+	wrapped, err := suite.seal(rootKey, barrierKey, []byte(keyringPath))
 	if err != nil {
 		return fmt.Errorf("wrap barrier key: %w", err)
+	}
+	meta, err := json.Marshal(storeMeta{Version: metaVersionAADBinding, Cipher: suite.Name})
+	if err != nil {
+		return err
+	}
+	// Metadata first: the keyring's existence is what marks the store initialised.
+	if err := b.backend.Put(ctx, &physical.Entry{Key: metaPath, Value: meta}); err != nil {
+		return fmt.Errorf("write barrier metadata: %w", err)
 	}
 	return b.backend.Put(ctx, &physical.Entry{Key: keyringPath, Value: wrapped})
 }
@@ -103,10 +131,19 @@ func (b *Barrier) Unseal(ctx context.Context, rootKey []byte) error {
 	if e == nil {
 		return ErrNotInitialized
 	}
-	barrierKey, err := decrypt(rootKey, e.Value)
+	suite, bindAAD, err := b.loadMeta(ctx)
+	if err != nil {
+		return err
+	}
+	var aad []byte
+	if bindAAD {
+		aad = []byte(keyringPath)
+	}
+	barrierKey, err := suite.open(rootKey, e.Value, aad)
 	if err != nil {
 		return ErrUnsealFailed
 	}
+	b.suite, b.bindAAD = suite, bindAAD
 	b.key = barrierKey
 	return nil
 }
@@ -129,6 +166,14 @@ func (b *Barrier) IsSealed() bool {
 	return b.key == nil
 }
 
+// CipherSuite reports the cipher suite protecting this store ("" until the
+// barrier has been unsealed once).
+func (b *Barrier) CipherSuite() string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.suite.Name
+}
+
 // Get decrypts and returns the entry at key, or (nil, nil) if absent.
 func (b *Barrier) Get(ctx context.Context, key string) (*physical.Entry, error) {
 	b.mu.RLock()
@@ -140,7 +185,7 @@ func (b *Barrier) Get(ctx context.Context, key string) (*physical.Entry, error) 
 	if err != nil || e == nil {
 		return nil, err
 	}
-	plain, err := decrypt(b.key, e.Value)
+	plain, err := b.suite.open(b.key, e.Value, b.aadFor(key))
 	if err != nil {
 		return nil, fmt.Errorf("decrypt %q: %w", key, err)
 	}
@@ -154,7 +199,7 @@ func (b *Barrier) Put(ctx context.Context, entry *physical.Entry) error {
 	if b.key == nil {
 		return ErrSealed
 	}
-	ct, err := encrypt(b.key, entry.Value)
+	ct, err := b.suite.seal(b.key, entry.Value, b.aadFor(entry.Key))
 	if err != nil {
 		return err
 	}
@@ -180,7 +225,7 @@ func (b *Barrier) Rekey(ctx context.Context, newRootKey []byte) error {
 	if b.key == nil {
 		return ErrSealed
 	}
-	wrapped, err := encrypt(newRootKey, b.key)
+	wrapped, err := b.suite.seal(newRootKey, b.key, b.aadFor(keyringPath))
 	if err != nil {
 		return fmt.Errorf("re-wrap barrier key: %w", err)
 	}
@@ -198,40 +243,68 @@ func (b *Barrier) List(ctx context.Context, prefix string) ([]string, error) {
 	return b.backend.List(ctx, prefix)
 }
 
-// --- crypto helpers: AES-256-GCM, nonce prefixed to the ciphertext ---
+// --- store metadata and crypto helpers ---
 
-func encrypt(key, plaintext []byte) ([]byte, error) {
-	gcm, err := newGCM(key)
+type storeMeta struct {
+	Version int    `json:"version"`
+	Cipher  string `json:"cipher"`
+}
+
+// loadMeta reads the store metadata. A store without a metadata record
+// predates cipher suites: it is AES-256-GCM with no associated data.
+func (b *Barrier) loadMeta(ctx context.Context) (Suite, bool, error) {
+	e, err := b.backend.Get(ctx, metaPath)
+	if err != nil {
+		return Suite{}, false, err
+	}
+	if e == nil {
+		s, err := LookupSuite(SuiteAES256GCM)
+		return s, false, err
+	}
+	var m storeMeta
+	if err := json.Unmarshal(e.Value, &m); err != nil {
+		return Suite{}, false, fmt.Errorf("parse barrier metadata: %w", err)
+	}
+	s, err := LookupSuite(m.Cipher)
+	if err != nil {
+		return Suite{}, false, err
+	}
+	return s, m.Version >= metaVersionAADBinding, nil
+}
+
+func (b *Barrier) aadFor(key string) []byte {
+	if b.bindAAD {
+		return []byte(key)
+	}
+	return nil
+}
+
+// seal returns nonce||ciphertext||tag.
+func (s Suite) seal(key, plaintext, aad []byte) ([]byte, error) {
+	aead, err := s.New(key)
 	if err != nil {
 		return nil, err
 	}
-	nonce := make([]byte, gcm.NonceSize())
+	nonce := make([]byte, aead.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		return nil, err
 	}
-	// Seal appends the ciphertext to nonce, yielding nonce||ciphertext.
-	return gcm.Seal(nonce, nonce, plaintext, nil), nil
+	if s.ClearNonceTopBit {
+		nonce[0] &= 0x7f
+	}
+	return aead.Seal(nonce, nonce, plaintext, aad), nil
 }
 
-func decrypt(key, data []byte) ([]byte, error) {
-	gcm, err := newGCM(key)
+func (s Suite) open(key, data, aad []byte) ([]byte, error) {
+	aead, err := s.New(key)
 	if err != nil {
 		return nil, err
 	}
-	ns := gcm.NonceSize()
+	ns := aead.NonceSize()
 	if len(data) < ns {
 		return nil, errors.New("ciphertext too short")
 	}
-	nonce, ct := data[:ns], data[ns:]
-	return gcm.Open(nil, nonce, ct, nil)
-}
-
-func newGCM(key []byte) (cipher.AEAD, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	return cipher.NewGCM(block)
+	return aead.Open(nil, data[:ns], data[ns:], aad)
 }
 
 func zero(b []byte) {

@@ -77,8 +77,9 @@ go vet ./...
 File: `internal/barrier/barrier.go`
 
 - Root key generated with `crypto/rand` ✅
-- Per-entry DEK derived via `crypto/rand` ✅  
+- One barrier key (DEK) generated via `crypto/rand` and shared by all entries (NOT a per-entry DEK) ✅
 - AES-256-GCM: 32-byte key, 12-byte nonce from `crypto/rand` ✅
+- Since the cipher-suite change: ciphertext is bound to its storage key as AEAD associated data (new stores); legacy stores read without AAD. Storage key paths remain plaintext — see docs/11-barrier-and-ciphers.md ⚠️
 - Nonce uniqueness: fresh `crypto/rand` nonce per encrypt call ✅
 - Sealed state: `Get`/`Put` refuse all operations when barrier is sealed ✅
 - Key rotation: new root key wraps existing DEK; no data re-encryption needed ✅

@@ -30,6 +30,9 @@ var (
 	ErrInvalidCredentials = errors.New("ldap: invalid username or password")
 	// ErrNoRole is returned when no role matches the authenticated user.
 	ErrNoRole = errors.New("ldap: no matching role for user")
+	// ErrNamespaceConflict is returned when the roles matching a user are bound
+	// to different Tuck namespaces: a token can only belong to one.
+	ErrNamespaceConflict = errors.New("ldap: matching roles are bound to different namespaces")
 )
 
 const (
@@ -116,15 +119,19 @@ type Role struct {
 	Policies []string `json:"policies"`
 	// TTL is the Tuck token lifetime. Zero = server default.
 	TTL time.Duration `json:"ttl,omitempty"`
+	// TuckNamespace binds issued tokens to this Tuck namespace (must exist).
+	// Empty = root namespace. Never taken from the client.
+	TuckNamespace string `json:"tuck_namespace,omitempty"`
 }
 
 // LoginResult is returned by Authenticator.Login on success.
 type LoginResult struct {
-	UserDN   string
-	Username string
-	Policies []string
-	TTL      time.Duration
-	Groups   []string // LDAP group DNs the user belongs to
+	UserDN        string
+	Username      string
+	Policies      []string
+	TTL           time.Duration
+	TuckNamespace string
+	Groups        []string // LDAP group DNs the user belongs to
 }
 
 // Entry is a single row from an LDAP search result.
@@ -339,7 +346,10 @@ func (a *Authenticator) Login(ctx context.Context, roles []*Role, username, pass
 		}
 	}
 
-	policies, ttl := matchRoles(roles, username, userDN, userGroups)
+	policies, ttl, tuckNS, ok := matchRoles(roles, username, userDN, userGroups)
+	if !ok {
+		return nil, ErrNamespaceConflict
+	}
 	if len(policies) == 0 {
 		return nil, ErrNoRole
 	}
@@ -350,16 +360,22 @@ func (a *Authenticator) Login(ctx context.Context, roles []*Role, username, pass
 		ttl = time.Hour
 	}
 
-	return &LoginResult{UserDN: userDN, Username: username, Policies: policies, TTL: ttl, Groups: userGroups}, nil
+	return &LoginResult{UserDN: userDN, Username: username, Policies: policies, TTL: ttl, TuckNamespace: tuckNS, Groups: userGroups}, nil
 }
 
 // matchRoles returns the union of policies and the maximum TTL from all
 // matching roles.
-func matchRoles(roles []*Role, username, userDN string, groups []string) (policies []string, ttl time.Duration) {
+func matchRoles(roles []*Role, username, userDN string, groups []string) (policies []string, ttl time.Duration, tuckNS string, ok bool) {
 	seen := make(map[string]bool)
+	first := true
 	for _, role := range roles {
 		if !roleMatches(role, username, userDN, groups) {
 			continue
+		}
+		if first {
+			tuckNS, first = role.TuckNamespace, false
+		} else if role.TuckNamespace != tuckNS {
+			return nil, 0, "", false
 		}
 		for _, p := range role.Policies {
 			if !seen[p] {
@@ -371,7 +387,7 @@ func matchRoles(roles []*Role, username, userDN string, groups []string) (polici
 			ttl = role.TTL
 		}
 	}
-	return
+	return policies, ttl, tuckNS, true
 }
 
 func roleMatches(role *Role, username, userDN string, groups []string) bool {

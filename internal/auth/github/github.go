@@ -60,13 +60,17 @@ type Role struct {
 	Policies []string `json:"policies"`
 	// TTL of the resulting Tuck token. Defaults to 1 hour.
 	TTL time.Duration `json:"ttl,omitempty"`
+	// TuckNamespace binds issued tokens to this Tuck namespace (must exist).
+	// Empty = root namespace. Never taken from the client.
+	TuckNamespace string `json:"tuck_namespace,omitempty"`
 }
 
 // LoginResult is returned by Provider.Login on success.
 type LoginResult struct {
-	Subject  string
-	Policies []string
-	TTL      time.Duration
+	Subject       string
+	Policies      []string
+	TTL           time.Duration
+	TuckNamespace string
 }
 
 // Provider validates GitHub Actions OIDC tokens against a named Role.
@@ -103,6 +107,7 @@ func (p *Provider) Login(ctx context.Context, tokenStr string, role *Role) (*Log
 		BoundAudiences: []string{aud},
 		Policies:       role.Policies,
 		TTL:            role.TTL,
+		TuckNamespace:  role.TuckNamespace,
 	}
 
 	res, err := p.jwtProvider.Login(ctx, tokenStr, []*jwtpkg.Role{jwtRole})
@@ -121,9 +126,10 @@ func (p *Provider) Login(ctx context.Context, tokenStr string, role *Role) (*Log
 		ttl = time.Hour
 	}
 	return &LoginResult{
-		Subject:  res.Subject,
-		Policies: res.Policies,
-		TTL:      ttl,
+		Subject:       res.Subject,
+		Policies:      res.Policies,
+		TTL:           ttl,
+		TuckNamespace: res.TuckNamespace,
 	}, nil
 }
 

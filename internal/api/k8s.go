@@ -15,12 +15,15 @@ import (
 type putK8sRoleReq struct {
 	Policies []string `json:"policies"`
 	TTL      string   `json:"ttl"` // e.g. "24h"; "" falls back to a 1h token TTL, not an eternal one
+	// TuckNamespace binds issued tokens to a Tuck namespace; "" = root.
+	TuckNamespace string `json:"tuck_namespace"`
 }
 
 type k8sRoleResp struct {
 	Namespace      string   `json:"namespace"`
 	ServiceAccount string   `json:"service_account"`
 	Policies       []string `json:"policies"`
+	TuckNamespace  string   `json:"tuck_namespace,omitempty"`
 	TTL            string   `json:"ttl"` // "24h0m0s", or "" if the role itself has no TTL configured (logins still get the 1h default)
 }
 
@@ -81,11 +84,16 @@ func (s *Server) putK8sRole(w http.ResponseWriter, r *http.Request) {
 	if req.Policies == nil {
 		req.Policies = []string{}
 	}
+	tuckNS, ok := s.roleNamespace(w, r, req.TuckNamespace)
+	if !ok {
+		return
+	}
 	role := &k8sauth.K8sRole{
 		Namespace:      namespace,
 		ServiceAccount: sa,
 		Policies:       req.Policies,
 		TTL:            ttl,
+		TuckNamespace:  tuckNS,
 	}
 	if err := s.core.CreateK8sRole(r.Context(), role); err != nil {
 		writeErr(w, err)
@@ -118,6 +126,7 @@ func (s *Server) getK8sRole(w http.ResponseWriter, r *http.Request) {
 		Namespace:      role.Namespace,
 		ServiceAccount: role.ServiceAccount,
 		Policies:       role.Policies,
+		TuckNamespace:  role.TuckNamespace,
 		TTL:            ttlStr,
 	})
 }

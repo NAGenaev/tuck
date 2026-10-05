@@ -79,6 +79,15 @@ type Config struct {
 		CAFile    string `yaml:"ca_file"`
 	} `yaml:"kubernetes"`
 
+	Barrier struct {
+		// Cipher selects the at-rest cipher suite for a NEW data store:
+		// "aes-256-gcm" (default) or "gost-kuznyechik-mgm". Fixed at init.
+		Cipher string `yaml:"cipher"`
+	} `yaml:"barrier"`
+
+	// EnableEngines opts in to experimental engines (pki, ssh, totp, aws, gcp, azure).
+	EnableEngines []string `yaml:"enable_engines"`
+
 	Telemetry struct {
 		OtelEndpoint string `yaml:"otel_endpoint"`
 	} `yaml:"telemetry"`

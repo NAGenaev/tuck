@@ -22,4 +22,7 @@ type K8sRole struct {
 	ServiceAccount string        `json:"service_account"`
 	Policies       []string      `json:"policies"`
 	TTL            time.Duration `json:"ttl"` // 0 = falls back to a 1h token TTL (see Core.LoginK8s)
+	// TuckNamespace binds issued tokens to this Tuck namespace (must exist).
+	// Empty = root namespace. Never taken from the client.
+	TuckNamespace string `json:"tuck_namespace,omitempty"`
 }

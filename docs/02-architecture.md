@@ -208,7 +208,7 @@ flowchart TD
     DATA --> PHYS[("Physical backend только шифртекст")]
 ```
 
-**Суть:** root key шифрует DEK; DEK шифрует записи. При ротации меняется только обёртка DEK — данные не перешифровываются. На рестарте: `seal.Unseal()` → root key → `barrier.Unseal()` → DEK расшифрован → сервер готов.
+**Суть:** root key шифрует единый DEK (один на всё хранилище, не по ключу на запись); DEK шифрует все записи. Алгоритм — сменный набор (`aes-256-gcm` или `gost-kuznyechik-mgm`), см. [11-barrier-and-ciphers.md](11-barrier-and-ciphers.md). При ротации меняется только обёртка DEK — данные не перешифровываются. На рестарте: `seal.Unseal()` → root key → `barrier.Unseal()` → DEK расшифрован → сервер готов.
 
 ---
 

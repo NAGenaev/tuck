@@ -126,10 +126,26 @@ type Core struct {
 	// requests cannot race on AcceptShard.
 	unsealMu sync.Mutex
 
+	// barrierCipher names the cipher suite used when the store is first initialised ("" = default).
+	barrierCipher string
+
 	// unsealCtx is stored during the "waiting for shards" window so that
 	// UnsealShard can call barrier.Unseal once the key is reconstructed.
 	unsealCtx context.Context //nolint:containedctx // intentional: stored for deferred barrier.Unseal
 }
+
+// SetBarrierCipher selects the barrier cipher suite for a new store. It has no
+// effect on an already-initialised store, whose suite is fixed in its metadata.
+func (c *Core) SetBarrierCipher(name string) error {
+	if _, err := barrier.LookupSuite(name); err != nil {
+		return err
+	}
+	c.barrierCipher = name
+	return nil
+}
+
+// BarrierCipher reports the cipher suite protecting the store.
+func (c *Core) BarrierCipher() string { return c.barrier.CipherSuite() }
 
 // SetLDAPDialer replaces the LDAP connection factory. Intended for tests only.
 func (c *Core) SetLDAPDialer(fn func(ctx context.Context, cfg authlda.Config) (authlda.Conn, error)) {
@@ -212,7 +228,7 @@ func (c *Core) Start(ctx context.Context) (*StartResult, error) {
 			return nil, fmt.Errorf("seal init: %w", err)
 		}
 
-		if err := c.barrier.Initialize(ctx, result.RootKey); err != nil {
+		if err := c.barrier.InitializeWithSuite(ctx, result.RootKey, c.barrierCipher); err != nil {
 			return nil, fmt.Errorf("barrier init: %w", err)
 		}
 		if err := c.barrier.Unseal(ctx, result.RootKey); err != nil {
@@ -480,6 +496,16 @@ func WithNamespace(ns string) TokenOpt {
 	}
 }
 
+// loginTokenOpts are the options for tokens minted by auth-method logins. The
+// namespace comes from the matched role, never from the request.
+func loginTokenOpts(ns string) []TokenOpt {
+	opts := []TokenOpt{WithRenewable(0)}
+	if ns != "" {
+		opts = append(opts, WithNamespace(ns))
+	}
+	return opts
+}
+
 // WithPeriod creates a period token: each renewal resets ExpiresAt to
 // now+period, effectively allowing infinite renewals within the period window.
 // Period tokens are implicitly renewable and ignore MaxTTL.
@@ -730,7 +756,7 @@ func (c *Core) LoginK8s(ctx context.Context, saToken string) (*token.Token, erro
 	if ttl <= 0 {
 		ttl = time.Hour
 	}
-	tok, err := c.CreateToken(ctx, "k8s:"+namespace+"/"+sa, role.Policies, ttl, WithRenewable(0))
+	tok, err := c.CreateToken(ctx, "k8s:"+namespace+"/"+sa, role.Policies, ttl, loginTokenOpts(role.TuckNamespace)...)
 	if err != nil {
 		return nil, err
 	}
@@ -989,7 +1015,7 @@ func (c *Core) LoginJWT(ctx context.Context, tokenStr string) (*token.Token, err
 	if err != nil {
 		return nil, err
 	}
-	tok, err := c.CreateToken(ctx, "jwt:"+result.Subject, result.Policies, result.TTL, WithRenewable(0))
+	tok, err := c.CreateToken(ctx, "jwt:"+result.Subject, result.Policies, result.TTL, loginTokenOpts(result.TuckNamespace)...)
 	if err != nil {
 		return nil, err
 	}
@@ -1031,7 +1057,7 @@ func (c *Core) LoginGitHub(ctx context.Context, tokenStr, roleName string) (*tok
 	if err != nil {
 		return nil, err
 	}
-	tok, err := c.CreateToken(ctx, "github:"+result.Subject, result.Policies, result.TTL, WithRenewable(0))
+	tok, err := c.CreateToken(ctx, "github:"+result.Subject, result.Policies, result.TTL, loginTokenOpts(result.TuckNamespace)...)
 	if err != nil {
 		return nil, err
 	}
@@ -1196,7 +1222,7 @@ func (c *Core) LoginAppRole(ctx context.Context, roleID, secretID, remoteIP stri
 	if err != nil {
 		return nil, err
 	}
-	tok, err := c.CreateToken(ctx, result.Subject, result.Policies, result.TTL, WithRenewable(0))
+	tok, err := c.CreateToken(ctx, result.Subject, result.Policies, result.TTL, loginTokenOpts(result.TuckNamespace)...)
 	if err != nil {
 		return nil, err
 	}
@@ -1479,7 +1505,7 @@ func (c *Core) LoginLDAP(ctx context.Context, username, password string) (*token
 	if err != nil {
 		return nil, err
 	}
-	tok, err := c.CreateToken(ctx, "ldap:"+result.Username, result.Policies, result.TTL, WithRenewable(0))
+	tok, err := c.CreateToken(ctx, "ldap:"+result.Username, result.Policies, result.TTL, loginTokenOpts(result.TuckNamespace)...)
 	if err != nil {
 		return nil, err
 	}

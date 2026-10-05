@@ -35,6 +35,7 @@ type Server struct {
 	audit        audit.Loggable
 	ipLimiter    *ratelimit.Limiter
 	tokenLimiter *ratelimit.Limiter
+	engines      map[string]bool // nil = experimental-engine gate off
 }
 
 // New returns an HTTP server wired to the core's audit Dispatcher.
@@ -388,7 +389,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sys/cluster/join", s.requireToken(s.postClusterJoin))
 	mux.HandleFunc("DELETE /v1/sys/cluster/node/{id}", s.requireToken(s.deleteClusterNode))
 
-	var h http.Handler = mux
+	h := s.engineGate(mux)
 	h = s.tokenLimiter.TokenMiddleware(h)
 	h = s.ipLimiter.Middleware(h)
 	return audit.Middleware(s.audit, h)

@@ -11,8 +11,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Barrier cipher suites.** Шифр барьера теперь сменный (`--barrier-cipher`, `barrier.cipher`): `aes-256-gcm` (по умолчанию) или `gost-kuznyechik-mgm`. Выбор фиксируется при первой инициализации в `barrier/meta`. Новые хранилища привязывают шифртекст к пути записи через AEAD associated data; хранилища без `barrier/meta` читаются как раньше (AES-256-GCM без AAD). Набор ГОСТ — собственная реализация, **не сертифицирована ФСБ**; сертифицированное СКЗИ подключается через `barrier.RegisterSuite`. См. docs/11-barrier-and-ciphers.md.
+- **Experimental engines gate.** PKI, SSH, TOTP, AWS, GCP, Azure в бинарнике `tuck` выключены по умолчанию (404 `disabled`); включаются `--enable-engine=pki,totp` или `enable_engines`.
+- docs/12-bank-readiness-todo.md — план доработок по итогам банковского аудита.
 - **Operator: multi-key Secrets.** `TuckSecret.spec.data` (ключ Secret → путь в Tuck) наполняет несколько ключей одного K8s Secret; `tuckPath`/`secretKey` остаются рабочими и могут сочетаться с `data`. `tuckPath`/`secretKey` больше не обязательны в CRD (обязателен `secretName`).
 - **Operator: namespace isolation.** Флаг `--enforce-namespace-paths` (Helm `operator.enforceNamespacePaths`) ограничивает TuckSecret путями `<namespace>/...` плюс префиксы из аннотации Namespace `tuck.io/allowed-paths`; пути с `..`, пустыми сегментами и спецсимволами отклоняются, при ошибке чтения Namespace доступ запрещается.
+- **Auth roles bound to a Tuck namespace.** Роли Kubernetes/AppRole/JWT/GitHub/LDAP получили необязательное поле `tuck_namespace`: токен, выданный при логине, привязывается к этому namespace (существование проверяется, 404 если нет; namespaced-вызывающий может создавать роли только для своего namespace, иначе 403). Namespace берётся только из роли, заголовок `X-Tuck-Namespace` на логине игнорируется. Пустое значение = root, как раньше. LDAP: если совпавшие роли привязаны к разным namespace, логин отклоняется (токен живёт в одном namespace).
 
 ### Fixed
 

@@ -66,6 +66,10 @@ func (s *Server) putGitHubRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	role.Name = name
+	var ok bool
+	if role.TuckNamespace, ok = s.roleNamespace(w, r, role.TuckNamespace); !ok {
+		return
+	}
 	if err := s.core.PutGitHubRole(r.Context(), &role); err != nil {
 		writeErr(w, err)
 		return

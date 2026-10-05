@@ -30,8 +30,8 @@ var (
 )
 
 const (
-	rolesPrefix     = "auth/approle/roles/"        // #nosec G101 — storage path prefix, not a credential
-	secretIDsPrefix = "auth/approle/secret-ids/"   // #nosec G101 — storage path prefix, not a credential
+	rolesPrefix     = "auth/approle/roles/"      // #nosec G101 — storage path prefix, not a credential
+	secretIDsPrefix = "auth/approle/secret-ids/" // #nosec G101 — storage path prefix, not a credential
 )
 
 // Role defines an AppRole: its role-id (public identifier), policies,
@@ -53,27 +53,31 @@ type Role struct {
 	TokenTTL time.Duration `json:"token_ttl,omitempty"`
 	// BoundCIDRs restricts login to the listed CIDRs. Empty = no restriction.
 	BoundCIDRs []string `json:"bound_cidrs,omitempty"`
+	// TuckNamespace binds issued tokens to this Tuck namespace (must exist).
+	// Empty = root namespace. Never taken from the client.
+	TuckNamespace string `json:"tuck_namespace,omitempty"`
 }
 
 // SecretID is a single-use (or limited-use) credential attached to a Role.
 type SecretID struct {
-	ID        string            `json:"id"`
-	RoleName  string            `json:"role_name"`
-	CreatedAt time.Time         `json:"created_at"`
-	ExpiresAt time.Time         `json:"expires_at,omitempty"` // zero = never
-	NumUses   int               `json:"num_uses,omitempty"`   // 0 = unlimited
-	UsesLeft  int               `json:"uses_left,omitempty"`  // 0 = unlimited
+	ID        string    `json:"id"`
+	RoleName  string    `json:"role_name"`
+	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `json:"expires_at,omitempty"` // zero = never
+	NumUses   int       `json:"num_uses,omitempty"`   // 0 = unlimited
+	UsesLeft  int       `json:"uses_left,omitempty"`  // 0 = unlimited
 	// BoundCIDRs overrides the role-level CIDRs for this specific secret-id.
-	BoundCIDRs []string         `json:"bound_cidrs,omitempty"`
+	BoundCIDRs []string `json:"bound_cidrs,omitempty"`
 	// Metadata is caller-supplied key/value annotations stored with the secret-id.
-	Metadata   map[string]string `json:"metadata,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 // LoginResult is returned by Store.Login on success.
 type LoginResult struct {
-	Subject  string
-	Policies []string
-	TTL      time.Duration
+	Subject       string
+	Policies      []string
+	TTL           time.Duration
+	TuckNamespace string
 }
 
 // SecretIDOptions holds optional parameters for GenerateSecretIDWithOptions.
@@ -230,9 +234,10 @@ func (s *Store) Login(ctx context.Context, roleID, secretIDVal, remoteIP string)
 		ttl = time.Hour
 	}
 	return &LoginResult{
-		Subject:  "approle:" + role.Name,
-		Policies: role.Policies,
-		TTL:      ttl,
+		Subject:       "approle:" + role.Name,
+		Policies:      role.Policies,
+		TTL:           ttl,
+		TuckNamespace: role.TuckNamespace,
 	}, nil
 }
 

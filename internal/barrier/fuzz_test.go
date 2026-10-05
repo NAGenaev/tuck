@@ -95,3 +95,14 @@ func FuzzBarrierUnseal(f *testing.F) {
 		_ = b.Unseal(ctx, rootKey)
 	})
 }
+
+// encrypt/decrypt exercise the default suite's raw envelope without AAD.
+func encrypt(key, plaintext []byte) ([]byte, error) {
+	s, _ := LookupSuite("")
+	return s.seal(key, plaintext, nil)
+}
+
+func decrypt(key, data []byte) ([]byte, error) {
+	s, _ := LookupSuite("")
+	return s.open(key, data, nil)
+}

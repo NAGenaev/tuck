@@ -46,14 +46,18 @@ type Role struct {
 	Policies []string `json:"policies"`
 	// TTL is the lifetime of issued Tuck tokens. Zero uses Config.DefaultTTL.
 	TTL time.Duration `json:"ttl,omitempty"`
+	// TuckNamespace binds issued tokens to this Tuck namespace (must exist).
+	// Empty = root namespace. Never taken from the client.
+	TuckNamespace string `json:"tuck_namespace,omitempty"`
 }
 
 // LoginResult is returned by Provider.Login on success.
 type LoginResult struct {
-	Subject  string
-	Policies []string
-	TTL      time.Duration
-	Groups   []string // extracted from the "groups" JWT claim, if present
+	Subject       string
+	Policies      []string
+	TTL           time.Duration
+	TuckNamespace string
+	Groups        []string // extracted from the "groups" JWT claim, if present
 }
 
 // Provider validates JWTs and resolves the matching Role.
@@ -92,10 +96,11 @@ func (p *Provider) Login(ctx context.Context, tokenStr string, roles []*Role) (*
 		}
 	}
 	return &LoginResult{
-		Subject:  sub,
-		Policies: role.Policies,
-		TTL:      ttl,
-		Groups:   extractGroups(claims),
+		Subject:       sub,
+		Policies:      role.Policies,
+		TTL:           ttl,
+		TuckNamespace: role.TuckNamespace,
+		Groups:        extractGroups(claims),
 	}, nil
 }
 

@@ -85,6 +85,10 @@ func main() {
 	clusterJoin      := flag.String("cluster-join", "", "leader HTTP address to join an existing cluster (e.g. https://leader:8200)")
 	clusterPeers     := flag.String("cluster-peers", "", "comma-separated bootstrap peers: id=raftAddr,... (used with --cluster-bootstrap)")
 
+	// Barrier cipher + experimental engines
+	barrierCipher := flag.String("barrier-cipher", "", "at-rest cipher suite for a NEW store: aes-256-gcm (default) | gost-kuznyechik-mgm; ignored for an existing store")
+	enableEngines := flag.String("enable-engine", "", "comma-separated experimental engines to enable: pki,ssh,totp,aws,gcp,azure (all off by default)")
+
 	// Audit log
 	auditLog        := flag.String("audit-log", "", "path for the file audit log (empty = discard); rotated at --audit-max-size bytes")
 	auditMaxSize    := flag.Int64("audit-max-size", audit.DefaultMaxSize, "max audit log file size in bytes before rotation")
@@ -188,6 +192,8 @@ func main() {
 		apply("k8s-ca-file", cfg.Kubernetes.CAFile)
 
 		apply("otel-endpoint", cfg.Telemetry.OtelEndpoint)
+		apply("barrier-cipher", cfg.Barrier.Cipher)
+		apply("enable-engine", strings.Join(cfg.EnableEngines, ","))
 
 		log.Printf("tuck: loaded config from %q", resolvedCfgPath)
 	}
@@ -330,6 +336,9 @@ func main() {
 
 	// --- Core ---
 	c := core.NewWithK8s(backend, s, reviewer)
+	if err := c.SetBarrierCipher(*barrierCipher); err != nil {
+		log.Fatalf("barrier cipher: %v", err)
+	}
 
 	// --- Audit log ---
 	if *auditLog != "" {
@@ -397,6 +406,11 @@ func main() {
 
 	// --- API server + rate limiters ---
 	apiSrv := api.New(c)
+	engines := splitList(*enableEngines)
+	apiSrv.RestrictEngines(engines)
+	if len(engines) > 0 {
+		log.Printf("tuck: WARNING experimental engines enabled: %s (outside the supported core scope)", strings.Join(engines, ","))
+	}
 	// Restore barrier-persisted rate-limit config when the barrier is already
 	// open (dev seal, auto-unseal). Shamir-sealed servers restore in postUnseal.
 	if !errors.Is(startErr, core.ErrNeedsUnseal) {
@@ -520,4 +534,14 @@ func indexOf(s string, b byte) int {
 		}
 	}
 	return -1
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

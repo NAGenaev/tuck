@@ -120,20 +120,26 @@ func (s *Server) putLDAPRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var wire struct {
-		Groups   []string `json:"groups"`
-		Users    []string `json:"users"`
-		Policies []string `json:"policies"`
-		TTL      string   `json:"ttl"`
+		Groups        []string `json:"groups"`
+		Users         []string `json:"users"`
+		Policies      []string `json:"policies"`
+		TTL           string   `json:"ttl"`
+		TuckNamespace string   `json:"tuck_namespace"`
 	}
 	if err := json.Unmarshal(body, &wire); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 		return
 	}
+	tuckNS, ok := s.roleNamespace(w, r, wire.TuckNamespace)
+	if !ok {
+		return
+	}
 	role := &authlda.Role{
-		Name:     name,
-		Groups:   wire.Groups,
-		Users:    wire.Users,
-		Policies: wire.Policies,
+		Name:          name,
+		Groups:        wire.Groups,
+		Users:         wire.Users,
+		Policies:      wire.Policies,
+		TuckNamespace: tuckNS,
 	}
 	if wire.TTL != "" {
 		d, err := time.ParseDuration(wire.TTL)

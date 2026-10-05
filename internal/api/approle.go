@@ -72,6 +72,7 @@ func (s *Server) putAppRole(w http.ResponseWriter, r *http.Request) {
 		TokenTTL        string   `json:"token_ttl"`
 		SecretIDTTL     string   `json:"secret_id_ttl"`
 		SecretIDNumUses int      `json:"secret_id_num_uses"`
+		TuckNamespace   string   `json:"tuck_namespace"`
 	}
 	if err := json.Unmarshal(body, &wire); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -81,12 +82,17 @@ func (s *Server) putAppRole(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "policies required"})
 		return
 	}
+	tuckNS, ok := s.roleNamespace(w, r, wire.TuckNamespace)
+	if !ok {
+		return
+	}
 
 	role := &approle.Role{
 		Name:            name,
 		RoleID:          wire.RoleID,
 		Policies:        wire.Policies,
 		SecretIDNumUses: wire.SecretIDNumUses,
+		TuckNamespace:   tuckNS,
 	}
 	if wire.TokenTTL != "" {
 		d, err := time.ParseDuration(wire.TokenTTL)

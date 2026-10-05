@@ -143,6 +143,7 @@ func (s *Server) putJWTRole(w http.ResponseWriter, r *http.Request) {
 		BoundAudiences []string          `json:"bound_audiences"`
 		Policies       []string          `json:"policies"`
 		TTL            string            `json:"ttl"`
+		TuckNamespace  string            `json:"tuck_namespace"`
 	}
 	if err := json.Unmarshal(body, &wire); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -152,6 +153,10 @@ func (s *Server) putJWTRole(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "policies required"})
 		return
 	}
+	tuckNS, ok := s.roleNamespace(w, r, wire.TuckNamespace)
+	if !ok {
+		return
+	}
 
 	role := &authjwt.Role{
 		Name:           name,
@@ -159,6 +164,7 @@ func (s *Server) putJWTRole(w http.ResponseWriter, r *http.Request) {
 		BoundClaims:    wire.BoundClaims,
 		BoundAudiences: wire.BoundAudiences,
 		Policies:       wire.Policies,
+		TuckNamespace:  tuckNS,
 	}
 	if wire.TTL != "" {
 		d, err := time.ParseDuration(wire.TTL)

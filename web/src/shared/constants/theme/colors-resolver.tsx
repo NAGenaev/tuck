@@ -16,13 +16,27 @@ export const variantColorResolver: VariantColorsResolver = (input) => {
             theme: input.theme,
             colorScheme: 'dark'
         })
-        const c1 = input.theme.colors[parsed.color][6]
-        const c2 = input.theme.colors[parsed.color][7]
+        const base = input.theme.colors[parsed.color][5]
         return {
-            background: `linear-gradient(135deg, ${rgba(c1, 0.15)} 0%, ${rgba(c2, 0.1)} 100%)`,
-            border: `1px solid ${rgba(c1, 0.3)}`,
+            background: rgba(base, 0.1),
+            border: `1px solid ${rgba(base, 0.35)}`,
             color: `var(--mantine-color-${parsed.color}-4)`,
-            hover: rgba(input.theme.colors[parsed.color][4], 0.1)
+            hover: rgba(base, 0.18)
+        }
+    }
+
+    if (input.variant === 'light') {
+        const parsed = parseThemeColor({
+            color: input.color || input.theme.primaryColor,
+            theme: input.theme,
+            colorScheme: 'dark'
+        })
+        const base = input.theme.colors[parsed.color]?.[5] ?? parsed.value
+        return {
+            ...defaultResolvedColors,
+            background: rgba(base, 0.1),
+            hover: rgba(base, 0.2),
+            border: `1px solid ${rgba(base, 0.3)}`
         }
     }
 

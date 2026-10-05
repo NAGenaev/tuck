@@ -39,7 +39,19 @@ export function LoginPage() {
     }
 
     return (
-        <Box component="form" maw={360} onSubmit={handleSubmit} w="100%">
+        <Box
+            component="form"
+            maw={380}
+            onSubmit={handleSubmit}
+            p="xl"
+            style={{
+                background:
+                    'radial-gradient(circle at 90% 0%, rgba(215, 169, 75, 0.12), transparent 55%), linear-gradient(160deg, var(--mantine-color-dark-5), var(--mantine-color-dark-6))',
+                border: '1px solid var(--mantine-color-dark-3)',
+                borderTop: '2px solid var(--mantine-color-brass-5)'
+            }}
+            w="100%"
+        >
             <Stack gap="md">
                 <Center mb="sm">
                     <Logo />

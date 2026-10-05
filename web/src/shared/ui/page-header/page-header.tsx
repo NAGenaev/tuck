@@ -3,7 +3,7 @@ import { ElementType, ReactNode } from 'react'
 
 export function PageHeader({
     icon: Icon,
-    color = 'cyan',
+    color = 'brass',
     title,
     action
 }: {

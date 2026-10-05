@@ -13,7 +13,13 @@ import { DesktopNavigation } from './navbar/desktop-navigation.layout'
 export function MainLayout() {
     return (
         <AppShell header={{ height: 96 }} padding="md">
-            <AppShell.Header>
+            <AppShell.Header
+                style={{
+                    background: 'rgba(10, 11, 14, 0.88)',
+                    backdropFilter: 'blur(14px)',
+                    borderBottom: '1px solid var(--mantine-color-dark-4)'
+                }}
+            >
                 <Group h={44} justify="space-between" px="md">
                     <Logo />
                     <HeaderControls />

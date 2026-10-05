@@ -1,0 +1,30 @@
+.button {
+    font-family: 'Oswald', Impact, sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    transition:
+        transform 120ms ease,
+        border-color 120ms ease,
+        background-color 120ms ease;
+}
+
+.button:hover:not(:disabled):not([data-disabled]) {
+    transform: translateY(-1px);
+}
+
+.button[data-variant='filled'] {
+    color: #1a1200;
+}
+
+.buttonLabel {
+    font-size: 0.78rem;
+}
+
+.actionIcon {
+    border-color: var(--mantine-color-dark-4);
+}
+
+.actionIcon:hover:not(:disabled):not([data-disabled]) {
+    border-color: var(--mantine-color-brass-5);
+}

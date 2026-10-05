@@ -33,9 +33,19 @@ import { PlaceholderCard } from '@shared/ui/placeholder-card/placeholder-card'
 
 function SectionTitle({ children }: { children: string }) {
     return (
-        <Text fw={700} size="sm">
-            {children}
-        </Text>
+        <Group gap={10} wrap="nowrap">
+            <span style={{ width: 22, height: 2, background: 'var(--mantine-color-brass-5)' }} />
+            <Text
+                c="brass.5"
+                ff="Oswald, Impact, sans-serif"
+                fw={600}
+                size="xs"
+                style={{ letterSpacing: '0.2em' }}
+                tt="uppercase"
+            >
+                {children}
+            </Text>
+        </Group>
     )
 }
 

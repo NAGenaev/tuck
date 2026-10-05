@@ -12,7 +12,7 @@ export default {
             color: 'dark.6',
             styles: {
                 tooltip: {
-                    border: '1px solid var(--mantine-color-dark-4)'
+                    border: '1px solid var(--mantine-color-dark-3)'
                 }
             }
         }

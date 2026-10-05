@@ -1,0 +1,13 @@
+.th {
+    font-family: 'Oswald', Impact, sans-serif;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--mantine-color-dimmed);
+    border-bottom: 1px solid var(--mantine-color-dark-3);
+}
+
+.tr {
+    border-bottom: 1px solid var(--mantine-color-dark-4);
+}

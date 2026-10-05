@@ -13,9 +13,12 @@
     gap: 8px;
     height: 100%;
     padding-inline: 12px;
-    font-size: 0.9375rem;
-    font-weight: 500;
-    color: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1));
+    font-family: 'Oswald', Impact, sans-serif;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--mantine-color-dark-2);
     background-color: transparent;
     border-radius: 0;
     transition:
@@ -26,31 +29,27 @@
 .navItem:hover,
 .navItem:focus-visible,
 .navItem[data-expanded] {
-    color: light-dark(var(--mantine-color-black), var(--mantine-color-white));
-    background-color: light-dark(var(--mantine-color-gray-0), rgb(255, 255, 255, 0.03));
+    color: var(--mantine-color-dark-0);
+    background-color: rgba(255, 255, 255, 0.03);
 }
 
 .navItemActive:hover,
 .navItemActive:focus-visible,
 .navItemActive[data-expanded] {
-    color: var(--mantine-color-cyan-4);
+    color: var(--mantine-color-brass-5);
 }
 
 .navItemActive {
-    color: var(--mantine-color-cyan-4);
-    text-shadow:
-        0.25px 0 currentColor,
-        -0.25px 0 currentColor;
+    color: var(--mantine-color-brass-5);
 }
 
 .navItemActive::after {
     content: '';
     position: absolute;
-    inset-inline: 8px;
+    inset-inline: 0;
     bottom: 0;
     height: 2px;
-    border-radius: 2px 2px 0 0;
-    background: var(--mantine-color-cyan-4);
+        background: var(--mantine-color-brass-5);
 }
 
 .icon {
@@ -70,5 +69,5 @@
 }
 
 .menuItemActive .icon {
-    color: var(--mantine-color-cyan-4);
+    color: var(--mantine-color-brass-5);
 }

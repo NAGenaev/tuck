@@ -169,7 +169,7 @@ func (c *KubeClient) ApplySecret(ctx context.Context, secret *KubeSecret) error 
 		if err := json.NewDecoder(getResp.Body).Decode(&existing); err != nil {
 			return fmt.Errorf("decode existing secret: %w", err)
 		}
-		secret.Metadata.ResourceVersion = existing.Metadata.ResourceVersion
+		mergeSecret(secret, &existing)
 		body, err = json.Marshal(secret)
 		if err != nil {
 			return fmt.Errorf("marshal secret: %w", err)
@@ -193,6 +193,56 @@ func (c *KubeClient) ApplySecret(ctx context.Context, secret *KubeSecret) error 
 		return fmt.Errorf("apply secret %s/%s: unexpected status %d", ns, name, applyResp.StatusCode)
 	}
 	return nil
+}
+
+// mergeSecret folds the live Secret into the desired one so the PUT keeps what
+// other writers put there: keys not managed by this TuckSecret (several
+// TuckSecrets may share one Secret, each owning different keys), extra
+// labels/annotations, and the immutable Secret type.
+func mergeSecret(desired, existing *KubeSecret) {
+	desired.Metadata.ResourceVersion = existing.Metadata.ResourceVersion
+	desired.Type = existing.Type
+	for k, v := range existing.Data {
+		if _, ok := desired.Data[k]; !ok {
+			if desired.Data == nil {
+				desired.Data = make(map[string][]byte)
+			}
+			desired.Data[k] = v
+		}
+	}
+	for k, v := range existing.Metadata.Labels {
+		if _, ok := desired.Metadata.Labels[k]; !ok {
+			if desired.Metadata.Labels == nil {
+				desired.Metadata.Labels = make(map[string]string)
+			}
+			desired.Metadata.Labels[k] = v
+		}
+	}
+	desired.Metadata.Annotations = existing.Metadata.Annotations
+}
+
+// NamespaceAnnotations returns the annotations of a Namespace object.
+func (c *KubeClient) NamespaceAnnotations(ctx context.Context, namespace string) (map[string]string, error) {
+	url := fmt.Sprintf("%s/api/v1/namespaces/%s", c.apiURL, namespace)
+	req, err := c.newReq(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("get namespace %s: %w", namespace, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("get namespace %s: unexpected status %d", namespace, resp.StatusCode)
+	}
+	var ns struct {
+		Metadata ObjectMeta `json:"metadata"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&ns); err != nil {
+		return nil, fmt.Errorf("decode namespace %s: %w", namespace, err)
+	}
+	return ns.Metadata.Annotations, nil
 }
 
 // UpdateStatus updates the status subresource of a TuckSecret.

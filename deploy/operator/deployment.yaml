@@ -21,15 +21,20 @@ metadata:
 rules:
   # TuckSecret CRD resources
   - apiGroups: ["tuck.io"]
-    resources: ["tucksecrets"]
-    verbs: ["get", "list", "watch"]
+    resources: ["tucksecrets", "tucksecrets/finalizers"]
+    verbs: ["get", "list", "watch", "update", "patch"]
   - apiGroups: ["tuck.io"]
     resources: ["tucksecrets/status"]
     verbs: ["update", "patch"]
   # Kubernetes Secrets (destination)
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "create", "update"]
+    verbs: ["get", "create", "update", "patch", "delete"]
+  # Namespaces: needed only with --enforce-namespace-paths (reads the
+  # tuck.io/allowed-paths annotation).
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get"]
 ---
 # Bind the ClusterRole to the operator's ServiceAccount.
 apiVersion: rbac.authorization.k8s.io/v1
@@ -79,6 +84,9 @@ spec:
             - "--k8s-api=https://kubernetes.default.svc"
             - "--sa-token-file=/var/run/secrets/kubernetes.io/serviceaccount/token"
             - "--k8s-ca-file=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+            # Multi-team clusters: confine each TuckSecret to Tuck paths under
+            # "<its namespace>/" (plus the Namespace annotation tuck.io/allowed-paths).
+            # - "--enforce-namespace-paths"
             # Omit --namespace to watch all namespaces, or set a specific one:
             # - "--namespace=production"
           env:

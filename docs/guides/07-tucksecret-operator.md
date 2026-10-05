@@ -37,7 +37,7 @@ curl -X PUT "$env:TUCK_ADDR/v1/auth/kubernetes/role/tuck/tuck-operator" `
   -d '{"policies":["root"],"ttl":"5m"}'
 ```
 
-В продакшне замените `root` на узкую политику с `read` на нужные пути.
+`root` — только для локального стенда. В продакшне дайте оператору узкую политику с `read` на пути, которые команды вправе синхронизировать (оператор ходит в Tuck **одной** identity для всех namespace — см. «Изоляция по namespace» ниже).
 
 ### 3. Записать секрет в Tuck
 
@@ -82,6 +82,42 @@ kubectl get secret myapp-db-credentials -o jsonpath='{.data.password}' | `
   ForEach-Object { [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($_)) }
 ```
 
+### Несколько ключей в одном Secret
+
+Реальные чарты ждут Secret с несколькими ключами. Используйте `data` (ключ Secret → путь в Tuck); его можно комбинировать с `tuckPath`/`secretKey`:
+
+```yaml
+spec:
+  secretName: myapp-db
+  data:
+    username: team-a/db/user
+    password: team-a/db/pass
+    ca.crt:   team-a/db/ca
+```
+
+Правила:
+
+- Все значения читаются из Tuck **до** записи. Если хоть один путь недоступен — Secret не меняется, в `status` попадает ошибка.
+- Несколько TuckSecret могут наполнять один Secret, если владеют **разными ключами**: оператор делает merge (чужие ключи, labels, annotations и `type` сохраняются). Два TuckSecret на один ключ одного Secret — ошибка `conflict` у обоих, ничего не перезаписывается молча.
+- Ключ, удалённый из `spec`, из Secret не удаляется — чистите его вручную или пересоздайте Secret.
+
+## Изоляция по namespace (`--enforce-namespace-paths`)
+
+Оператор логинится в Tuck один раз, своей SA, поэтому без ограничений любая команда, которой разрешено создавать TuckSecret в своём namespace, может указать **любой** путь, доступный оператору. С флагом `--enforce-namespace-paths` (Helm: `operator.enforceNamespacePaths=true`):
+
+- TuckSecret в namespace `team-a` может читать только `team-a/...`;
+- администратор кластера может выдать дополнительные пути аннотацией на объекте Namespace:
+
+```powershell
+kubectl annotate namespace team-a tuck.io/allowed-paths="shared/tls,platform/common" --overwrite
+```
+
+- сравнение идёт по границе сегмента (`team-a` не даёт `team-ab/...`), пути с `.`/`..`, пустыми сегментами, `? # % \` и пробелами отклоняются;
+- если Namespace не удалось прочитать или аннотация некорректна — доступ запрещается (fail closed);
+- оператору нужен RBAC `get namespaces` (Helm добавляет его сам при включённом флаге).
+
+Аннотацию Namespace могут менять только администраторы кластера, поэтому команда не может расширить себе доступ из своего namespace. Политика оператора в Tuck при этом должна по-прежнему быть ограничена (например, `secret/*` на чтение, но не `root`): флаг — это второй рубеж, а не замена ACL.
+
 ## Проверка
 
 | Действие | Ожидаемый результат |
@@ -95,9 +131,10 @@ kubectl get secret myapp-db-credentials -o jsonpath='{.data.password}' | `
 
 | Поле | Описание |
 |------|----------|
-| `tuckPath` | Путь в Tuck KV (mount `secret/`) |
-| `secretName` | Имя целевого K8s Secret |
-| `secretKey` | Ключ в `data` Secret |
+| `tuckPath` | Путь в Tuck KV (mount `secret/`); вместе с `secretKey` |
+| `secretName` | Имя целевого K8s Secret (обязательно) |
+| `secretKey` | Ключ в `data` Secret для `tuckPath` |
+| `data` | Карта «ключ Secret → путь в Tuck» для нескольких ключей |
 | `refreshInterval` | Интервал опроса (например `30s`, `5m`) |
 
 ## Частые ошибки
@@ -107,6 +144,8 @@ kubectl get secret myapp-db-credentials -o jsonpath='{.data.password}' | `
 | TuckSecret Pending | Оператор не запущен или нет K8s auth role |
 | Secret пустой | Неверный `tuckPath` — проверьте `kv get` |
 | 403 в логах оператора | Политика или role для SA оператора |
+| `outside the paths allowed for namespace` | Путь вне `<namespace>/`; админ может добавить его аннотацией `tuck.io/allowed-paths` на Namespace |
+| `conflict: TuckSecret ... also writes key` | Два TuckSecret пишут один ключ одного Secret — разведите ключи |
 
 ## Дальше
 

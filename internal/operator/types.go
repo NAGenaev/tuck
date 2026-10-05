@@ -1,6 +1,9 @@
 package operator
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // TuckSecret is the Go representation of the tuck.io/v1alpha1 TuckSecret CRD.
 type TuckSecret struct {
@@ -12,11 +15,15 @@ type TuckSecret struct {
 }
 
 type TuckSecretSpec struct {
-	TuckPath        string `json:"tuckPath"`
-	SecretName      string `json:"secretName"`
-	SecretKey       string `json:"secretKey"`
-	TuckServer      string `json:"tuckServer,omitempty"`
-	RefreshInterval string `json:"refreshInterval,omitempty"`
+	TuckPath   string `json:"tuckPath,omitempty"`
+	SecretName string `json:"secretName"`
+	SecretKey  string `json:"secretKey,omitempty"`
+	// Data maps additional Secret keys to Tuck paths, so a single TuckSecret
+	// can populate several keys of one K8s Secret. It may be combined with
+	// tuckPath/secretKey.
+	Data            map[string]string `json:"data,omitempty"`
+	TuckServer      string            `json:"tuckServer,omitempty"`
+	RefreshInterval string            `json:"refreshInterval,omitempty"`
 	// DeletionPolicy controls what happens to the K8s Secret when the TuckSecret
 	// is deleted. "Retain" (default) leaves the K8s Secret in place. "Delete"
 	// removes it together with the TuckSecret.
@@ -85,6 +92,7 @@ type KubeSecret struct {
 	APIVersion string            `json:"apiVersion"`
 	Kind       string            `json:"kind"`
 	Metadata   ObjectMeta        `json:"metadata"`
+	Type       string            `json:"type,omitempty"`
 	Data       map[string][]byte `json:"data,omitempty"`
 }
 
@@ -103,6 +111,33 @@ type LeaseSpec struct {
 	AcquireTime          *string `json:"acquireTime,omitempty"` // RFC3339Nano
 	RenewTime            *string `json:"renewTime,omitempty"`   // RFC3339Nano
 	LeaseTransitions     *int32  `json:"leaseTransitions,omitempty"`
+}
+
+// Entries returns the Secret key -> Tuck path mapping declared by the spec:
+// the legacy tuckPath/secretKey pair plus every item of data. It reports an
+// error when the spec declares nothing, a key is empty, a path is empty, or the
+// legacy pair collides with a data key.
+func (s TuckSecretSpec) Entries() (map[string]string, error) {
+	if (s.TuckPath == "") != (s.SecretKey == "") {
+		return nil, fmt.Errorf("tuckPath and secretKey must be set together")
+	}
+	out := make(map[string]string, len(s.Data)+1)
+	if s.TuckPath != "" {
+		out[s.SecretKey] = s.TuckPath
+	}
+	for k, p := range s.Data {
+		if k == "" || p == "" {
+			return nil, fmt.Errorf("data: key and tuck path must both be non-empty")
+		}
+		if _, dup := out[k]; dup {
+			return nil, fmt.Errorf("secret key %q is declared twice (secretKey and data)", k)
+		}
+		out[k] = p
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("spec must declare tuckPath+secretKey or at least one data entry")
+	}
+	return out, nil
 }
 
 // RefreshDuration parses the spec's refreshInterval or returns the default.

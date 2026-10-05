@@ -16,6 +16,16 @@ type mockKube struct {
 	events   []WatchEvent
 	applied  []*KubeSecret
 	statuses []TuckSecret
+
+	nsAnnotations map[string]map[string]string
+	nsErr         error
+}
+
+func (m *mockKube) NamespaceAnnotations(_ context.Context, ns string) (map[string]string, error) {
+	if m.nsErr != nil {
+		return nil, m.nsErr
+	}
+	return m.nsAnnotations[ns], nil
 }
 
 func (m *mockKube) List(_ context.Context, _ string) (*TuckSecretList, error) {
@@ -60,11 +70,13 @@ func (m *mockKube) RemoveFinalizer(_ context.Context, _ *TuckSecret, _ string) e
 type mockTuck struct {
 	mu      sync.Mutex
 	secrets map[string][]byte
+	fetched []string
 }
 
 func (m *mockTuck) GetSecret(_ context.Context, path string) ([]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.fetched = append(m.fetched, path)
 	v, ok := m.secrets[path]
 	if !ok {
 		return nil, nil

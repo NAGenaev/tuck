@@ -174,6 +174,8 @@ spec:
   deletionPolicy: Retain
 ```
 
+Несколько ключей в одном Secret: вместо `tuckPath`/`secretKey` используйте `data: {username: my-app/db/user, password: my-app/db/pass}`. В кластерах с несколькими командами запускайте оператор с `--enforce-namespace-paths`: TuckSecret сможет читать только `<namespace>/...` (плюс префиксы из аннотации Namespace `tuck.io/allowed-paths`) — см. [гайд 07](docs/guides/07-tucksecret-operator.md).
+
 ### Инъекция через Webhook (минует etcd)
 
 ```yaml

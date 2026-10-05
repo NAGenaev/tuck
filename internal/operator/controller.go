@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"reflect"
+	"sort"
 	"sync"
 	"time"
 )
@@ -25,6 +27,8 @@ type KubeClientIface interface {
 	UpdateStatus(ctx context.Context, ts *TuckSecret) error
 	AddFinalizer(ctx context.Context, ts *TuckSecret, finalizer string) error
 	RemoveFinalizer(ctx context.Context, ts *TuckSecret, finalizer string) error
+	// NamespaceAnnotations returns the annotations of a Namespace object.
+	NamespaceAnnotations(ctx context.Context, namespace string) (map[string]string, error)
 }
 
 // TuckClientIface is the subset of TuckClient used by the controller.
@@ -37,6 +41,13 @@ type Controller struct {
 	kube      KubeClientIface
 	tuck      TuckClientIface
 	namespace string // empty = all namespaces
+
+	// enforceNamespacePaths restricts every TuckSecret to Tuck paths under
+	// "<its namespace>/" (plus prefixes granted by the Namespace annotation
+	// tuck.io/allowed-paths). The operator holds one Tuck token for all
+	// namespaces, so without this any team able to create a TuckSecret could
+	// read every path that token can read.
+	enforceNamespacePaths bool
 
 	mu      sync.Mutex
 	tracked map[string]trackedResource
@@ -55,6 +66,12 @@ func New(kube KubeClientIface, tuck TuckClientIface, namespace string) *Controll
 		namespace: namespace,
 		tracked:   make(map[string]trackedResource),
 	}
+}
+
+// EnforceNamespacePaths turns on per-namespace Tuck path isolation. It must be
+// called before Run.
+func (ctrl *Controller) EnforceNamespacePaths(enabled bool) {
+	ctrl.enforceNamespacePaths = enabled
 }
 
 // Run starts the controller loop and blocks until ctx is cancelled.
@@ -196,13 +213,37 @@ func (ctrl *Controller) reconcile(ctx context.Context, ts TuckSecret) (err error
 	}()
 
 	spec := ts.Spec
-	if spec.TuckPath == "" || spec.SecretName == "" || spec.SecretKey == "" {
-		return fmt.Errorf("invalid TuckSecret spec: tuckPath, secretName, secretKey are all required")
+	if spec.SecretName == "" {
+		return fmt.Errorf("invalid TuckSecret spec: secretName is required")
+	}
+	entries, err := spec.Entries()
+	if err != nil {
+		return fmt.Errorf("invalid TuckSecret spec: %w", err)
 	}
 
-	value, err := ctrl.tuck.GetSecret(ctx, spec.TuckPath)
+	if err := ctrl.checkSecretConflict(ts, entries); err != nil {
+		return err
+	}
+
+	paths, err := ctrl.authorizePaths(ctx, ts.Metadata.Namespace, entries)
 	if err != nil {
-		return fmt.Errorf("fetch tuck secret %q: %w", spec.TuckPath, err)
+		return err
+	}
+
+	// Fetch everything before touching the K8s Secret so a failure on one key
+	// never leaves a half-updated Secret.
+	keys := make([]string, 0, len(paths))
+	for k := range paths {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	data := make(map[string][]byte, len(keys))
+	for _, k := range keys {
+		value, err := ctrl.tuck.GetSecret(ctx, paths[k])
+		if err != nil {
+			return fmt.Errorf("fetch tuck secret %q for key %q: %w", paths[k], k, err)
+		}
+		data[k] = value
 	}
 
 	secret := &KubeSecret{
@@ -213,7 +254,7 @@ func (ctrl *Controller) reconcile(ctx context.Context, ts TuckSecret) (err error
 			Namespace: ts.Metadata.Namespace,
 			Labels:    map[string]string{"managed-by": "tuck-operator"},
 		},
-		Data: map[string][]byte{spec.SecretKey: value},
+		Data: data,
 	}
 
 	if err := ctrl.kube.ApplySecret(ctx, secret); err != nil {
@@ -221,7 +262,7 @@ func (ctrl *Controller) reconcile(ctx context.Context, ts TuckSecret) (err error
 			ts.Metadata.Namespace, spec.SecretName, err)
 	}
 
-	slog.Info("operator: synced TuckSecret", "namespace", ts.Metadata.Namespace, "name", ts.Metadata.Name, "secret", spec.SecretName, "key", spec.SecretKey)
+	slog.Info("operator: synced TuckSecret", "namespace", ts.Metadata.Namespace, "name", ts.Metadata.Name, "secret", spec.SecretName, "keys", keys)
 
 	ctrl.mu.Lock()
 	key := resourceKey(ts)
@@ -231,6 +272,68 @@ func (ctrl *Controller) reconcile(ctx context.Context, ts TuckSecret) (err error
 	}
 	ctrl.mu.Unlock()
 
+	return nil
+}
+
+// authorizePaths validates every Tuck path of a TuckSecret and, when namespace
+// enforcement is on, checks it against the namespace's allowed prefixes. It
+// fails closed: if the Namespace cannot be read, nothing is fetched.
+func (ctrl *Controller) authorizePaths(ctx context.Context, namespace string, entries map[string]string) (map[string]string, error) {
+	if !ctrl.enforceNamespacePaths {
+		out := make(map[string]string, len(entries))
+		for k, p := range entries {
+			out[k] = p
+		}
+		return out, nil
+	}
+	annotations, err := ctrl.kube.NamespaceAnnotations(ctx, namespace)
+	if err != nil {
+		return nil, fmt.Errorf("read namespace %q to authorize tuck paths: %w", namespace, err)
+	}
+	prefixes, err := allowedPrefixes(namespace, annotations)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(entries))
+	for k, p := range entries {
+		n, err := normalizePath(p)
+		if err != nil {
+			return nil, fmt.Errorf("key %q: %w", k, err)
+		}
+		if !pathAllowed(n, prefixes) {
+			return nil, fmt.Errorf("key %q: tuck path %q is outside the paths allowed for namespace %q (allowed: %v; extend with the %s annotation on the Namespace)",
+				k, n, namespace, prefixes, AnnotationAllowedPaths)
+		}
+		out[k] = n
+	}
+	return out, nil
+}
+
+// checkSecretConflict refuses to sync when another live TuckSecret in the same
+// namespace targets the same K8s Secret and Secret key. Distinct keys of one
+// Secret may be owned by different TuckSecrets (ApplySecret merges), but two
+// owners of the same key would silently overwrite each other.
+func (ctrl *Controller) checkSecretConflict(ts TuckSecret, entries map[string]string) error {
+	ctrl.mu.Lock()
+	defer ctrl.mu.Unlock()
+	self := resourceKey(ts)
+	for k, other := range ctrl.tracked {
+		if k == self || other.ts.Metadata.Namespace != ts.Metadata.Namespace ||
+			other.ts.Spec.SecretName != ts.Spec.SecretName ||
+			other.ts.Metadata.DeletionTimestamp != nil {
+			continue
+		}
+		otherEntries, err := other.ts.Spec.Entries()
+		if err != nil {
+			continue
+		}
+		for key := range entries {
+			if _, clash := otherEntries[key]; clash {
+				return fmt.Errorf("conflict: TuckSecret %q also writes key %q of Secret %q",
+					other.ts.Metadata.Name, key, ts.Spec.SecretName)
+			}
+		}
+	}
 	return nil
 }
 
@@ -305,7 +408,7 @@ func (ctrl *Controller) addTracked(ts TuckSecret) (specChanged bool) {
 	defer ctrl.mu.Unlock()
 	key := resourceKey(ts)
 	prev, wasTracked := ctrl.tracked[key]
-	specChanged = !wasTracked || prev.ts.Spec != ts.Spec
+	specChanged = !wasTracked || !reflect.DeepEqual(prev.ts.Spec, ts.Spec)
 	ctrl.tracked[key] = trackedResource{
 		ts:          ts,
 		nextRefresh: time.Now().Add(ts.Spec.RefreshDuration()),

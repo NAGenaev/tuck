@@ -40,6 +40,8 @@ func main() {
 	healthAddr := flag.String("health-addr", ":8081",
 		"address to serve the /healthz liveness endpoint on")
 
+	enforcePaths := flag.Bool("enforce-namespace-paths", false,
+		"restrict each TuckSecret to Tuck paths under \"<namespace>/\" plus prefixes listed in the Namespace annotation tuck.io/allowed-paths")
 	flag.Parse()
 
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
@@ -58,11 +60,12 @@ func main() {
 
 	tuckClient := operator.NewTuckClient(*tuckAddr, *saTokenFile)
 	ctrl := operator.New(kubeClient, tuckClient, *namespace)
+	ctrl.EnforceNamespacePaths(*enforcePaths)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	slog.Info("operator: starting", "tuck", *tuckAddr, "k8s", *k8sAPI, "namespace", *namespace, "leaderElect", *leaderElect)
+	slog.Info("operator: starting", "tuck", *tuckAddr, "k8s", *k8sAPI, "namespace", *namespace, "leaderElect", *leaderElect, "enforceNamespacePaths", *enforcePaths)
 
 	startHealthServer(ctx, *healthAddr)
 

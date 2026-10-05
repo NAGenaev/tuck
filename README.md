@@ -201,6 +201,8 @@ spec:
   deletionPolicy: Retain
 ```
 
+Several keys in one Secret: replace `tuckPath`/`secretKey` with `data: {username: my-app/db/user, password: my-app/db/pass}`. Run the operator with `--enforce-namespace-paths` on multi-team clusters so a TuckSecret can only read `<namespace>/...` (plus prefixes granted via the `tuck.io/allowed-paths` Namespace annotation) — see [guide 07](docs/guides/07-tucksecret-operator.md).
+
 **Внедрение секретов через webhook (без записи в etcd):**
 
 ```yaml

@@ -502,6 +502,8 @@ curl.exe -s -X PUT http://127.0.0.1:8201/v1/auth/kubernetes/role/tuck/tuck-opera
   -d '{"bound_service_account_names":["tuck-operator"],"bound_service_account_namespaces":["tuck"],"policies":["root"]}'
 ```
 
+`root` здесь — только для локального стенда. В продакшне дайте роли узкую политику и включите `--enforce-namespace-paths` (см. [07](07-tucksecret-operator.md)).
+
 ### `go test` flaky (port conflict)
 
 ```powershell

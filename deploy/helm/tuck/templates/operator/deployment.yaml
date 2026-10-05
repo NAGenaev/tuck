@@ -37,6 +37,9 @@ spec:
             {{- if .Values.operator.watchNamespace }}
             - --namespace={{ .Values.operator.watchNamespace }}
             {{- end }}
+            {{- if .Values.operator.enforceNamespacePaths }}
+            - --enforce-namespace-paths
+            {{- end }}
             {{- if .Values.operator.leaderElect }}
             - --leader-elect
             - --leader-namespace={{ .Values.operator.leaderNamespace | default (include "tuck.namespace" .) }}

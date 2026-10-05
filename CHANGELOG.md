@@ -9,6 +9,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Operator: multi-key Secrets.** `TuckSecret.spec.data` (ключ Secret → путь в Tuck) наполняет несколько ключей одного K8s Secret; `tuckPath`/`secretKey` остаются рабочими и могут сочетаться с `data`. `tuckPath`/`secretKey` больше не обязательны в CRD (обязателен `secretName`).
+- **Operator: namespace isolation.** Флаг `--enforce-namespace-paths` (Helm `operator.enforceNamespacePaths`) ограничивает TuckSecret путями `<namespace>/...` плюс префиксы из аннотации Namespace `tuck.io/allowed-paths`; пути с `..`, пустыми сегментами и спецсимволами отклоняются, при ошибке чтения Namespace доступ запрещается.
+
+### Fixed
+
+- **Operator:** `ApplySecret` больше не затирает весь Secret целиком: чужие ключи, labels, annotations и `type` сохраняются (merge), поэтому несколько TuckSecret могут делить один Secret. Два TuckSecret на один ключ одного Secret теперь дают явную ошибку `conflict` вместо тихой перезаписи.
+- **Operator:** значения читаются из Tuck до записи — частичный отказ не оставляет наполовину обновлённый Secret.
+- **Deploy:** в `deploy/operator/deployment.yaml` ClusterRole не хватало `update/patch` на tucksecrets (финализатор) и `patch/delete` на secrets (`deletionPolicy: Delete`).
+
 ---
 
 ## [1.37.0] — 2026-07-25

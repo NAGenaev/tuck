@@ -1,0 +1,136 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+.grid {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 1180px;
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: clamp(28px, 5vw, 80px);
+    align-items: center;
+}
+
+@media (max-width: 920px) {
+    .grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font: 600 11px/1 'Oswald', Impact, sans-serif;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #9096a8;
+    border: 1px solid #3b4154;
+    padding: 8px 12px;
+    margin-bottom: 28px;
+}
+
+.badge i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #49e0a4;
+    box-shadow: 0 0 10px #49e0a4;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    50% {
+        opacity: 0.35;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .badge i {
+        animation: none;
+    }
+}
+
+.h1 {
+    margin: 0;
+    font: 900 clamp(38px, 6.4vw, 88px) / 0.92 'Unbounded', 'Arial Black', Impact, sans-serif;
+    letter-spacing: -0.035em;
+    text-transform: uppercase;
+    color: #edeae2;
+}
+
+.gold {
+    display: block;
+    color: transparent;
+    background: linear-gradient(180deg, #f0c772, #d7a94b);
+    -webkit-background-clip: text;
+    background-clip: text;
+}
+
+.lead {
+    max-width: 48ch;
+    margin: 26px 0 0;
+    color: #9096a8;
+    font-size: 17px;
+    line-height: 1.6;
+}
+
+.facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 32px;
+    margin-top: 40px;
+    padding-top: 22px;
+    border-top: 1px solid #272b38;
+}
+
+.facts div {
+    font: 500 12px 'JetBrains Mono', ui-monospace, Consolas, monospace;
+    color: #575c70;
+}
+
+.facts b {
+    display: block;
+    font: 700 20px 'Unbounded', 'Arial Black', Impact, sans-serif;
+    color: #edeae2;
+    letter-spacing: -0.02em;
+    margin-bottom: 2px;
+}
+
+.form {
+    padding: 26px 28px 28px;
+    display: grid;
+    gap: 16px;
+}
+
+.hint {
+    font: 500 11px 'JetBrains Mono', ui-monospace, Consolas, monospace;
+    color: #575c70;
+}
+
+.seal {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 28px;
+    border-top: 1px solid #272b38;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.seal svg {
+    width: 44px;
+    height: 44px;
+    flex: none;
+}
+
+.seal b {
+    display: block;
+    font: 600 13px 'Oswald', Impact, sans-serif;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #49e0a4;
+}
+
+.seal div {
+    font: 500 11px 'JetBrains Mono', ui-monospace, Consolas, monospace;
+    color: #575c70;
+}

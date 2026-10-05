@@ -1,0 +1,128 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+.hero {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+}
+
+@media (max-width: 900px) {
+    .hero {
+        grid-template-columns: 1fr;
+    }
+}
+
+.state {
+    padding: clamp(24px, 3vw, 40px);
+    display: flex;
+    align-items: center;
+    gap: clamp(18px, 3vw, 32px);
+    border-right: 1px solid #272b38;
+}
+
+@media (max-width: 900px) {
+    .state {
+        border-right: 0;
+        border-bottom: 1px solid #272b38;
+    }
+}
+
+.seal {
+    flex: none;
+    width: clamp(84px, 9vw, 120px);
+    height: clamp(84px, 9vw, 120px);
+}
+
+.ring {
+    transform-origin: 50% 50%;
+    animation: spin 40s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ring {
+        animation: none;
+    }
+}
+
+.stateText {
+    min-width: 0;
+}
+
+.big {
+    margin: 14px 0 10px;
+    font: 900 clamp(24px, 3.3vw, 46px) / 0.95 'Unbounded', 'Arial Black', Impact, sans-serif;
+    letter-spacing: -0.035em;
+    text-transform: uppercase;
+    color: #49e0a4;
+    overflow-wrap: normal;
+}
+
+.big[data-sealed='true'] {
+    color: #ff5a4d;
+}
+
+.meta {
+    font: 500 12px 'JetBrains Mono', ui-monospace, Consolas, monospace;
+    color: #575c70;
+}
+
+.meta b {
+    color: #9096a8;
+    font-weight: 500;
+}
+
+.control {
+    padding: clamp(24px, 3vw, 40px);
+    display: grid;
+    gap: 22px;
+    align-content: center;
+}
+
+.shards {
+    display: flex;
+    gap: 6px;
+}
+
+.shards i {
+    flex: 1;
+    height: 8px;
+    background: #272b38;
+    max-width: 64px;
+}
+
+.shards i[data-on='true'] {
+    background: #d7a94b;
+    box-shadow: 0 0 12px rgba(215, 169, 75, 0.45);
+}
+
+.shardsLabel {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    font: 600 11px 'Oswald', Impact, sans-serif;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #575c70;
+}
+
+.shardsLabel b {
+    color: #d7a94b;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+    letter-spacing: 0;
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.section {
+    display: grid;
+    gap: 14px;
+}

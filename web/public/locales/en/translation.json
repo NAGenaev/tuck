@@ -431,6 +431,15 @@
   "login": {
     "invalidToken": "Invalid or expired token",
     "tokenPlaceholder": "Paste your Tuck token",
-    "signIn": "Sign in"
+    "signIn": "Sign in",
+    "badge": "Secrets for Kubernetes",
+    "title": "Secrets",
+    "titleGold": "inside the cluster, not in Git",
+    "lead": "Applications fetch passwords straight from the protected store. Every read lands in the audit log.",
+    "factEnc": "encryption at rest",
+    "factSeal": "split unseal",
+    "factRaft": "fault tolerance",
+    "tokenHint": "Tokens are issued by a Tuck administrator",
+    "plate": "console sign-in"
   }
 }

@@ -1,0 +1,210 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Dashboard shell: sticky two-row header, navigation, drawer accordion. */
+
+.shead {
+    position: sticky;
+    top: 0;
+    z-index: 60;
+    background: rgba(10, 11, 14, 0.9);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid #3b4154;
+}
+.row1 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    height: 46px;
+    padding-inline: clamp(16px, 2vw, 24px);
+}
+.row2 {
+    display: flex;
+    align-items: stretch;
+    height: 52px;
+    padding-inline: clamp(16px, 2vw, 24px);
+    border-top: 1px solid #272b38;
+}
+.left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+.burger {
+    display: none;
+}
+.sep {
+    width: 1px;
+    height: 20px;
+    background: #272b38;
+    margin-inline: 4px;
+}
+
+.root {
+    position: relative;
+    min-height: 100vh;
+    background: #0a0b0e;
+}
+.main {
+    position: relative;
+    z-index: 1;
+    max-width: 1240px;
+    margin-inline: auto;
+    padding: 12px clamp(16px, 2vw, 24px) 48px;
+}
+
+/* ---------- nav ---------- */
+.nav {
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+}
+.ni {
+    position: relative;
+    display: flex;
+}
+.nt {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding-inline: 14px;
+    font: 600 13px 'Oswald', Impact, sans-serif;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #9096a8;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+        color 0.15s,
+        background 0.15s;
+}
+.nt::after {
+    content: '';
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: 0;
+    height: 2px;
+    background: #d7a94b;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.nt:hover,
+.nt[data-open='true'],
+.nt:focus-visible {
+    color: #edeae2;
+    background: rgba(255, 255, 255, 0.03);
+}
+.nt:hover::after,
+.nt[data-open='true']::after,
+.nt:focus-visible::after {
+    transform: scaleX(1);
+}
+.nt[data-active='true'] {
+    color: #d7a94b;
+}
+.nt[data-active='true']::after {
+    transform: scaleX(1);
+    left: 0;
+    right: 0;
+}
+.car {
+    opacity: 0.5;
+    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.nt[data-open='true'] .car {
+    transform: rotate(180deg);
+}
+.navMenu {
+    right: auto;
+    left: 0;
+    min-width: 244px;
+    top: 100%;
+}
+
+/* ---------- drawer accordion ---------- */
+.acc {
+    border-bottom: 1px solid #272b38;
+}
+.accBtn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    background: transparent;
+    border: 0;
+    padding: 16px;
+    font: 600 13px 'Oswald', Impact, sans-serif;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #9096a8;
+    cursor: pointer;
+    text-align: left;
+    text-decoration: none;
+}
+.accBtn[data-active='true'] {
+    color: #d7a94b;
+}
+.accBtn .car {
+    margin-left: auto;
+}
+.acc[data-open='true'] .accBtn .car {
+    transform: rotate(180deg);
+}
+.sub {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.acc[data-open='true'] .sub {
+    grid-template-rows: 1fr;
+}
+.sub > div {
+    overflow: hidden;
+}
+.sub a {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 16px 11px 46px;
+    font: 500 14px 'IBM Plex Sans', system-ui, sans-serif;
+    color: #9096a8;
+    border-left: 2px solid transparent;
+    text-decoration: none;
+}
+.sub a:hover,
+.sub a:focus-visible {
+    background: #1a1d29;
+    color: #edeae2;
+    border-left-color: #d7a94b;
+}
+.sub a[data-active='true'] {
+    color: #d7a94b;
+}
+
+@media (max-width: 860px) {
+    .row2,
+    .sep {
+        display: none;
+    }
+    .burger {
+        display: grid;
+    }
+    .row1 {
+        height: 54px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .nt,
+    .nt::after,
+    .car,
+    .sub {
+        transition-duration: 0.01ms !important;
+    }
+}

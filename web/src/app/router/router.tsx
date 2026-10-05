@@ -9,6 +9,7 @@ import { AuthGuard } from '@shared/hocs/guards/auth-guard'
 import { ROUTES } from '@shared/constants/routes'
 
 import { LoginPage } from '@pages/auth/login/login.page'
+import { NotFoundPage } from '@pages/not-found/not-found.page'
 import { AuditSinksPage } from '@pages/dashboard/audit-sinks/audit-sinks.page'
 import { AuthMethodsPage } from '@pages/dashboard/auth-methods/auth-methods.page'
 import { ClusterPage } from '@pages/dashboard/cluster/cluster.page'
@@ -56,7 +57,8 @@ const router = createBrowserRouter(
                     ]
                 }
             ]
-        }
+        },
+        { path: '*', element: <NotFoundPage /> }
     ],
     { basename: '/ui' }
 )

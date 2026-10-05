@@ -1,19 +1,29 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 .root {
-    position: relative;
-    min-height: 100vh;
-    display: grid;
-    place-items: center;
-    padding: clamp(24px, 5vw, 64px) clamp(16px, 3vw, 32px);
     overflow: hidden;
+    background: #0a0b0e;
 }
 
-.glow {
-    position: absolute;
-    width: 720px;
-    height: 720px;
-    right: -200px;
-    top: -220px;
-    background: radial-gradient(circle, rgba(215, 169, 75, 0.16), transparent 62%);
-    pointer-events: none;
+.topbar {
+    position: relative;
+    z-index: 5;
+    border-bottom: 1px solid #272b38;
+    background: rgba(10, 11, 14, 0.6);
+}
+
+.topRow {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    height: 58px;
+}
+
+.sp {
+    margin-left: auto;
+}
+
+@media (max-width: 480px) {
+    .topRow {
+        gap: 8px;
+    }
 }

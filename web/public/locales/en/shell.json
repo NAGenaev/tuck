@@ -1,1 +1,35 @@
-{}
+{
+    "menu": "Menu",
+    "close": "Close",
+    "cancel": "Cancel",
+    "language": "Language",
+    "source": "Source code on GitHub",
+    "namespace": "Namespace: {{namespace}}",
+    "namespaceSwitch": "Switch namespace",
+    "rootNamespace": "root",
+    "version": "Version {{version}}",
+    "sealed": "Sealed",
+    "unsealed": "Unsealed",
+    "sealUnknown": "Loading seal status",
+    "sessionTtl": "Session time left",
+    "fullscreen": "Fullscreen",
+    "exitFullscreen": "Exit fullscreen",
+    "logout": "Sign out",
+    "logoutEyebrow": "End session",
+    "logoutTitle": "Sign out of the console?",
+    "logoutText": "The token will be removed from this browser. To come back you will need to paste a token again.",
+    "notFound": {
+        "badge": "Code 404 · route",
+        "title": "There is",
+        "titleEm": "no",
+        "titleTail": "such path in the console",
+        "lead": "The page was removed, moved, or the address has a typo. Your secrets are safe.",
+        "toStatus": "Go to Status",
+        "toConsole": "To the console",
+        "toLogin": "To sign-in",
+        "copy": "Copy address",
+        "copied": "Address copied",
+        "termComment": "route not found",
+        "hint": "you may have been looking for one of these sections"
+    }
+}

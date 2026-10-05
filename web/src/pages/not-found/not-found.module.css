@@ -1,0 +1,53 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Route suggestions of the 404 screen (from the "Консоль Tuck" artifact). */
+
+.sugg {
+    display: grid;
+}
+.sugg a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 13px 28px;
+    border-top: 1px solid #272b38;
+    font: 500 13px 'JetBrains Mono', ui-monospace, Consolas, monospace;
+    color: #9096a8;
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    transition:
+        background 0.15s,
+        color 0.15s,
+        border-color 0.15s,
+        padding 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.sugg a:first-child {
+    border-top: 0;
+}
+.sugg a span {
+    flex: none;
+    font: 600 11px 'Oswald', Impact, sans-serif;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #575c70;
+    transition: color 0.15s;
+}
+.sugg a:hover,
+.sugg a:focus-visible {
+    background: #1a1d29;
+    color: #edeae2;
+    border-left-color: #d7a94b;
+    padding-left: 32px;
+}
+.sugg a:hover span,
+.sugg a:focus-visible span {
+    color: #d7a94b;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sugg a {
+        transition-duration: 0.01ms !important;
+    }
+}

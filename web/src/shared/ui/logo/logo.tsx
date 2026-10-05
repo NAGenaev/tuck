@@ -1,21 +1,16 @@
-import { Group, Text } from '@mantine/core'
+// SPDX-License-Identifier: AGPL-3.0-only
+import { Link } from 'react-router'
 
-const logoSrc = `${import.meta.env.BASE_URL}logo.png`
+import { ROUTES } from '@shared/constants/routes'
+import c from '@shared/ui/shell-controls/console.module.css'
+import { ShellIcon } from '@shared/ui/shell-controls/icons'
 
-export function Logo() {
+/** TUCK wordmark with the reticle mark (rotates on hover). */
+export function Logo({ to = ROUTES.DASHBOARD.STATUS }: { to?: string }) {
     return (
-        <Group gap={10} wrap="nowrap">
-            <img alt="Tuck" height={26} src={logoSrc} width={26} />
-            <Text
-                ff="Unbounded, sans-serif"
-                fw={800}
-                fz={16}
-                style={{ letterSpacing: '0.02em' }}
-                c="brass.5"
-                tt="uppercase"
-            >
-                Tuck
-            </Text>
-        </Group>
+        <Link aria-label="Tuck" className={c.brand} to={to}>
+            <ShellIcon name="reticle" size={24} stroke={2} />
+            TUCK
+        </Link>
     )
 }

@@ -1,0 +1,79 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.door {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    pointer-events: none;
+}
+.door i {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 50.5%;
+    background: linear-gradient(160deg, #1a1d29, #0a0b0e);
+    transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.l {
+    left: 0;
+    transform: translateX(-101%);
+    border-right: 2px solid #d7a94b;
+}
+.r {
+    right: 0;
+    transform: translateX(101%);
+    border-left: 2px solid #d7a94b;
+}
+.shut .l,
+.shut .r {
+    transform: none;
+}
+.door svg {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 120px;
+    height: 120px;
+    margin: -60px 0 0 -60px;
+    color: #d7a94b;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 2;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.2;
+}
+.shut svg {
+    opacity: 1;
+    animation: spin 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.lbl {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(50% + 78px);
+    text-align: center;
+    font: 600 11px 'Oswald', Impact, sans-serif;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: #d7a94b;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 2;
+}
+.shut .lbl {
+    opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+    .door i,
+    .door svg,
+    .lbl {
+        transition-duration: 0.01ms !important;
+        animation: none !important;
+    }
+}

@@ -1,77 +1,85 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
+/* Ported from the "Консоль Tuck" artifact (login + sealed variants). */
+
+.hero {
+    position: relative;
+    z-index: 1;
+}
+
 .grid {
     position: relative;
     z-index: 1;
-    width: 100%;
-    max-width: 1180px;
     display: grid;
     grid-template-columns: 1.1fr 1fr;
-    gap: clamp(28px, 5vw, 80px);
+    gap: clamp(28px, 4vw, 64px);
     align-items: center;
+    padding-block: clamp(36px, 6vw, 84px);
 }
-
-@media (max-width: 920px) {
+@media (max-width: 980px) {
     .grid {
         grid-template-columns: 1fr;
     }
 }
-
-.badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    font: 600 11px/1 'Oswald', Impact, sans-serif;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: #9096a8;
-    border: 1px solid #3b4154;
-    padding: 8px 12px;
-    margin-bottom: 28px;
-}
-
-.badge i {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: #49e0a4;
-    box-shadow: 0 0 10px #49e0a4;
-    animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-    50% {
-        opacity: 0.35;
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .badge i {
-        animation: none;
-    }
+.grid > * {
+    min-width: 0;
 }
 
 .h1 {
     margin: 0;
-    font: 900 clamp(38px, 6.4vw, 88px) / 0.92 'Unbounded', 'Arial Black', Impact, sans-serif;
+    font: 900 clamp(34px, 5.6vw, 84px) / 0.92 'Unbounded', 'Arial Black', Impact, sans-serif;
     letter-spacing: -0.035em;
     text-transform: uppercase;
     color: #edeae2;
+    overflow-wrap: break-word;
 }
-
+.w {
+    display: inline-block;
+    overflow: hidden;
+    vertical-align: top;
+    padding-bottom: 0.08em;
+    margin-bottom: -0.08em;
+}
+.w > b {
+    display: inline-block;
+    font: inherit;
+    animation: wordup 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    animation-delay: calc(var(--i) * 90ms + 150ms);
+}
 .gold {
     display: block;
+    margin-top: 0.08em;
     color: transparent;
-    background: linear-gradient(180deg, #f0c772, #d7a94b);
+    background: linear-gradient(100deg, #d7a94b 20%, #fff3cf 45%, #f0c772 55%, #d7a94b 80%);
+    background-size: 300% 100%;
     -webkit-background-clip: text;
     background-clip: text;
+    animation: shimmer 6s 1.6s ease-in-out infinite;
+}
+.gold[data-tone='red'] {
+    background-image: linear-gradient(100deg, #ff5a4d 20%, #ffd0cb 45%, #ff5a4d 80%);
+    background-size: 300% 100%;
+}
+.gold .w > b {
+    /* gradient text must not be clipped by the per-word mask */
+    padding-right: 0.04em;
 }
 
-.lead {
-    max-width: 48ch;
-    margin: 26px 0 0;
-    color: #9096a8;
-    font-size: 17px;
-    line-height: 1.6;
+@keyframes wordup {
+    from {
+        transform: translateY(110%) rotate(3deg);
+    }
+    to {
+        transform: none;
+    }
+}
+@keyframes shimmer {
+    0%,
+    55% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -100% 0;
+    }
 }
 
 .facts {
@@ -79,58 +87,124 @@
     flex-wrap: wrap;
     gap: 12px 32px;
     margin-top: 40px;
-    padding-top: 22px;
+    padding-top: 24px;
     border-top: 1px solid #272b38;
 }
-
 .facts div {
     font: 500 12px 'JetBrains Mono', ui-monospace, Consolas, monospace;
     color: #575c70;
 }
-
 .facts b {
     display: block;
-    font: 700 20px 'Unbounded', 'Arial Black', Impact, sans-serif;
+    font: 700 22px 'Unbounded', 'Arial Black', Impact, sans-serif;
     color: #edeae2;
     letter-spacing: -0.02em;
     margin-bottom: 2px;
+    font-variant-numeric: tabular-nums;
 }
 
+/* form */
 .form {
-    padding: 26px 28px 28px;
+    padding: 24px 28px 22px;
     display: grid;
     gap: 16px;
 }
-
-.hint {
-    font: 500 11px 'JetBrains Mono', ui-monospace, Consolas, monospace;
-    color: #575c70;
+.form fieldset {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+    display: grid;
+    gap: 16px;
 }
-
-.seal {
+.formHead {
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 16px 28px;
-    border-top: 1px solid #272b38;
-    background: rgba(0, 0, 0, 0.2);
+    justify-content: space-between;
+    gap: 12px;
 }
-
-.seal svg {
-    width: 44px;
-    height: 44px;
-    flex: none;
+.formHead h2 {
+    margin: 0;
+    font: 700 13px 'Unbounded', 'Arial Black', Impact, sans-serif;
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+    color: #edeae2;
 }
-
-.seal b {
+.alert {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    border: 1px solid rgba(255, 90, 77, 0.55);
+    background: rgba(255, 90, 77, 0.08);
+    color: #ffb3ac;
+    padding: 12px 14px;
+    font-size: 14px;
+    line-height: 1.45;
+    animation: rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.alert svg {
+    color: #ff5a4d;
+    margin-top: 1px;
+}
+.alert b {
     display: block;
-    font: 600 13px 'Oswald', Impact, sans-serif;
+    color: #ff5a4d;
+    font: 600 12px 'Oswald', Impact, sans-serif;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: #49e0a4;
+    margin-bottom: 2px;
 }
-
-.seal div {
+@keyframes rise {
+    from {
+        opacity: 0;
+        transform: translateY(22px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+.note {
     font: 500 11px 'JetBrains Mono', ui-monospace, Consolas, monospace;
     color: #575c70;
+    padding-top: 14px;
+    border-top: 1px dashed #272b38;
+}
+
+.sealbox {
+    margin: 24px 28px 0;
+    display: flex;
+    gap: 14px;
+    border: 1px dashed rgba(255, 90, 77, 0.55);
+    padding: 16px;
+    background: rgba(255, 90, 77, 0.06);
+    color: #ffb3ac;
+    font-size: 14px;
+    line-height: 1.5;
+}
+.sealbox svg {
+    color: #ff5a4d;
+    flex: none;
+}
+.sealbox b {
+    display: block;
+    font: 600 12px 'Oswald', Impact, sans-serif;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #ff5a4d;
+    margin-bottom: 4px;
+}
+
+/* 401 */
+.cursorLine {
+    min-height: 0;
+    border-bottom: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .w > b,
+    .gold,
+    .alert {
+        animation: none !important;
+    }
 }

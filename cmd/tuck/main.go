@@ -89,6 +89,8 @@ func main() {
 	barrierCipher := flag.String("barrier-cipher", "", "at-rest cipher suite for a NEW store: aes-256-gcm (default) | gost-kuznyechik-mgm; ignored for an existing store")
 	enableEngines := flag.String("enable-engine", "", "comma-separated experimental engines to enable: pki,ssh,totp,aws,gcp,azure (all off by default)")
 
+	requireMlock := flag.Bool("require-mlock", false, "refuse to start unless process memory can be locked (no swap); Linux only")
+
 	// Audit log
 	auditLog        := flag.String("audit-log", "", "path for the file audit log (empty = discard); rotated at --audit-max-size bytes")
 	auditMaxSize    := flag.Int64("audit-max-size", audit.DefaultMaxSize, "max audit log file size in bytes before rotation")
@@ -114,8 +116,6 @@ func main() {
 		fmt.Fprintf(os.Stdout, "tuck %s\n", version.String())
 		os.Exit(0)
 	}
-
-	lockMemory()
 
 	// Load config file and apply values for flags that were NOT set on the CLI.
 	// Priority: CLI flag > env var > config file > built-in default.
@@ -196,8 +196,18 @@ func main() {
 		apply("otel-endpoint", cfg.Telemetry.OtelEndpoint)
 		apply("barrier-cipher", cfg.Barrier.Cipher)
 		apply("enable-engine", strings.Join(cfg.EnableEngines, ","))
+		applyBool("require-mlock", cfg.RequireMlock)
 
 		log.Printf("tuck: loaded config from %q", resolvedCfgPath)
+	}
+
+	if err := lockMemory(); err != nil {
+		if *requireMlock {
+			log.Fatalf("tuck: --require-mlock set but %v", err)
+		}
+		log.Printf("tuck: WARNING: %v — the root key and DEK may be swapped to disk (set --require-mlock to make this fatal)", err)
+	} else {
+		log.Printf("tuck: process memory locked, core dumps disabled")
 	}
 
 	// --- Backend ---

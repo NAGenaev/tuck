@@ -33,7 +33,7 @@
 | C2 | Ротация DEK (версионируемый keyring, `POST /v1/sys/rotate-data-key`) | P1 | ✅ |
 | C3 | Шифрование **путей** записей в backend (детерминированное, обратимое; [11 §1.1](11-barrier-and-ciphers.md)) | P1 | ✅ |
 | C4 | Seal через PKCS#11 / HSM, поддержка сертифицированного СКЗИ как `Suite` | P1 | ⬜ |
-| C5 | Привести `mlock` к единому поведению (сейчас различается по платформам) | P2 | ⬜ |
+| C5 | `mlock`: единое поведение — предупреждение либо отказ запуска (`--require-mlock` / `require_mlock`), на Linux ещё отключаются core dump | P2 | ✅ |
 | C6 | ГОСТ в Transit (`gost`-тип ключа, HMAC/хеш на Стрибоге) | P2 | ⬜ |
 | C7 | Шифр барьера в `GET /v1/sys/seal-status` (`barrier_cipher`) | P2 | ✅ |
 

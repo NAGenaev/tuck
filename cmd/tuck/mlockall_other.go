@@ -2,8 +2,8 @@
 
 package main
 
-import "log"
+import "errors"
 
-func lockMemory() {
-	log.Printf("tuck: mlockall not available on this OS — root key may be swapped to disk")
+func lockMemory() error {
+	return errors.New("memory locking is only supported on Linux")
 }

@@ -91,6 +91,9 @@ type Config struct {
 	// EnableEngines opts in to experimental engines (pki, ssh, totp, aws, gcp, azure).
 	EnableEngines []string `yaml:"enable_engines"`
 
+	// RequireMlock makes startup fail when process memory cannot be locked.
+	RequireMlock bool `yaml:"require_mlock"`
+
 	Telemetry struct {
 		OtelEndpoint string `yaml:"otel_endpoint"`
 	} `yaml:"telemetry"`

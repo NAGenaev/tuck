@@ -72,3 +72,10 @@ func (c *Client) RenewSelf(ctx context.Context, ttl time.Duration) (*Token, erro
 	var tok Token
 	return &tok, c.post(ctx, "/v1/auth/token/self/renew", body, &tok)
 }
+
+// LoginKubernetes authenticates with a Kubernetes ServiceAccount JWT. The
+// server derives the role from the token's namespace and ServiceAccount.
+func (a *AuthClient) LoginKubernetes(ctx context.Context, saJWT string) (*LoginResult, error) {
+	var res LoginResult
+	return &res, a.c.post(ctx, "/v1/auth/kubernetes/login", map[string]string{"token": saJWT}, &res)
+}

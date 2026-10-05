@@ -11,6 +11,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Injector: Kubernetes auth.** Аннотация `tuck.io/auth: kubernetes` — агент логинится по JWT ServiceAccount Pod'а (`TUCK_AUTH=kubernetes`), статический токен и Secret с ним не нужны. `client.Auth().LoginKubernetes`.
 - **Barrier cipher suites.** Шифр барьера теперь сменный (`--barrier-cipher`, `barrier.cipher`): `aes-256-gcm` (по умолчанию) или `gost-kuznyechik-mgm`. Выбор фиксируется при первой инициализации в `barrier/meta`. Новые хранилища привязывают шифртекст к пути записи через AEAD associated data; хранилища без `barrier/meta` читаются как раньше (AES-256-GCM без AAD). Набор ГОСТ — собственная реализация, **не сертифицирована ФСБ**; сертифицированное СКЗИ подключается через `barrier.RegisterSuite`. См. docs/11-barrier-and-ciphers.md.
 - **Experimental engines gate.** PKI, SSH, TOTP, AWS, GCP, Azure в бинарнике `tuck` выключены по умолчанию (404 `disabled`); включаются `--enable-engine=pki,totp` или `enable_engines`.
 - docs/12-bank-readiness-todo.md — план доработок по итогам банковского аудита.

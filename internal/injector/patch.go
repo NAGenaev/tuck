@@ -18,6 +18,10 @@ const (
 	// AnnotationTokenSecret is the name of the K8s Secret whose "token" key holds
 	// the Tuck bearer token. Defaults to "tuck-token".
 	AnnotationTokenSecret = "tuck.io/token-secret" // #nosec G101 — Kubernetes annotation name, not a credential value
+	// AnnotationAuth selects how the agent authenticates. "kubernetes" logs in
+	// with the Pod's ServiceAccount token (requires a Tuck Kubernetes auth role
+	// for that ServiceAccount) and mounts no static token. Default: token Secret.
+	AnnotationAuth = "tuck.io/auth"
 	// AnnotationImage overrides the tuck-agent container image.
 	AnnotationImage = "tuck.io/agent-image"
 	// AnnotationOutputDir overrides the secrets output directory inside the Pod.
@@ -35,12 +39,13 @@ const (
 
 // InjectConfig is derived from a Pod's annotations.
 type InjectConfig struct {
-	Addr        string
-	Secrets     string // raw annotation value
-	TokenSecret string
-	Image       string
-	OutputDir   string
-	Insecure    bool
+	Addr           string
+	Secrets        string // raw annotation value
+	TokenSecret    string
+	KubernetesAuth bool
+	Image          string
+	OutputDir      string
+	Insecure       bool
 }
 
 // ParseAnnotations extracts injection config from pod annotations.
@@ -50,12 +55,13 @@ func ParseAnnotations(ann map[string]string, defaultImage string) (InjectConfig,
 		return InjectConfig{}, false
 	}
 	cfg := InjectConfig{
-		Addr:        ann[AnnotationAddr],
-		Secrets:     ann[AnnotationSecrets],
-		TokenSecret: ann[AnnotationTokenSecret],
-		Image:       ann[AnnotationImage],
-		OutputDir:   ann[AnnotationOutputDir],
-		Insecure:    ann[AnnotationInsecure] == "true",
+		Addr:           ann[AnnotationAddr],
+		Secrets:        ann[AnnotationSecrets],
+		TokenSecret:    ann[AnnotationTokenSecret],
+		Image:          ann[AnnotationImage],
+		OutputDir:      ann[AnnotationOutputDir],
+		Insecure:       ann[AnnotationInsecure] == "true",
+		KubernetesAuth: ann[AnnotationAuth] == "kubernetes",
 	}
 	if cfg.TokenSecret == "" {
 		cfg.TokenSecret = defaultTokenSecret
@@ -114,30 +120,32 @@ func BuildPatch(pod *Pod, cfg InjectConfig) ([]byte, error) {
 		},
 	}
 
-	// Mount token from K8s Secret as a file.
-	agent.VolumeMounts = append(agent.VolumeMounts, VolumeMount{
-		Name:      tokenVolumeName,
-		MountPath: "/tuck/token",
-		ReadOnly:  true,
-	})
-	tokenVol := Volume{
-		Name: tokenVolumeName,
-		EmptyDir: nil,
-	}
-	// Use a projected secret volume for the token.
-	// We encode it as a raw JSON object since we're not importing k8s API types.
-	tokenVolRaw := map[string]interface{}{
-		"name": tokenVolumeName,
-		"secret": map[string]interface{}{
-			"secretName": cfg.TokenSecret,
-			"items": []map[string]interface{}{
-				{"key": "token", "path": "token"},
+	if !cfg.KubernetesAuth {
+		// Mount token from K8s Secret as a file.
+		agent.VolumeMounts = append(agent.VolumeMounts, VolumeMount{
+			Name:      tokenVolumeName,
+			MountPath: "/tuck/token",
+			ReadOnly:  true,
+		})
+		tokenVol := Volume{
+			Name:     tokenVolumeName,
+			EmptyDir: nil,
+		}
+		// Use a projected secret volume for the token.
+		// We encode it as a raw JSON object since we're not importing k8s API types.
+		tokenVolRaw := map[string]interface{}{
+			"name": tokenVolumeName,
+			"secret": map[string]interface{}{
+				"secretName": cfg.TokenSecret,
+				"items": []map[string]interface{}{
+					{"key": "token", "path": "token"},
+				},
 			},
-		},
-	}
-	_ = tokenVol
+		}
+		_ = tokenVol
 
-	patches = append(patches, jsonPatch{Op: "add", Path: "/spec/volumes/-", Value: tokenVolRaw})
+		patches = append(patches, jsonPatch{Op: "add", Path: "/spec/volumes/-", Value: tokenVolRaw})
+	}
 
 	if len(pod.Spec.InitContainers) == 0 {
 		patches = append(patches, jsonPatch{Op: "add", Path: "/spec/initContainers", Value: []Container{agent}})
@@ -209,7 +217,11 @@ func buildEnv(cfg InjectConfig) []EnvVar {
 	env := []EnvVar{
 		{Name: "TUCK_OUTPUT_DIR", Value: cfg.OutputDir},
 		{Name: "TUCK_SECRETS", Value: cfg.Secrets},
-		{Name: "TUCK_TOKEN_FILE", Value: "/tuck/token/token"},
+	}
+	if cfg.KubernetesAuth {
+		env = append(env, EnvVar{Name: "TUCK_AUTH", Value: "kubernetes"})
+	} else {
+		env = append(env, EnvVar{Name: "TUCK_TOKEN_FILE", Value: "/tuck/token/token"})
 	}
 	if cfg.Addr != "" {
 		env = append(env, EnvVar{Name: "TUCK_ADDR", Value: cfg.Addr})

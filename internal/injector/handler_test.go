@@ -197,3 +197,28 @@ func TestInjectExistingVolumes(t *testing.T) {
 		}
 	}
 }
+
+func TestInjectKubernetesAuthMountsNoStaticToken(t *testing.T) {
+	h := NewHandler("ghcr.io/nagenaev/tuck-agent:latest", nil)
+	pod := Pod{
+		Metadata: ObjectMeta{Annotations: map[string]string{
+			AnnotationInject:  "true",
+			AnnotationAddr:    "https://tuck.svc:8200",
+			AnnotationSecrets: "db/password:password",
+			AnnotationAuth:    "kubernetes",
+		}},
+		Spec: PodSpec{Containers: []Container{{Name: "app", Image: "nginx"}}},
+	}
+	resp := callWebhook(t, h, admissionBody(t, pod))
+	raw, err := base64.StdEncoding.DecodeString(string(resp.Response.Patch))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	if bytes.Contains(raw, []byte("tuck-token")) || bytes.Contains(raw, []byte("TUCK_TOKEN_FILE")) {
+		t.Fatalf("kubernetes auth must not reference a static token: %s", s)
+	}
+	if !bytes.Contains(raw, []byte(`"TUCK_AUTH"`)) || !bytes.Contains(raw, []byte(`"kubernetes"`)) {
+		t.Fatalf("expected TUCK_AUTH=kubernetes env: %s", s)
+	}
+}

@@ -32,7 +32,13 @@
 kubectl label namespace demo tuck.io/inject=enabled --overwrite
 ```
 
-### 3. Создать Secret с Tuck token
+### 3a. Рекомендуемый путь: без статического токена (Kubernetes auth)
+
+Добавьте аннотацию `tuck.io/auth: kubernetes`. Агент возьмёт JWT ServiceAccount Pod'а, обменяет его на короткоживущий токен Tuck (`POST /v1/auth/kubernetes/login`), и Secret с токеном не нужен. Роль для ServiceAccount создаётся как в [гайде 09](09-kubernetes-auth.md); у Pod'а должен быть включён automount ServiceAccount-токена. Пропустите шаг 3b.
+
+### 3b. Альтернатива: статический токен
+
+> Статический токен долгоживущий и лежит в K8s Secret, то есть в etcd — именно то, от чего Tuck призван уйти. Используйте только для dev.
 
 ```powershell
 kubectl -n demo create secret generic tuck-token --from-literal=token=tuck_...
@@ -51,6 +57,7 @@ kubectl -n demo create secret generic tuck-token --from-literal=token=tuck_...
 | `tuck.io/inject` | `"true"` |
 | `tuck.io/addr` | `https://tuck.tuck.svc:8200` |
 | `tuck.io/secrets` | `db/password:db-password,db/user:db-user` |
+| `tuck.io/auth` | `kubernetes` — логин по ServiceAccount вместо токена из Secret |
 | `tuck.io/token-secret` | `tuck-token` (по умолчанию) |
 | `tuck.io/output-dir` | `/tuck/secrets` (по умолчанию) |
 | `tuck.io/insecure` | `"true"` только для dev TLS |

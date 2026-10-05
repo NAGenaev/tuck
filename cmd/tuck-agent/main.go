@@ -8,6 +8,9 @@
 //	TUCK_ADDR        Tuck server base URL (e.g. https://tuck.svc:8200)
 //	TUCK_TOKEN       Bearer token (alternative to TUCK_TOKEN_FILE)
 //	TUCK_TOKEN_FILE  Path to a file containing the bearer token
+//	TUCK_AUTH        "kubernetes": log in with the Pod's ServiceAccount token instead
+//	                 of a static Tuck token (requires a Tuck Kubernetes auth role)
+//	TUCK_K8S_JWT_FILE  ServiceAccount token path (default /var/run/secrets/kubernetes.io/serviceaccount/token)
 //	TUCK_SECRETS     Comma-separated "tuckPath:filename" pairs
 //	TUCK_OUTPUT_DIR  Directory to write secret files (default /tuck/secrets)
 //	TUCK_INSECURE    Skip TLS certificate verification ("true" = skip)
@@ -30,11 +33,6 @@ func main() {
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 	addr := requiredEnv("TUCK_ADDR")
-	token, err := resolveToken()
-	if err != nil {
-		log.Error("resolve token", "err", err)
-		os.Exit(1)
-	}
 
 	secretsRaw := os.Getenv("TUCK_SECRETS")
 	if secretsRaw == "" {
@@ -63,6 +61,19 @@ func main() {
 	var opts []client.Option
 	if insecure {
 		opts = append(opts, client.WithInsecure())
+	}
+	var (
+		token string
+		err   error
+	)
+	if os.Getenv("TUCK_AUTH") == "kubernetes" {
+		token, err = loginKubernetes(addr, opts)
+	} else {
+		token, err = resolveToken()
+	}
+	if err != nil {
+		log.Error("resolve token", "err", err)
+		os.Exit(1)
 	}
 	c := client.New(addr, token, opts...)
 
@@ -134,4 +145,26 @@ func requiredEnv(key string) string {
 		os.Exit(1)
 	}
 	return v
+}
+
+const defaultK8sJWTFile = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+
+// loginKubernetes exchanges the Pod's ServiceAccount token for a short-lived
+// Tuck token, so no static credential has to be provisioned.
+func loginKubernetes(addr string, opts []client.Option) (string, error) {
+	f := os.Getenv("TUCK_K8S_JWT_FILE")
+	if f == "" {
+		f = defaultK8sJWTFile
+	}
+	jwt, err := os.ReadFile(f) // #nosec G304 G703 — path from operator-controlled env/default
+	if err != nil {
+		return "", fmt.Errorf("read ServiceAccount token %q: %w", f, err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	res, err := client.New(addr, "", opts...).Auth().LoginKubernetes(ctx, strings.TrimSpace(string(jwt)))
+	if err != nil {
+		return "", fmt.Errorf("kubernetes login: %w", err)
+	}
+	return res.Token, nil
 }

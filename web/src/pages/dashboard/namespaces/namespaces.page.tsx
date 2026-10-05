@@ -1,138 +1,626 @@
-import { ActionIcon, Button, SimpleGrid, Stack, Table, Text, TextInput } from '@mantine/core'
-import { useDisclosure } from '@mantine/hooks'
-import { modals } from '@mantine/modals'
-import { notifications } from '@mantine/notifications'
+// SPDX-License-Identifier: AGPL-3.0-only
+import { Button } from '@mantine/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
-import { useTranslation } from 'react-i18next'
-import { TbBoxMultiple, TbPlus, TbTrash } from 'react-icons/tb'
+import { isAxiosError } from 'axios'
+import { CSSProperties, FormEvent, ReactNode, useEffect, useMemo, useState } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 
+import { lookupSelf } from '@shared/api/endpoints/auth'
 import { createNamespace, deleteNamespace, listNamespaces } from '@shared/api/endpoints/namespace'
-import { EmptyState } from '@shared/ui/empty-state/empty-state'
-import { EntityModal } from '@shared/ui/entity-modal/entity-modal'
-import { MetricCard } from '@shared/ui/metrics/metric-card/metric-card'
+import { getNamespace, setNamespace } from '@shared/auth/token'
+import {
+    ConfirmModal,
+    CopyButton,
+    CountUp,
+    Icon,
+    Modal,
+    SkeletonLine,
+    StateBlock,
+    toast
+} from '@shared/ui/kit'
 import { Page } from '@shared/ui/page/page'
-import { PageHeader } from '@shared/ui/page-header/page-header'
-import { TableCard } from '@shared/ui/table-card/table-card'
+import { Eyebrow, Pill } from '@shared/ui/tuck/tuck'
+
+import styles from './namespaces.module.css'
+
+// Mirrors internal/namespace: ^[a-z0-9][a-z0-9-]*$ and not "root".
+const NAME_RE = /^[a-z0-9][a-z0-9-]*$/
+const VIEW_KEY = 'tuck.ns.view'
+
+type View = 'cards' | 'list'
+
+const cx = (...p: Array<false | null | string | undefined>) => p.filter(Boolean).join(' ')
+
+function readView(): View {
+    try {
+        return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'cards'
+    } catch {
+        return 'cards'
+    }
+}
+
+function saveView(v: View) {
+    try {
+        localStorage.setItem(VIEW_KEY, v)
+    } catch {
+        // storage unavailable: the choice just won't persist
+    }
+}
+
+function serverMessage(err: unknown): string | undefined {
+    if (isAxiosError(err)) {
+        const d = err.response?.data as { error?: string } | undefined
+        return d?.error
+    }
+    return undefined
+}
+
+function NsName({ name }: { name: string }) {
+    const i = name.lastIndexOf('/')
+    return i < 0 ? (
+        <b>{name}</b>
+    ) : (
+        <>
+            <span>{name.slice(0, i + 1)}</span>
+            <b>{name.slice(i + 1)}</b>
+        </>
+    )
+}
+
+/** Decorative sketch: the highlighted vault sits between two walls. */
+function MiniIso() {
+    return (
+        <svg aria-hidden fill="none" viewBox="0 0 132 44">
+            <rect height="32" stroke="#3B4154" width="34" x="2" y="6" />
+            <rect fill="rgba(215,169,75,.14)" height="32" stroke="#D7A94B" width="34" x="49" y="6" />
+            <circle cx="66" cy="22" fill="#D7A94B" r="4" />
+            <rect height="32" stroke="#3B4154" width="34" x="96" y="6" />
+            <path d="M42 10v24M89 10v24" stroke="#FF5A4D" strokeWidth="1.5" />
+            <path d="M37 22h3M44 22h3M84 22h3M91 22h3" stroke="#575C70" />
+        </svg>
+    )
+}
+
+function SwitchIcon() {
+    return (
+        <svg fill="none" height="15" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 16 16" width="15">
+            <path d="M2 5h10l-3-3M14 11H4l3 3" />
+        </svg>
+    )
+}
+
+function OnbLogo() {
+    return (
+        <svg className={styles.logo} fill="none" height="56" viewBox="0 0 44 44" width="56">
+            <circle cx="22" cy="22" r="19" stroke="#3B4154" strokeWidth="2" />
+            <circle cx="22" cy="22" r="12" stroke="#D7A94B" strokeDasharray="4 5" strokeWidth="2">
+                <animateTransform
+                    attributeName="transform"
+                    dur="14s"
+                    from="0 22 22"
+                    repeatCount="indefinite"
+                    to="360 22 22"
+                    type="rotate"
+                />
+            </circle>
+            <circle cx="22" cy="22" fill="#49E0A4" r="3" />
+        </svg>
+    )
+}
+
+const rich = {
+    b: <b />,
+    br: <br />,
+    code: <code />,
+    em: <em />
+}
 
 export function NamespacesPage() {
-    const { t } = useTranslation()
-    const [name, setName] = useState('')
-    const [creating, { open: openCreating, close: closeCreating }] = useDisclosure(false)
+    const { t } = useTranslation('namespaces')
     const queryClient = useQueryClient()
 
-    const { data: namespaces, isLoading } = useQuery({
+    const [q, setQ] = useState('')
+    const [view, setView] = useState<View>(readView)
+    const [creating, setCreating] = useState(false)
+    const [name, setName] = useState('')
+    const [serverErr, setServerErr] = useState('')
+    const [toDelete, setToDelete] = useState<null | string>(null)
+    const [dying, setDying] = useState<null | string>(null)
+    const [fresh, setFresh] = useState<null | string>(null)
+
+    const current = getNamespace() ?? ''
+
+    const {
+        data: namespaces,
+        error,
+        isError,
+        isFetching,
+        isLoading,
+        refetch
+    } = useQuery({
         queryKey: ['namespaces', 'list'],
-        queryFn: listNamespaces
+        queryFn: listNamespaces,
+        retry: (count, err) => !(isAxiosError(err) && err.response?.status === 403) && count < 2
     })
+    const { data: self } = useQuery({ queryKey: ['auth', 'lookup-self'], queryFn: lookupSelf, staleTime: 60_000 })
+    const bound = (self as { namespace?: string } | undefined)?.namespace ?? ''
+
+    const forbidden = isError && isAxiosError(error) && error.response?.status === 403
+    const all = useMemo(() => [...(namespaces ?? [])].sort(), [namespaces])
+    const filter = q.trim().toLowerCase()
+    const list = useMemo(() => all.filter((n) => !filter || n.includes(filter)), [all, filter])
+
+    // --- create ---
+    const trimmed = name.trim()
+    let nameErr = ''
+    if (trimmed) {
+        if (trimmed === 'root') nameErr = t('createModal.errRoot')
+        else if (!NAME_RE.test(trimmed)) nameErr = t('createModal.errChars')
+        else if (all.includes(trimmed)) nameErr = t('createModal.errExists', { name: trimmed })
+    }
+    const shownErr = nameErr || serverErr
 
     const createMutation = useMutation({
-        mutationFn: () => createNamespace(name),
-        onSuccess: () => {
+        mutationFn: () => createNamespace(trimmed),
+        onSuccess: async () => {
+            const created = trimmed
+            setCreating(false)
             setName('')
-            closeCreating()
-            queryClient.invalidateQueries({ queryKey: ['namespaces', 'list'] })
-            notifications.show({ color: 'teal', message: t('namespaces.createdMessage'), title: t('common.created') })
+            setQ('')
+            setFresh(created)
+            toast.success(t('toast.created'), t('toast.createdMsg', { name: created }))
+            await queryClient.invalidateQueries({ queryKey: ['namespaces', 'list'] })
         },
-        onError: () => notifications.show({ color: 'red', message: t('common.createFailed'), title: t('common.error') })
-    })
-
-    const deleteMutation = useMutation({
-        mutationFn: deleteNamespace,
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['namespaces', 'list'] })
-            notifications.show({ color: 'teal', message: t('namespaces.deletedMessage'), title: t('common.deleted') })
+        onError: (err) => {
+            const msg = serverMessage(err)
+            setServerErr(msg ?? '')
+            toast.error(t('toast.createFailed'), msg)
         }
     })
 
-    return (
-        <Page title="Namespaces">
-            <Stack gap="lg">
-                <PageHeader
-                    action={
-                        <Button leftSection={<TbPlus size={16} />} onClick={openCreating}>
-                            {t('common.new')}
+    const openCreate = () => {
+        setName('')
+        setServerErr('')
+        setCreating(true)
+    }
+
+    const submitCreate = (e?: FormEvent) => {
+        e?.preventDefault()
+        if (!trimmed || nameErr || createMutation.isPending) return
+        setServerErr('')
+        createMutation.mutate()
+    }
+
+    useEffect(() => {
+        if (!fresh) return
+        const el = document.querySelector(`[data-ns="${CSS.escape(fresh)}"]`)
+        if (el) {
+            const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+            el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' })
+            const id = window.setTimeout(() => setFresh(null), 2200)
+            return () => window.clearTimeout(id)
+        }
+    }, [fresh, list])
+
+    // --- delete ---
+    const deleteMutation = useMutation({ mutationFn: deleteNamespace })
+
+    const confirmDelete = async (ns: string) => {
+        setDying(ns)
+        try {
+            await deleteMutation.mutateAsync(ns)
+        } catch (err) {
+            setDying(null)
+            toast.error(t('toast.deleteFailed'), serverMessage(err))
+            throw err
+        }
+        toast.success(t('toast.deleted'), t('toast.deletedMsg', { name: ns }))
+        if (current === ns) {
+            setNamespace('')
+            window.location.reload()
+            return
+        }
+        await queryClient.invalidateQueries({ queryKey: ['namespaces', 'list'] })
+        setDying(null)
+    }
+
+    // --- current namespace (same mechanism as the shell switcher) ---
+    const switchTo = (ns: string) => {
+        if (ns === current) return
+        setNamespace(ns)
+        // many query keys aren't namespace-scoped: reload for a clean slate
+        window.location.reload()
+    }
+
+    const changeView = (v: View) => {
+        setView(v)
+        saveView(v)
+    }
+
+    const showData = !isLoading && !isError
+    const isEmpty = showData && all.length === 0
+
+    const actions = (ns: string) => (
+        <>
+            <button
+                aria-label={t('card.use')}
+                className={styles.ib}
+                disabled={ns === current}
+                onClick={() => switchTo(ns)}
+                title={t('card.use')}
+                type="button"
+            >
+                <SwitchIcon />
+            </button>
+            <CopyButton label={t('card.copy')} size={32} value={ns} />
+            <button
+                aria-label={t('card.remove', { name: ns })}
+                className={cx(styles.ib, styles.del)}
+                onClick={() => setToDelete(ns)}
+                title={t('card.remove', { name: ns })}
+                type="button"
+            >
+                <Icon name="trash" size={15} />
+            </button>
+        </>
+    )
+
+    let body: ReactNode
+    if (isLoading) {
+        body = (
+            <>
+                <div className={styles.secTitle}>…</div>
+                <div className={styles.grid}>
+                    {[0, 1, 2].map((i) => (
+                        <div aria-busy className={styles.skel} key={i} style={{ '--i': i } as CSSProperties}>
+                            <SkeletonLine height={16} width="55%" />
+                            <SkeletonLine width="35%" />
+                            <SkeletonLine height={46} />
+                            <SkeletonLine width="80%" />
+                        </div>
+                    ))}
+                </div>
+            </>
+        )
+    } else if (forbidden) {
+        body = (
+            <div className={cx(styles.panel, styles.bad)}>
+                <div className={styles.err403}>
+                    <div className={styles.big403}>403</div>
+                    <div>
+                        <Eyebrow className={styles.alarmEyebrow}>{t('forbidden.eyebrow')}</Eyebrow>
+                        <h3>
+                            <Trans components={rich} i18nKey="forbidden.title" ns="namespaces" />
+                        </h3>
+                        <p>
+                            {t('forbidden.text')}{' '}
+                            {bound && (
+                                <Trans
+                                    components={{ code: <code className={styles.mono} /> }}
+                                    i18nKey="forbidden.bound"
+                                    ns="namespaces"
+                                    values={{ ns: bound }}
+                                />
+                            )}
+                        </p>
+                        <div className={styles.callout}>
+                            <b>GET</b> /v1/sys/namespaces/
+                            <br />
+                            <Trans components={rich} i18nKey="forbidden.callout" ns="namespaces" />
+                        </div>
+                        <Button loading={isFetching} onClick={() => void refetch()} variant="default">
+                            {t('forbidden.retry')}
                         </Button>
-                    }
-                    color="grape"
-                    icon={TbBoxMultiple}
-                    title={t('pages.namespaces')}
-                />
+                    </div>
+                </div>
+            </div>
+        )
+    } else if (isError) {
+        body = (
+            <StateBlock
+                details={serverMessage(error) ?? (error as Error)?.message}
+                kind="error"
+                message={t('error.message')}
+                onRetry={() => void refetch()}
+                retrying={isFetching}
+                title={t('error.title')}
+            />
+        )
+    } else if (isEmpty) {
+        body = (
+            <div className={styles.panel}>
+                <OnbLogo />
+                <Eyebrow>{t('empty.eyebrow')}</Eyebrow>
+                <h3>
+                    <Trans components={rich} i18nKey="empty.title" ns="namespaces" />
+                </h3>
+                <p>{t('empty.text')}</p>
+                <div className={styles.onb}>
+                    <div>
+                        <b>{t('empty.s1t')}</b>
+                        <Trans components={rich} i18nKey="empty.s1d" ns="namespaces" />
+                    </div>
+                    <div>
+                        <b>{t('empty.s2t')}</b>
+                        <Trans components={rich} i18nKey="empty.s2d" ns="namespaces" />
+                    </div>
+                    <div>
+                        <b>{t('empty.s3t')}</b>
+                        {t('empty.s3d')}
+                    </div>
+                </div>
+                <Button onClick={openCreate}>{t('empty.cta')}</Button>
+            </div>
+        )
+    } else {
+        body = (
+            <>
+                <div className={styles.secTitle}>
+                    {filter ? t('section.found', { count: list.length }) : t('section.all')}
+                </div>
+                {list.length === 0 ? (
+                    <div className={styles.panel}>
+                        <h3>
+                            <Trans components={rich} i18nKey="noMatch.title" ns="namespaces" />
+                        </h3>
+                        <p>{t('noMatch.text', { q })}</p>
+                        <Button onClick={() => setQ('')} variant="default">
+                            {t('noMatch.reset')}
+                        </Button>
+                    </div>
+                ) : view === 'cards' ? (
+                    <div className={styles.grid}>
+                        {list.map((ns, i) => (
+                            <article
+                                className={cx(
+                                    styles.ns,
+                                    ns === current && styles.sel,
+                                    dying === ns && styles.dying,
+                                    fresh === ns && styles.fresh
+                                )}
+                                data-ns={ns}
+                                key={ns}
+                                style={{ '--i': Math.min(i, 12) } as CSSProperties}
+                            >
+                                <div className={styles.top}>
+                                    <div className={styles.topText}>
+                                        <div className={styles.path}>
+                                            <NsName name={ns} />
+                                        </div>
+                                        <div className={styles.meta}>X-Tuck-Namespace: {ns}</div>
+                                    </div>
+                                    <div className={styles.acts}>{actions(ns)}</div>
+                                </div>
+                                {ns === current && (
+                                    <div>
+                                        <Pill dot tone="ok">
+                                            {t('card.current')}
+                                        </Pill>
+                                    </div>
+                                )}
+                                <div className={styles.iso}>
+                                    <MiniIso />
+                                    <p>
+                                        <Trans components={rich} i18nKey="card.isolated" ns="namespaces" />
+                                    </p>
+                                </div>
+                            </article>
+                        ))}
+                    </div>
+                ) : (
+                    <div className={styles.list}>
+                        <div className={cx(styles.row, styles.head)}>
+                            <span>{t('list.name')}</span>
+                            <span />
+                            <span />
+                        </div>
+                        {list.map((ns) => (
+                            <div
+                                className={cx(
+                                    styles.row,
+                                    ns === current && styles.sel,
+                                    dying === ns && styles.dying,
+                                    fresh === ns && styles.fresh
+                                )}
+                                data-ns={ns}
+                                key={ns}
+                            >
+                                <span className={styles.nm}>
+                                    <i className={styles.dot} />
+                                    <span className={styles.path}>
+                                        <NsName name={ns} />
+                                    </span>
+                                </span>
+                                <span>
+                                    {ns === current && (
+                                        <Pill dot tone="ok">
+                                            {t('card.current')}
+                                        </Pill>
+                                    )}
+                                </span>
+                                <span className={styles.rowActs}>{actions(ns)}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </>
+        )
+    }
 
-                <SimpleGrid cols={{ base: 1, sm: 2 }}>
-                    <MetricCard
-                        IconComponent={TbBoxMultiple}
-                        iconColor="grape"
-                        isLoading={isLoading}
-                        title={t('common.total')}
-                        value={namespaces?.length ?? 0}
-                    />
-                </SimpleGrid>
+    return (
+        <Page title={t('title')}>
+            <div className={styles.phead}>
+                <div>
+                    <Eyebrow className={styles.rv}>{t('eyebrow')}</Eyebrow>
+                    <h1 className={cx(styles.h1, styles.rv)} style={{ '--d': 1 } as CSSProperties}>
+                        {t('h1a')}
+                        <br />
+                        <span className={styles.gold}>{t('h1b')}</span>
+                    </h1>
+                    <p className={cx(styles.lead, styles.rv)} style={{ '--d': 2 } as CSSProperties}>
+                        <Trans components={rich} i18nKey="lead" ns="namespaces" />
+                    </p>
+                </div>
+                {!forbidden && (
+                    <div className={styles.rv} style={{ '--d': 3 } as CSSProperties}>
+                        <Button leftSection={<Icon name="plus" size={14} />} onClick={openCreate}>
+                            {t('create')}
+                        </Button>
+                    </div>
+                )}
+            </div>
 
-                <EntityModal color="grape" icon={TbBoxMultiple} onClose={closeCreating} opened={creating} title={t('common.new')}>
-                    <Stack gap="sm">
-                        <Text c="dimmed" size="xs">
-                            {t('namespaces.createHint')}
-                        </Text>
-                        <TextInput
+            <div className={cx(styles.ctx, styles.rv)} style={{ '--d': 4 } as CSSProperties}>
+                <span className={styles.ctxLabel}>{t('ctx.label')}</span>
+                <span className={styles.ctxVal}>
+                    <i />
+                    {current || t('ctx.root')}
+                </span>
+                {current && (
+                    <span className={styles.ctxAct}>
+                        <Button onClick={() => switchTo('')} size="xs" variant="default">
+                            {t('ctx.toRoot')}
+                        </Button>
+                    </span>
+                )}
+            </div>
+
+            {showData && (
+                <div className={cx(styles.metrics, styles.rv)} style={{ '--d': 5 } as CSSProperties}>
+                    <div className={styles.metric}>
+                        <small>{t('metrics.total')}</small>
+                        <strong>
+                            <CountUp value={all.length} />
+                        </strong>
+                        <em>{t('metrics.totalHint')}</em>
+                    </div>
+                    <div className={styles.metric}>
+                        <small>{t('metrics.shown')}</small>
+                        <strong>
+                            <CountUp value={list.length} />
+                        </strong>
+                        <em>{t('metrics.shownHint')}</em>
+                    </div>
+                    <div className={styles.metric}>
+                        <small>{t('metrics.current')}</small>
+                        <strong className={styles.mono} title={current || t('ctx.root')}>
+                            {current || t('ctx.root')}
+                        </strong>
+                        <em>{t('metrics.currentHint')}</em>
+                    </div>
+                </div>
+            )}
+
+            {showData && !isEmpty && (
+                <div className={cx(styles.toolbar, styles.rv)} style={{ '--d': 6 } as CSSProperties}>
+                    <label className={styles.search}>
+                        <Icon name="search" size={15} />
+                        <input
+                            aria-label={t('search.label')}
+                            autoComplete="off"
+                            onChange={(e) => setQ(e.currentTarget.value)}
+                            placeholder={t('search.placeholder')}
+                            type="search"
+                            value={q}
+                        />
+                    </label>
+                    <div className={styles.seg}>
+                        <button
+                            className={view === 'cards' ? styles.on : undefined}
+                            onClick={() => changeView('cards')}
+                            type="button"
+                        >
+                            {t('view.cards')}
+                        </button>
+                        <button
+                            className={view === 'list' ? styles.on : undefined}
+                            onClick={() => changeView('list')}
+                            type="button"
+                        >
+                            {t('view.list')}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            <div className={styles.rv} style={{ '--d': 7 } as CSSProperties}>
+                {body}
+            </div>
+
+            <Modal
+                busy={createMutation.isPending}
+                footer={
+                    <>
+                        <Button
+                            disabled={createMutation.isPending}
+                            onClick={() => setCreating(false)}
+                            variant="default"
+                        >
+                            {t('createModal.cancel')}
+                        </Button>
+                        <Button
+                            disabled={!trimmed || !!nameErr}
+                            loading={createMutation.isPending}
+                            onClick={() => submitCreate()}
+                        >
+                            {t('createModal.submit')}
+                        </Button>
+                    </>
+                }
+                icon="ns"
+                onClose={() => setCreating(false)}
+                opened={creating}
+                title={t('createModal.title')}
+            >
+                <form className={styles.form} noValidate onSubmit={submitCreate}>
+                    <p className={styles.hint}>{t('createModal.hint')}</p>
+                    <div className={styles.fld}>
+                        <label htmlFor="ns-name">{t('createModal.name')}</label>
+                        <input
+                            autoComplete="off"
                             autoFocus
-                            label={t('common.name')}
-                            onChange={(e) => setName(e.currentTarget.value)}
-                            placeholder={t('namespaces.namePlaceholder')}
+                            className={cx(styles.inp, !!shownErr && styles.bad)}
+                            data-autofocus
+                            id="ns-name"
+                            onChange={(e) => {
+                                setName(e.currentTarget.value)
+                                setServerErr('')
+                            }}
+                            placeholder={t('createModal.placeholder')}
+                            spellCheck={false}
                             value={name}
                         />
-                        <Button
-                            disabled={!name}
-                            fullWidth
-                            leftSection={<TbPlus size={16} />}
-                            loading={createMutation.isPending}
-                            onClick={() => createMutation.mutate()}
-                        >
-                            {t('common.create')}
-                        </Button>
-                    </Stack>
-                </EntityModal>
+                        {shownErr && <p className={styles.err}>{shownErr}</p>}
+                    </div>
+                    <div className={styles.prev}>
+                        {t('createModal.preview')} <b>{trimmed || t('createModal.placeholder')}</b>
+                    </div>
+                </form>
+            </Modal>
 
-                <TableCard>
-                    <Table.Thead>
-                        <Table.Tr>
-                            <Table.Th>{t('common.name')}</Table.Th>
-                            <Table.Th w={60} />
-                        </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                        {!isLoading && (namespaces?.length ?? 0) === 0 && (
-                            <Table.Tr>
-                                <Table.Td colSpan={2}>
-                                    <EmptyState icon={TbBoxMultiple} label={t('namespaces.noNamespaces')} />
-                                </Table.Td>
-                            </Table.Tr>
-                        )}
-                        {namespaces?.map((ns) => (
-                            <Table.Tr key={ns}>
-                                <Table.Td>{ns}</Table.Td>
-                                <Table.Td>
-                                    <ActionIcon
-                                        color="red"
-                                        onClick={() =>
-                                            modals.openConfirmModal({
-                                                title: t('namespaces.deleteTitle'),
-                                                children: t('namespaces.deleteConfirm', { name: ns }),
-                                                labels: { confirm: t('common.delete'), cancel: t('common.cancel') },
-                                                confirmProps: { color: 'red' },
-                                                onConfirm: () => deleteMutation.mutate(ns)
-                                            })
-                                        }
-                                        variant="subtle"
-                                    >
-                                        <TbTrash size={16} />
-                                    </ActionIcon>
-                                </Table.Td>
-                            </Table.Tr>
-                        ))}
-                    </Table.Tbody>
-                </TableCard>
-            </Stack>
+            <ConfirmModal
+                confirmText={toDelete ?? undefined}
+                message={
+                    toDelete && (
+                        <>
+                            {t('deleteModal.message', { name: toDelete })}
+                            <div className={styles.warn}>
+                                <b>{t('deleteModal.warnTitle')}</b> {t('deleteModal.warn')}
+                                {toDelete === current && (
+                                    <>
+                                        <br />
+                                        {t('deleteModal.current')}
+                                    </>
+                                )}
+                            </div>
+                        </>
+                    )
+                }
+                onClose={() => setToDelete(null)}
+                onConfirm={() => confirmDelete(toDelete as string)}
+                opened={toDelete !== null}
+                title={t('deleteModal.title')}
+            />
         </Page>
     )
 }

@@ -1,1 +1,100 @@
-{}
+{
+  "title": "Namespaces",
+  "eyebrow": "Access · Multi-tenancy",
+  "h1a": "Name",
+  "h1b": "spaces",
+  "lead": "One Tuck per bank segment, <b>one namespace per team</b>. Each team's secrets, policies and auth methods live in their own enclosure and never see their neighbours.",
+  "create": "Create",
+  "ctx": {
+    "label": "Current context",
+    "root": "root",
+    "toRoot": "Go to root",
+    "header": "X-Tuck-Namespace"
+  },
+  "metrics": {
+    "total": "Namespaces",
+    "totalHint": "excluding root",
+    "shown": "Shown",
+    "shownHint": "after the current filter",
+    "current": "Context",
+    "currentHint": "where UI requests go"
+  },
+  "search": {
+    "placeholder": "Filter by name, e.g. team-",
+    "label": "Filter namespaces"
+  },
+  "view": {
+    "cards": "Cards",
+    "list": "List"
+  },
+  "section": {
+    "all": "All enclosures",
+    "found": "Found: {{count}}"
+  },
+  "list": {
+    "name": "Name"
+  },
+  "card": {
+    "current": "current",
+    "use": "Make current",
+    "remove": "Delete {{name}}",
+    "copy": "Copy name",
+    "isolated": "own enclosure: <b>secrets, policies and auth methods</b> are hidden from neighbours"
+  },
+  "noMatch": {
+    "title": "Nothing <em>found</em>",
+    "text": "No namespaces match \"{{q}}\". Check the name or reset the filter.",
+    "reset": "Reset filter"
+  },
+  "empty": {
+    "eyebrow": "First run",
+    "title": "Create your <em>first</em> namespace",
+    "text": "Everything lives in the root for now. Set up an enclosure for the first team: it gets its own secrets, policies and auth methods, and other data stays out of reach.",
+    "s1t": "Create an enclosure",
+    "s1d": "A name like <code>team-a</code>: lowercase latin letters, digits and hyphens.",
+    "s2t": "Switch context",
+    "s2d": "Make it current: requests will carry the <code>X-Tuck-Namespace</code> header.",
+    "s3t": "Fill it",
+    "s3d": "Inside, the enclosure has its own secrets, policies and auth methods.",
+    "cta": "Create the first one"
+  },
+  "forbidden": {
+    "eyebrow": "Access denied",
+    "title": "The enclosure list is <em>not for you</em>",
+    "text": "Only a token with rights on sys/namespaces can list and create namespaces.",
+    "bound": "Your token is bound to namespace <code>{{ns}}</code>.",
+    "callout": "→ 403 permission denied<br/>capability <b>list</b> on <b>sys/namespaces/</b> is missing",
+    "retry": "Check again"
+  },
+  "error": {
+    "title": "Could not load the list",
+    "message": "The server did not respond or returned an error. Check the connection and retry."
+  },
+  "createModal": {
+    "title": "New namespace",
+    "hint": "Namespaces isolate secrets, policies and auth methods per tenant.",
+    "name": "Name",
+    "placeholder": "team-a",
+    "preview": "Will create:",
+    "submit": "Create",
+    "cancel": "Cancel",
+    "errChars": "Lowercase latin letters, digits and hyphens only; the name must not start with a hyphen.",
+    "errRoot": "The name \"root\" is reserved.",
+    "errExists": "Namespace \"{{name}}\" already exists."
+  },
+  "deleteModal": {
+    "title": "Delete namespace?",
+    "message": "Namespace \"{{name}}\" will be deleted.",
+    "warnTitle": "Irreversible.",
+    "warn": "Secrets and policies stay in storage but become inaccessible until the namespace is recreated.",
+    "current": "This is your current context: after deletion the page returns to root."
+  },
+  "toast": {
+    "created": "Created",
+    "createdMsg": "Namespace \"{{name}}\" created",
+    "createFailed": "Could not create",
+    "deleted": "Deleted",
+    "deletedMsg": "Namespace \"{{name}}\" deleted",
+    "deleteFailed": "Could not delete"
+  }
+}

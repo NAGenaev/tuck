@@ -1,1 +1,186 @@
-{}
+{
+  "eyebrow": "Access · Policies",
+  "headA": "Who can do",
+  "headB": "what",
+  "lead": "A policy is a list of <b>path rules</b> with capabilities. Tokens get policies; the server checks every request against them.",
+  "meter": {
+    "policies": "Policies",
+    "rules": "Rules",
+    "deny": "Deny rules"
+  },
+  "new": "New policy",
+  "loading": "Loading policy…",
+  "quickFill": "Quick fill",
+  "rules_one": "{{count}} rule",
+  "rules_other": "{{count}} rules",
+  "policiesCount_one": "{{count}} policy",
+  "policiesCount_other": "{{count}} policies",
+  "unsaved": "Unsaved changes",
+  "discard": "Discard",
+  "reset": "Reset",
+  "delete": "Delete",
+  "save": "Save",
+  "fixToSave": "Fix the errors to save",
+  "cancel": "Cancel",
+  "addRule": "Add rule",
+  "inheritable": "Inheritable by child tokens",
+  "globHint": "<code>*</code> matches one path segment, <code>**</code> matches everything below.",
+  "pill": {
+    "new": "new",
+    "inheritable": "inheritable",
+    "error": "error",
+    "changed": "changed"
+  },
+  "code": {
+    "title": "Rules",
+    "aria": "Policy rules editor",
+    "errors_one": "{{count}} error",
+    "errors_other": "{{count}} errors",
+    "warnings_one": "{{count}} warning",
+    "warnings_other": "{{count}} warnings",
+    "ok": "Valid",
+    "pos": "Ln {{line}}, Col {{col}}",
+    "lines_one": "{{count}} line",
+    "lines_other": "{{count}} lines",
+    "lineShort": "line {{n}}"
+  },
+  "sev": {
+    "error": "error",
+    "warn": "warning"
+  },
+  "tpl": {
+    "ro": "+ read-only",
+    "rw": "+ read/write",
+    "admin": "+ admin"
+  },
+  "matrix": {
+    "title": "Capabilities",
+    "path": "Path",
+    "empty": "No rules yet. Add one, or pick a template.",
+    "pathAria": "Path of rule {{n}}",
+    "capAria": "{{cap}} on {{path}}",
+    "removeAria": "Remove rule",
+    "hidden_one": "{{count}} line with an error is not shown here, fix it in the code view.",
+    "hidden_other": "{{count}} lines with errors are not shown here, fix them in the code view."
+  },
+  "scope": {
+    "exact": "exact",
+    "recursive": "recursive",
+    "segment": "one level"
+  },
+  "tester": {
+    "title": "Access tester",
+    "sub": "checks only this policy, in the browser",
+    "path": "Path",
+    "op": "Operation",
+    "samples": "From this policy",
+    "segments": "Segments",
+    "noPath": "Enter a path.",
+    "noPathHint": " Pick an operation to see which rule decides.",
+    "noRules": " This policy has no valid rules, so nothing is allowed.",
+    "explicitDeny": "Explicit deny.",
+    "explicitDenyText": " Rule <em>#{{n}}</em> denies the path, and deny overrides everything.",
+    "allowedBy": "Allowed.",
+    "allowedByText": " Rule <em>#{{n}}</em> grants <em>{{cap}}</em> on this path.",
+    "noCap": "Capability missing.",
+    "noCapText_one": " {{count}} rule matches the path, but none grants <em>{{cap}}</em>.",
+    "noCapText_other": " {{count}} rules match the path, but none grants <em>{{cap}}</em>.",
+    "noMatch": "No matching rule.",
+    "noMatchText": " Anything not granted is denied.",
+    "resultHere": "The matching rules will appear here.",
+    "zeroMatches": "No rule matches this path.",
+    "decides": "decides",
+    "matched": "match",
+    "jump": "go to line"
+  },
+  "list": {
+    "title": "Policies",
+    "searchAria": "Search policies",
+    "search": "Search by name…",
+    "none": "No policies yet.",
+    "noMatch": "Nothing matches.",
+    "shown": "Showing {{shown}} of {{total}}",
+    "rootNote": "The root policy is built in and cannot be edited here."
+  },
+  "filter": {
+    "all": "All",
+    "deny": "With deny",
+    "changed": "Changed",
+    "errors": "Errors"
+  },
+  "create": {
+    "title": "New policy",
+    "hint": "The policy stays a draft until you save it.",
+    "name": "Name",
+    "submit": "Create draft",
+    "tplNone": "Empty",
+    "previewNone": "# no rules, add them in the editor",
+    "errEmpty": "Enter a name.",
+    "errReserved": "“{{name}}” is reserved.",
+    "errFormat": "Lowercase letters, digits, - and _; up to 63 characters; start with a letter or digit.",
+    "errExists": "A policy named “{{name}}” already exists."
+  },
+  "diag": {
+    "unclosedQuote": "Unclosed quote.",
+    "expectRule": "A rule must start with <b>path</b>.",
+    "noBrace": "The rule needs braces <b>{ … }</b>.",
+    "noCaps": "The rule has no <b>capabilities</b>.",
+    "capsArray": "Capabilities must be an array in brackets.",
+    "syntax": "Cannot parse this line.",
+    "capQuoted": "Capability <b>{{cap}}</b> must be in quotes.",
+    "unknownCapWrite": "Unknown capability <b>{{cap}}</b>. Use <b>write</b>.",
+    "unknownCapSudo": "Unknown capability <b>{{cap}}</b>. There is no sudo; use <b>deny</b> or <b>write</b>.",
+    "unknownCap": "Unknown capability <b>{{cap}}</b>. Allowed: read, write, delete, list, deny.",
+    "emptyPath": "The path is empty.",
+    "leadingSlash": "The path must not start with a slash.",
+    "tripleStar": "<b>***</b> is not a valid glob.",
+    "plusLiteral": "<b>+</b> is a literal character here, not a wildcard.",
+    "emptyCaps": "The capability list is empty, so this rule grants nothing.",
+    "denyOverrides": "<b>deny</b> overrides the other capabilities in this rule.",
+    "dupPath": "The same path is already used on line {{line}}.",
+    "singleStar": "A trailing <b>*</b> covers one level only."
+  },
+  "fix": {
+    "closeQuote": "close the quote",
+    "startPath": "start with path",
+    "wrapBraces": "wrap in braces",
+    "dropSlash": "drop the leading slash",
+    "useStars": "use * or **",
+    "onlyDeny": "keep only deny",
+    "merge": "merge the rules",
+    "useDoubleStar": "use ** for everything below"
+  },
+  "empty": {
+    "title": "No policies yet",
+    "text": "Without a policy a token can do nothing. Start from a template or create an empty one.",
+    "cta": "Create a policy"
+  },
+  "del": {
+    "title": "Delete policy",
+    "text": "Delete the policy <b>{{name}}</b>? This cannot be undone.",
+    "checking": "Checking which tokens use it…",
+    "checkFailed": "Could not check which tokens use this policy.",
+    "bound_one": "{{count}} token uses this policy",
+    "bound_other": "{{count}} tokens use this policy",
+    "more_one": "and {{count}} more",
+    "more_other": "and {{count}} more",
+    "warn403": "They will lose the access this policy grants.",
+    "safe": "No token uses this policy.",
+    "partial": "(checked {{scanned}} of {{total}} tokens)"
+  },
+  "toast": {
+    "saved": "Policy saved",
+    "savedText_one": "{{name}}: {{count}} rule",
+    "savedText_other": "{{name}}: {{count}} rules",
+    "saveFailed": "Could not save the policy",
+    "notSaved": "Not saved",
+    "fixErrors_one": "Fix {{count}} error first",
+    "fixErrors_other": "Fix {{count}} errors first",
+    "discarded": "Draft discarded",
+    "reverted": "Changes reverted",
+    "created": "Draft created",
+    "createdText": "{{name}} is not saved yet",
+    "deleted": "Policy deleted",
+    "deleteFailed": "Could not delete the policy"
+  }
+}

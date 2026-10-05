@@ -12,7 +12,7 @@ void i18n
     .init({
         fallbackLng: 'en',
         supportedLngs: ['en', 'ru'],
-        ns: ['translation', 'shell', 'login', 'status', 'kv', 'tokens', 'policies', 'namespaces', 'mounts', 'audit', 'cluster', 'wrapping', 'auth', 'forms'],
+        ns: ['translation', 'shell', 'login', 'status', 'kv', 'tokens', 'policies', 'namespaces', 'mounts', 'audit', 'cluster', 'wrapping', 'auth', 'forms', 'kv1'],
         defaultNS: 'translation',
         backend: {
             // NOTE: must be base-path aware — the app is served under /ui/, and a

@@ -51,17 +51,31 @@ func SelfSigned() (tls.Certificate, error) {
 
 // Config returns a *tls.Config hardened for TLS 1.2+ with the given certificate.
 func Config(cert tls.Certificate) *tls.Config {
+	c := baseConfig()
+	c.Certificates = []tls.Certificate{cert}
+	return c
+}
+
+// ReloadingConfig returns a *tls.Config that serves whatever certificate the
+// reloader currently holds, so a renewed certificate is picked up without a
+// restart.
+func ReloadingConfig(r *Reloader) *tls.Config {
+	c := baseConfig()
+	c.GetCertificate = r.GetCertificate
+	return c
+}
+
+func baseConfig() *tls.Config {
 	return &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		MinVersion:   tls.VersionTLS12,
-		CurvePreferences: []tls.CurveID{
-			tls.X25519,
-			tls.CurveP256,
-		},
+		MinVersion:       tls.VersionTLS12,
+		CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
 		CipherSuites: []uint16{
 			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
 		},
 	}
 }

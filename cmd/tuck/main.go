@@ -368,12 +368,13 @@ func main() {
 		tlsCfg = tlsutil.Config(cert)
 		log.Printf("tuck: TLS enabled (auto-generated self-signed — dev only)")
 	case *tlsCert != "" && *tlsKey != "":
-		cert, certErr := tls.LoadX509KeyPair(*tlsCert, *tlsKey)
+		reloader, certErr := tlsutil.NewReloader(*tlsCert, *tlsKey)
 		if certErr != nil {
 			log.Fatalf("load TLS cert/key: %v", certErr)
 		}
-		tlsCfg = tlsutil.Config(cert)
-		log.Printf("tuck: TLS enabled (cert=%s)", *tlsCert)
+		tlsCfg = tlsutil.ReloadingConfig(reloader)
+		go reloader.Watch(ctx, 15*time.Second, log.Printf)
+		log.Printf("tuck: TLS enabled (cert=%s, hot-reload every 15s)", *tlsCert)
 	case *tlsCert != "" || *tlsKey != "":
 		log.Fatalf("--tls-cert and --tls-key must be provided together")
 	}

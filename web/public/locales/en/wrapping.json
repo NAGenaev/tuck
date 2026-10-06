@@ -1,1 +1,186 @@
-{}
+{
+    "title": "Response wrapping",
+    "eyebrow": "Access · Response wrapping",
+    "h1a": "Wrapping",
+    "h1b": "for one use",
+    "lead": "Seal data in a capsule and hand the recipient <b>only the token</b>. It can be unwrapped once, before the TTL runs out. There is no second attempt.",
+    "facts": {
+        "wrapped": "wrapped this session",
+        "unwrapped": "unwrapped",
+        "active": "active capsules"
+    },
+    "tabsLabel": "Wrapping tools",
+    "tabs": {
+        "wrap": "Wrap",
+        "look": "Look up",
+        "unwrap": "Unwrap"
+    },
+    "bytes": "B",
+    "copy": "Copy",
+    "copied": "Copied",
+    "sessionTokens": "This session",
+    "left": {
+        "h": "{{h}} h {{m}} min",
+        "m": "{{m}} min {{s}} s",
+        "s": "{{s}} s"
+    },
+    "wrap": {
+        "payload": "Payload (JSON)",
+        "payloadPlaceholder": "{\"secret\":\"value\"}",
+        "templates": "Templates",
+        "ex": {
+            "db": "db-credentials",
+            "api": "api-key",
+            "otp": "one-time password"
+        },
+        "ttlHint": "format: 30s · 5m · 1h",
+        "submit": "Wrap and seal",
+        "resultTitle": "Wrapping token",
+        "expires": "Expires {{date}}",
+        "warn": "The token is shown once. Hand it to the recipient over a secure channel: the data is gone after the first unwrap.",
+        "errJson": "Invalid JSON: {{message}}",
+        "errTtl": "Invalid TTL. Examples: 30s, 5m, 1h, 1h30m"
+    },
+    "look": {
+        "token": "Wrapping token",
+        "hint": "looking up does not consume the token",
+        "errEmpty": "Enter a wrapping token",
+        "errRevoke": "Enter the token to revoke",
+        "find": "Look up",
+        "revoke": "Revoke",
+        "path": "Path",
+        "expires": "Expires",
+        "ttl": "Creation TTL",
+        "ttlValue": "{{ttl}} s",
+        "revokeTitle": "Revoke this token?",
+        "revokeText": "Token {{token}} will be destroyed together with its data. It cannot be unwrapped afterwards."
+    },
+    "unwrap": {
+        "token": "Wrapping token",
+        "hint": "can be unwrapped once",
+        "errEmpty": "Enter a wrapping token",
+        "submit": "Unwrap",
+        "resultTitle": "Capsule opened",
+        "payload": "Data",
+        "show": "Show",
+        "hide": "Hide",
+        "warn": "The data is shown once: the token is already void. Copy it now, the capsule cannot be unwrapped again.",
+        "again": "Try again",
+        "clear": "Clear",
+        "confirmTitle": "Unwrap the capsule?",
+        "confirmText": "This is a one-time operation: once unwrapped the token stops working and the data is kept nowhere else."
+    },
+    "meta": {
+        "selected": "Selected token",
+        "none": "— none selected —",
+        "status": "Status",
+        "created": "Created",
+        "left": "Remaining"
+    },
+    "status": {
+        "none": "no data",
+        "active": "active",
+        "used": "unwrapped",
+        "expired": "expired",
+        "revoked": "revoked",
+        "missing": "not found"
+    },
+    "stage": {
+        "tag": "Capsule",
+        "until": "until expiry",
+        "idle": "Capsule is empty",
+        "sealing": "Sealing…",
+        "sealed": "Sealed",
+        "low": "Expiring soon",
+        "breaking": "Breaking the seal…",
+        "dissolved": "Data delivered",
+        "forbidden": "No access",
+        "used": "Unwrapped",
+        "expired": "Expired",
+        "revoked": "Revoked",
+        "missing": "Token not found"
+    },
+    "life": {
+        "created": "Created",
+        "delivered": "Delivered",
+        "unwrapped": "Unwrapped",
+        "expired": "Expired",
+        "revoked": "Revoked",
+        "until": "until {{time}}",
+        "note": "Unwrapped and Expired are mutually exclusive endings: the token dies on the first of them. Delivered is marked when you copy the token."
+    },
+    "problem": {
+        "forbidden": {
+            "title": "403 · Access denied",
+            "text": "Your token lacks the <code>{{cap}}</code> capability on <code>{{path}}</code>. Ask a policy administrator."
+        },
+        "expired": {
+            "title": "410 · Lifetime expired",
+            "text": "The capsule was destroyed: its TTL ran out before it was unwrapped."
+        },
+        "notFound": {
+            "unwrapTitle": "404 · Token not found",
+            "unwrapText": "There is no such token: it was already unwrapped, revoked, or mistyped. <b>A capsule cannot be unwrapped twice.</b>",
+            "otherTitle": "404 · Token not found",
+            "otherText": "There is no such token: it was already unwrapped, revoked, or mistyped."
+        },
+        "server": {
+            "title": "Error {{status}}",
+            "text": "The server could not complete the operation."
+        },
+        "network": {
+            "title": "Server unreachable",
+            "text": "Check your connection and try again."
+        }
+    },
+    "toast": {
+        "error": "Error",
+        "wrapped": "Capsule sealed",
+        "wrappedMsg": "The token is valid for {{ttl}}",
+        "wrapFailed": "Could not wrap the data",
+        "delivered": "Token copied",
+        "deliveredMsg": "{{token}} marked as delivered",
+        "lookupFailed": "Could not look up the token",
+        "unwrapped": "Capsule opened",
+        "unwrappedMsg": "The token is destroyed and cannot be unwrapped again",
+        "unwrapFailed": "Could not unwrap the token",
+        "revoked": "Token revoked",
+        "revokedMsg": "The capsule was destroyed",
+        "revokedCount": "Tokens revoked: {{count}}",
+        "revokeFailed": "Could not revoke the token",
+        "expired": "Capsule expired",
+        "expiredMsg": "{{token}}: TTL ran out"
+    },
+    "log": {
+        "title": "Session log",
+        "filter": "Filter",
+        "f": {
+            "all": "All",
+            "wrap": "Wrap",
+            "lookup": "Lookup",
+            "unwrap": "Unwrap",
+            "err": "Errors"
+        },
+        "bulk": "Revoke selected",
+        "bulkTitle": "Revoke the selected tokens?",
+        "bulkText": "Active tokens to revoke: {{count}}. Their data will be destroyed.",
+        "bulkNone": "None of the selected tokens are active, nothing to revoke.",
+        "selectAll": "Select all",
+        "select": "Select",
+        "time": "Time",
+        "op": "Operation",
+        "token": "Token",
+        "path": "Path",
+        "result": "Result",
+        "empty": "Nothing has happened yet. Wrap a secret and the operation shows up here.",
+        "emptyFilter": "No entries match this filter.",
+        "note": "The log lives in this tab only: Tuck keeps no list of wrapping tokens, and the tokens themselves are never stored.",
+        "created": "created",
+        "found": "found",
+        "revoked": "revoked",
+        "expired": "expired",
+        "unwrapped": "unwrapped",
+        "gone": "not found",
+        "failed": "failed"
+    }
+}

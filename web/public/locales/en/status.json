@@ -1,1 +1,139 @@
-{}
+{
+  "title": "Status",
+  "eyebrow": "Seal",
+  "state": {
+    "ok": "Unsealed",
+    "sealed": "Sealed",
+    "loading": "Loading…",
+    "error": "No link"
+  },
+  "hero": {
+    "eyebrow": "Seal state"
+  },
+  "facts": {
+    "type": "Seal type",
+    "mode": "Mode",
+    "threshold": "Share threshold",
+    "modeManual": "manual · shares",
+    "modeAuto": "auto · KMS",
+    "modeDev": "dev · unprotected"
+  },
+  "shards": {
+    "title": "Shards",
+    "threshold": "threshold: {{n}}",
+    "left": "remaining: {{n}}",
+    "ready": "root key assembled"
+  },
+  "ok": {
+    "text": "The vault is running. The root key was assembled from shares and <b>exists only in memory</b> — a pod restart will require unsealing."
+  },
+  "okAuto": {
+    "text": "The vault is running. The root key was obtained automatically and <b>exists only in memory</b>."
+  },
+  "shamir": {
+    "text": "<b>The server is sealed.</b> Each holder enters their key share. Once the threshold is reached, the barrier opens automatically.",
+    "placeholder": "Unseal key shard",
+    "show": "show",
+    "hide": "hide",
+    "submit": "Submit share",
+    "empty": "Enter an unseal key share",
+    "checking": "Checking the share…",
+    "accepted": "Share accepted · {{got}} / {{need}}. Remaining: {{left}}",
+    "assembling": "Threshold reached · assembling the root key…",
+    "failed": "Failed to unseal",
+    "toastAccepted": "Share accepted",
+    "toastAcceptedMsg": "{{got}} of {{need}} — hand over to the next holder"
+  },
+  "auto": {
+    "text": "This seal type unseals automatically — no key share is needed. Tuck requests the root key from an external KMS.",
+    "provider": "Provider",
+    "button": "Unseal",
+    "requesting": "Requesting {{type}}…",
+    "failed": "{{type}}: unseal failed",
+    "idle": "Waiting to be unsealed"
+  },
+  "actions": {
+    "snapshot": "Download snapshot",
+    "snapshotBusy": "Building snapshot…",
+    "rotate": "Rotate key",
+    "seal": "Seal"
+  },
+  "toast": {
+    "unsealed": "Vault unsealed",
+    "unsealedMsg": "Root key assembled, barrier open",
+    "sealed": "Vault sealed",
+    "sealedMsg": "Secret access is stopped until unsealing",
+    "sealFailed": "Failed to seal",
+    "rotated": "Encryption key rotated",
+    "rotatedMsg": "The active data key was replaced",
+    "rotateFailed": "Failed to rotate the key",
+    "snapshotReady": "Snapshot downloaded",
+    "snapshotFailed": "Failed to fetch the snapshot",
+    "reconnected": "Connection restored",
+    "reconnectedMsg": "The Tuck API responds, state refreshed",
+    "stillDown": "No connection",
+    "stillDownMsg": "The Tuck API is still not responding"
+  },
+  "banner": {
+    "title": "Tuck API unreachable",
+    "text": "GET /v1/sys/seal-status did not respond. Check the network, the certificate and the pods.",
+    "last": "Last response: {{time}}",
+    "never": "No responses in this session",
+    "retry": "Retry request"
+  },
+  "server": {
+    "eyebrow": "Server",
+    "version": "Version",
+    "build": "built {{date}}",
+    "commit": "Commit",
+    "commitMeta": "build hash",
+    "uptime": "Uptime",
+    "uptimeMeta": "since the last server start",
+    "uptimeFmt": "{{d}}d {{hms}}"
+  },
+  "activity": {
+    "eyebrow": "Activity",
+    "live": "refresh {{s}}s",
+    "leases": "Active leases",
+    "tokens": "Active tokens",
+    "sinceOpen": "since opening: {{delta}}",
+    "stable": "unchanged since the page was opened",
+    "noSealed": "no data: the vault is sealed",
+    "noError": "no data: request failed",
+    "total": "total entries: {{n}}"
+  },
+  "ha": {
+    "eyebrow": "High availability",
+    "tag": "Raft",
+    "label": "HA",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "quorum": "nodes in cluster: {{n}}",
+    "state": "node state: {{state}}",
+    "single": "Single node: the Raft cluster is not used.",
+    "sealedNote": "node sealed · cluster membership unavailable",
+    "unknown": "no data",
+    "leader": "leader",
+    "follower": "follower",
+    "nonvoter": "non-voter",
+    "peerFailed": "Failed to fetch cluster membership",
+    "peerForbidden": "No permission to read sys/cluster"
+  },
+  "rotate": {
+    "title": "Rotate the encryption key?",
+    "message": "A new data key will be created and all entries re-encrypted with it. The root key stays the same.",
+    "warn1": "! While re-encryption runs, the barrier may be unavailable.",
+    "warn2": "Secret reads and writes may return 503; clients retry on their own.",
+    "confirm": "Confirm"
+  },
+  "sealModal": {
+    "title": "Seal the server?",
+    "message": "Secret access will stop until the vault is unsealed.",
+    "warn1": "! Applications will lose access to secrets, ServiceAccount logins will return 503.",
+    "warn2": "Unsealing will need the key share holders.",
+    "check": "I understand the consequences and agreed the outage with the security on-call",
+    "needCheck": "Confirm that you understand the consequences",
+    "confirm": "Seal",
+    "cancel": "Cancel"
+  }
+}

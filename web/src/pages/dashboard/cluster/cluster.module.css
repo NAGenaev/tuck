@@ -1164,6 +1164,367 @@
     font-size: 13.5px;
 }
 
+.dSub {
+    margin: 0;
+    font: 600 10.5px var(--label);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--dim);
+}
+
+.dSpark {
+    display: grid;
+    gap: 14px;
+}
+
+.dSpark small,
+.rtiles small,
+.sparkL small {
+    display: block;
+    font: 600 10px var(--label);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-bottom: 4px;
+}
+
+/* ---------- table: replication columns ---------- */
+.lagCell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 120px;
+}
+
+.lagbar {
+    flex: 1;
+    min-width: 48px;
+    height: 4px;
+    background: var(--line);
+    position: relative;
+    overflow: hidden;
+}
+
+.lagbar i {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: var(--mint);
+    box-shadow: 0 0 8px rgba(73, 224, 164, 0.5);
+    transition:
+        width 0.5s,
+        background 0.4s;
+}
+
+.lagbar i.warn {
+    background: var(--brass);
+    box-shadow: 0 0 8px rgba(215, 169, 75, 0.5);
+}
+
+.lagbar i.bad {
+    background: var(--alarm);
+    box-shadow: 0 0 8px rgba(255, 90, 77, 0.5);
+}
+
+.dim {
+    color: var(--dim);
+}
+
+.badTxt {
+    color: var(--alarm);
+}
+
+/* ---------- replication panel ---------- */
+.rtiles {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    margin: 14px 0;
+}
+
+.rtiles div {
+    background: var(--vault);
+    padding: 12px 14px;
+    min-width: 0;
+}
+
+.rtiles strong {
+    font: 600 15px var(--mono);
+    color: var(--bone);
+}
+
+.sparkRow {
+    display: grid;
+    grid-template-columns: 150px minmax(0, 1fr);
+    gap: 16px;
+    align-items: center;
+    padding: 10px 0;
+    border-top: 1px solid var(--line);
+}
+
+.sparkL strong {
+    font: 600 17px var(--mono);
+    color: var(--bone);
+}
+
+.sparkL em {
+    font: 400 11px var(--mono);
+    color: var(--dim);
+    font-style: normal;
+}
+
+.sparkR {
+    min-width: 0;
+}
+
+.sparkWait {
+    font: 400 12px var(--mono);
+    color: var(--dim);
+}
+
+/* ---------- transport certificate ---------- */
+.certList {
+    margin: 14px 0 0;
+    display: grid;
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+}
+
+.certList div {
+    display: grid;
+    grid-template-columns: 110px minmax(0, 1fr);
+    gap: 12px;
+    background: var(--vault);
+    padding: 10px 14px;
+    align-items: center;
+}
+
+.certList dt {
+    font: 600 10px var(--label);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--dim);
+}
+
+.certList dd {
+    margin: 0;
+    font: 400 12.5px var(--mono);
+    color: var(--bone);
+    overflow-wrap: anywhere;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+/* ---------- quorum what-if calculator ---------- */
+.calc {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--line2);
+}
+
+.calcHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    color: var(--bone);
+    font: 600 13px var(--body);
+}
+
+.calcSub {
+    margin: 6px 0 12px;
+    color: var(--mute);
+    font-size: 12.5px;
+}
+
+.calcChips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.calcChip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    background: var(--vault2);
+    border: 1px solid var(--line2);
+    color: var(--bone);
+    font: 500 12px var(--mono);
+    cursor: pointer;
+    transition:
+        border-color 0.2s,
+        color 0.2s,
+        background 0.2s;
+}
+
+.calcChip i {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--mint);
+    box-shadow: 0 0 8px rgba(73, 224, 164, 0.6);
+    transition: background 0.2s;
+}
+
+.calcChip:hover {
+    border-color: var(--brass);
+}
+
+.calcChip.off {
+    color: var(--dim);
+    text-decoration: line-through;
+    border-color: var(--alarm);
+}
+
+.calcChip.off i {
+    background: var(--alarm);
+    box-shadow: none;
+}
+
+.calcRes {
+    margin-top: 12px;
+    padding: 10px 14px;
+    border: 1px solid var(--line2);
+    border-left-width: 3px;
+    display: grid;
+    gap: 2px;
+    font: 400 12.5px var(--mono);
+    color: var(--mute);
+    transition: border-color 0.3s;
+}
+
+.calcRes b {
+    color: var(--bone);
+    font: 600 13px var(--body);
+}
+
+.calcRes.ok {
+    border-left-color: var(--mint);
+}
+
+.calcRes.bad {
+    border-left-color: var(--alarm);
+}
+
+.calcRes.bad b {
+    color: var(--alarm);
+}
+
+.calcReset {
+    margin-top: 8px;
+    background: none;
+    border: 0;
+    padding: 0;
+    color: var(--brassL);
+    font: 500 12px var(--mono);
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+/* ---------- live leadership transfer ---------- */
+.trans {
+    padding: 18px 22px;
+    margin-bottom: 20px;
+    animation: rise 0.5s both;
+}
+
+.transHead {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.transClock {
+    margin-left: auto;
+    font: 600 14px var(--mono);
+    color: var(--bone);
+}
+
+.transSteps {
+    list-style: none;
+    margin: 14px 0 6px;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+}
+
+.transSteps li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--dim);
+    font: 400 13px var(--mono);
+    transition: color 0.3s;
+}
+
+.transSteps li i {
+    width: 22px;
+    height: 22px;
+    display: inline-grid;
+    place-items: center;
+    border: 1px solid var(--line2);
+    font: 600 11px var(--mono);
+    font-style: normal;
+    flex: none;
+}
+
+.transSteps li.cur {
+    color: var(--bone);
+}
+
+.transSteps li.cur i {
+    border-color: var(--brass);
+    color: var(--brassL);
+    animation: pulse 1.2s ease-in-out infinite;
+}
+
+.transSteps li.done {
+    color: var(--mute);
+}
+
+.transSteps li.done i {
+    border-color: var(--mint);
+    color: var(--mint);
+}
+
+.transNote {
+    margin: 8px 0 0;
+    color: var(--dim);
+    font: 400 11.5px var(--mono);
+}
+
+.storedRow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.restoreNote {
+    margin: 14px 0 0;
+    padding: 10px 14px;
+    border: 1px dashed var(--line2);
+    color: var(--mute);
+    font-size: 12.5px;
+}
+
+.restoreNote b {
+    color: var(--bone);
+}
+
+.joinHint {
+    margin: 10px 0 0;
+    color: var(--dim);
+    font: 400 11.5px var(--mono);
+}
+
 /* ---------- responsive ---------- */
 @media (max-width: 1020px) {
     .grid,
@@ -1208,8 +1569,15 @@
 }
 
 @media (max-width: 520px) {
-    .snapNow {
+    .snapNow,
+    .rtiles {
         grid-template-columns: 1fr 1fr;
+    }
+
+    .sparkRow,
+    .certList div {
+        grid-template-columns: 1fr;
+        gap: 6px;
     }
 
     .panel {
@@ -1225,12 +1593,15 @@
     .banner.bad,
     .prog i.indet,
     .log > div,
+    .trans,
+    .transSteps li.cur i,
     .snaplist li {
         animation: none;
     }
 
     .m::after,
     .nd .box,
+    .lagbar i,
     .quorum i {
         transition: none;
     }

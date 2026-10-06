@@ -4,7 +4,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CSSProperties, ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 
-import { ClusterStatus, getClusterStatus, removeClusterNode } from '@shared/api/endpoints/cluster'
+import {
+    ClusterSnapshot,
+    ClusterStatus,
+    createClusterSnapshot,
+    getClusterStatus,
+    listClusterSnapshots,
+    removeClusterNode,
+    stepDownCluster
+} from '@shared/api/endpoints/cluster'
 import {
     ConfirmModal,
     CopyButton,
@@ -19,11 +27,16 @@ import { Eyebrow, Plate, Pill } from '@shared/ui/tuck/tuck'
 
 import { JoinModal } from './components/join-modal'
 import { NodeDrawer, RolePill } from './components/node-drawer'
+import { QuorumCalc } from './components/quorum-calc'
+import { ReplicationPanel, TlsPanel } from './components/replication-panel'
+import { StepDownModal, Transition, TransitionPanel } from './components/step-down'
 import { Topology } from './components/topology'
 import {
     buildModel,
     diffStatus,
+    fmtAge,
     fmtBytes,
+    fmtMs,
     fmtTime,
     Health,
     httpStatus,
@@ -32,7 +45,7 @@ import {
     serverMessage,
     sortNodes
 } from './lib'
-import { downloadSnapshot, SnapshotResult } from './snapshot'
+import { downloadSnapshot, downloadStoredSnapshot } from './snapshot'
 import styles from './cluster.module.css'
 
 type Filter = 'all' | 'follower' | 'leader'
@@ -82,7 +95,10 @@ export function ClusterPage() {
     const [filter, setFilter] = useState<Filter>('all')
     const [log, setLog] = useState<LogEntry[]>([])
     const [dl, setDl] = useState<{ bytes: number; ratio: null | number } | null>(null)
-    const [downloads, setDownloads] = useState<SnapshotResult[]>([])
+    const [stepOpen, setStepOpen] = useState(false)
+    const [transition, setTransition] = useState<null | Transition>(null)
+    const [now, setNow] = useState(() => Date.now())
+    const [dlStored, setDlStored] = useState<null | string>(null)
 
     const {
         data: status,
@@ -94,7 +110,8 @@ export function ClusterPage() {
     } = useQuery({
         queryKey: ['cluster', 'status'],
         queryFn: getClusterStatus,
-        refetchInterval: 5_000,
+        // one second while a leadership transfer is running, so the new election shows up live
+        refetchInterval: transition ? 1_000 : 5_000,
         retry: false
     })
 
@@ -104,6 +121,16 @@ export function ClusterPage() {
     const failed = isError && !status && !forbidden && !notEnabled
     const live = !!status
 
+    const snapsQuery = useQuery({
+        enabled: live,
+        queryFn: listClusterSnapshots,
+        queryKey: ['cluster', 'snapshots'],
+        refetchInterval: 30_000,
+        retry: false
+    })
+    const stored = snapsQuery.data ?? []
+    const latest: ClusterSnapshot | undefined = stored[0]
+
     const model = useMemo(() => (status ? buildModel(status) : null), [status])
     const sorted = useMemo(() => sortNodes(model?.nodes ?? []), [model])
     const rows = useMemo(
@@ -112,6 +139,7 @@ export function ClusterPage() {
         [sorted, filter]
     )
     const openNode = sorted.find((n) => n.id === openId) ?? null
+    const lagScale = Math.max(20, ...sorted.map((n) => n.metrics?.lag_entries ?? 0))
 
     // --- events observed by this tab: diff of consecutive polls ---
     const prevRef = useRef<ClusterStatus | null>(null)
@@ -124,6 +152,53 @@ export function ClusterPage() {
         const ts = Date.now()
         setLog((l) => [...l, ...events.map((e) => ({ ...e, id: ++idRef.current, ts }))].slice(-200))
     }, [status])
+
+    const pushLog = (key: string, level: LogEntry['level'], params: LogEntry['params'] = {}) =>
+        setLog((l) => [...l, { id: ++idRef.current, key, level, params, ts: Date.now() }].slice(-200))
+
+    // --- live leadership transfer ---
+    const transitionOn = transition !== null
+    useEffect(() => {
+        if (!transitionOn) return
+        setNow(Date.now())
+        const id = window.setInterval(() => setNow(Date.now()), 500)
+        return () => window.clearInterval(id)
+    }, [transitionOn])
+
+    useEffect(() => {
+        if (!status || !transition || transition.newLeader) return
+        if (status.leader && status.leader !== transition.from && status.state !== 'Candidate') {
+            setTransition({ ...transition, newLeader: status.leader })
+        }
+    }, [status, transition])
+
+    const trElected = transition?.newLeader
+    const trSince = transition?.since
+    useEffect(() => {
+        if (trSince === undefined) return
+        const id = window.setTimeout(() => setTransition(null), trElected ? 8_000 : 45_000)
+        return () => window.clearTimeout(id)
+    }, [trElected, trSince])
+
+    const stepMutation = useMutation({ mutationFn: stepDownCluster })
+    const startStepDown = (target: string) => {
+        setStepOpen(false)
+        const from = status?.leader ?? ''
+        setTransition({ from, since: Date.now() })
+        pushLog('stepDownRequested', 'v', { from, target: target || t('stepdown.autoShort') })
+        stepMutation.mutate(target || undefined, {
+            onError: (err) => {
+                setTransition(null)
+                pushLog('stepDownFailed', 'e', { reason: serverMessage(err) ?? t('stepdown.failedHint') })
+                toast.error(t('stepdown.failed'), serverMessage(err) ?? t('stepdown.failedHint'))
+            },
+            onSuccess: () => {
+                pushLog('stepDownDone', 'o', { from })
+                toast.success(t('stepdown.done'), t('stepdown.doneMsg'))
+                void queryClient.invalidateQueries({ queryKey: ['cluster', 'status'] })
+            }
+        })
+    }
 
     const logRef = useRef<HTMLDivElement>(null)
     useEffect(() => {
@@ -182,26 +257,55 @@ export function ClusterPage() {
 
     // --- snapshot ---
     const snapBusy = dl !== null
+    const snapErr = (err: unknown) => {
+        const code = httpStatus(err)
+        return code === 403
+            ? t('snap.forbidden')
+            : code === 501
+              ? t('snap.unsupported')
+              : (serverMessage(err) ?? t('snap.failedHint'))
+    }
     const snapshotNow = async () => {
         if (snapBusy) return
         setDl({ bytes: 0, ratio: null })
         try {
             const res = await downloadSnapshot(setDl)
-            setDownloads((l) => [res, ...l].slice(0, 4))
             toast.success(t('snap.done'), res.filename)
         } catch (err) {
-            const s = httpStatus(err)
-            toast.error(
-                t('snap.failed'),
-                s === 403 ? t('snap.forbidden') : s === 501 ? t('snap.unsupported') : (serverMessage(err) ?? t('snap.failedHint'))
-            )
+            toast.error(t('snap.failed'), snapErr(err))
         } finally {
             setDl(null)
         }
     }
 
+    const createMutation = useMutation({ mutationFn: createClusterSnapshot })
+    const createStored = async () => {
+        try {
+            const res = await createMutation.mutateAsync()
+            if (res.created && res.snapshot) {
+                toast.success(t('snap.created'), t('snap.createdMsg', { index: res.snapshot.index }))
+            } else {
+                toast.info(t('snap.unchanged'), t('snap.unchangedMsg', { index: res.snapshot?.index ?? '—' }))
+            }
+            await queryClient.invalidateQueries({ queryKey: ['cluster', 'snapshots'] })
+        } catch (err) {
+            toast.error(t('snap.failed'), snapErr(err))
+        }
+    }
+    const downloadStored = async (snap: ClusterSnapshot) => {
+        if (dlStored) return
+        setDlStored(snap.id)
+        try {
+            const res = await downloadStoredSnapshot(snap)
+            toast.success(t('snap.done'), res.filename)
+        } catch (err) {
+            toast.error(t('snap.failed'), snapErr(err))
+        } finally {
+            setDlStored(null)
+        }
+    }
+
     const fmt = (n: number) => n.toLocaleString(i18n.language)
-    const lastSnap = downloads[0]
 
     // --- remove dialog content ---
     const removeNodes = toRemove ? (model?.nodes ?? []).filter((n) => toRemove.includes(n.id)) : []
@@ -391,6 +495,15 @@ export function ClusterPage() {
 
         body = (
             <>
+                {transition && (
+                    <TransitionPanel
+                        isLeader={status.is_leader}
+                        leader={status.leader}
+                        now={now}
+                        state={status.state}
+                        tr={transition}
+                    />
+                )}
                 <div
                     aria-live="polite"
                     className={cx(styles.banner, BANNER_CLASS[h], styles.rv)}
@@ -491,6 +604,7 @@ export function ClusterPage() {
                             </div>
                             {model.voters % 2 === 0 && model.voters > 0 && <p className={styles.qwarn}>{t('quorum.even')}</p>}
                             {model.voters < 3 && model.voters > 0 && <p className={styles.qwarn}>{t('quorum.lt3')}</p>}
+                            <QuorumCalc nodes={sorted} />
                         </Plate>
                     </div>
                 </div>
@@ -543,18 +657,23 @@ export function ClusterPage() {
                                     <th>{t('table.addr')}</th>
                                     <th>{t('table.role')}</th>
                                     <th>{t('table.suffrage')}</th>
+                                    <th>{t('table.contact')}</th>
+                                    <th>{t('table.lastLog')}</th>
+                                    <th>{t('table.lag')}</th>
+                                    <th>{t('table.rtt')}</th>
                                     <th />
                                 </tr>
                             </thead>
                             <tbody>
                                 {rows.length === 0 ? (
                                     <tr className={styles.emptyRow}>
-                                        <td colSpan={6}>{model.nodes.length === 0 ? t('table.none') : t('table.noMatch')}</td>
+                                        <td colSpan={10}>{model.nodes.length === 0 ? t('table.none') : t('table.noMatch')}</td>
                                     </tr>
                                 ) : (
                                     rows.map((n) => (
                                         <NodeRow
                                             checked={selected.has(n.id)}
+                                            lagScale={lagScale}
                                             key={n.id}
                                             node={n}
                                             onOpen={() => setOpenId(n.id)}
@@ -570,26 +689,35 @@ export function ClusterPage() {
                 </section>
 
                 <div className={styles.low}>
-                    <Plate className={cx(styles.panel, styles.rv)} style={d(9)}>
+                    <div className={styles.rv} style={d(9)}>
+                        <ReplicationPanel status={status} />
+                    </div>
+                    <div className={styles.rv} style={d(9)}>
+                        <TlsPanel status={status} />
+                    </div>
+                </div>
+
+                <div className={styles.low}>
+                    <Plate className={cx(styles.panel, styles.rv)} style={d(10)}>
                         <div className={styles.secHead} style={{ margin: '0 0 4px' }}>
                             <h2 className={styles.sec}>{t('snap.title')}</h2>
-                            <Pill dot tone={lastSnap ? 'ok' : 'mute'}>
-                                {lastSnap ? t('snap.pillDone') : t('snap.pillNone')}
+                            <Pill dot tone={latest ? 'ok' : 'mute'}>
+                                {latest ? t('snap.pillStored', { count: stored.length }) : t('snap.pillNone')}
                             </Pill>
                         </div>
                         <p className={styles.sub}>{t('snap.sub')}</p>
                         <div className={styles.snapNow}>
                             <div>
                                 <small>{t('snap.last')}</small>
-                                <strong>{lastSnap ? fmtTime(lastSnap.savedAt) : '—'}</strong>
+                                <strong>{latest?.created_at ? fmtTime(Date.parse(latest.created_at)) : '—'}</strong>
                             </div>
                             <div>
                                 <small>{t('snap.size')}</small>
-                                <strong className={styles.num}>{lastSnap ? fmtBytes(lastSnap.bytes, i18n.language) : '—'}</strong>
+                                <strong className={styles.num}>{latest ? fmtBytes(latest.size, i18n.language) : '—'}</strong>
                             </div>
                             <div>
-                                <small>{t('snap.session')}</small>
-                                <strong className={styles.num}>{fmt(downloads.length)}</strong>
+                                <small>{t('snap.index')}</small>
+                                <strong className={styles.num}>{latest ? fmt(latest.index) : '—'}</strong>
                             </div>
                         </div>
                         {snapBusy && (
@@ -608,25 +736,55 @@ export function ClusterPage() {
                         )}
                         <div className={styles.row}>
                             <Button
+                                leftSection={<Icon name="plus" size={14} />}
+                                loading={createMutation.isPending}
+                                onClick={() => void createStored()}
+                            >
+                                {t('snap.create')}
+                            </Button>
+                            <Button
                                 leftSection={<Icon name="download" size={15} />}
                                 loading={snapBusy}
                                 onClick={() => void snapshotNow()}
+                                variant="default"
                             >
                                 {snapBusy ? t('snap.busy', { size: fmtBytes(dl?.bytes ?? 0, i18n.language) }) : t('snap.download')}
                             </Button>
                         </div>
-                        {downloads.length > 0 && (
+                        {snapsQuery.isError && !snapsQuery.data && (
+                            <p className={styles.qwarn}>
+                                {httpStatus(snapsQuery.error) === 403 ? t('snap.listForbidden') : t('snap.listFailed')}
+                            </p>
+                        )}
+                        {stored.length > 0 && (
                             <ul className={styles.snaplist}>
-                                {downloads.map((x) => (
-                                    <li key={x.savedAt}>
-                                        <b>{x.filename}</b>
+                                {stored.map((x) => (
+                                    <li key={x.id}>
+                                        <b>
+                                            #{fmt(x.index)} · {t('snap.term', { term: x.term })}
+                                        </b>
                                         <span className={styles.grow}>
-                                            {fmtTime(x.savedAt)} · {fmtBytes(x.bytes, i18n.language)}
+                                            {x.created_at ? `${fmtTime(Date.parse(x.created_at))} · ` : ''}
+                                            {fmtBytes(x.size, i18n.language)}
                                         </span>
+                                        <Button
+                                            leftSection={<Icon name="download" size={13} />}
+                                            loading={dlStored === x.id}
+                                            onClick={() => void downloadStored(x)}
+                                            size="compact-sm"
+                                            variant="default"
+                                        >
+                                            {t('snap.get')}
+                                        </Button>
                                     </li>
                                 ))}
                             </ul>
                         )}
+                        {snapsQuery.data && stored.length === 0 && <p className={styles.joinHint}>{t('snap.empty')}</p>}
+                        <p className={styles.joinHint}>{t('snap.nodeLocal', { id: status.node_id ?? '—' })}</p>
+                        <p className={styles.restoreNote}>
+                            <b>{t('snap.restoreTitle')}</b> {t('snap.restoreText')}
+                        </p>
                     </Plate>
 
                     <Plate className={cx(styles.panel, styles.rv)} style={d(10)}>
@@ -643,7 +801,10 @@ export function ClusterPage() {
                                 <Trans components={rich} i18nKey="add.s3" ns="cluster" />
                             </li>
                         </ol>
-                        <TermBlock lines={JOIN_CMD} />
+                        <TermBlock
+                            lines={joinLines(status, t('add.cmdComment'), t('add.cmdLeader', { addr: status.leader_addr || '—' }))}
+                        />
+                        <p className={styles.joinHint}>{t('add.placeholders')}</p>
                     </Plate>
                 </div>
 
@@ -671,6 +832,12 @@ export function ClusterPage() {
     }
 
     const canAct = live && !!model
+    const canStep = canAct && !!status?.is_leader && (model?.voters ?? 0) > 1 && !transition
+    const stepHint = !status?.is_leader
+        ? t('stepdown.notLeader', { addr: status?.leader_addr || '—' })
+        : transition
+          ? t('stepdown.busy')
+          : t('stepdown.single')
     return (
         <Page title={t('title')}>
             <header className={styles.head}>
@@ -684,6 +851,16 @@ export function ClusterPage() {
                     </p>
                 </div>
                 <div className={cx(styles.headCta, styles.rv)} style={d(1)}>
+                    <Button
+                        disabled={!canStep}
+                        leftSection={<Icon name="refresh" size={15} />}
+                        loading={stepMutation.isPending}
+                        onClick={() => setStepOpen(true)}
+                        title={canStep ? undefined : stepHint}
+                        variant="default"
+                    >
+                        {t('stepdown.open')}
+                    </Button>
                     <Button
                         disabled={!canAct}
                         leftSection={<Icon name="download" size={15} />}
@@ -713,7 +890,14 @@ export function ClusterPage() {
                 opened={joining}
             />
 
-            <NodeDrawer node={openNode} onClose={() => setOpenId(null)} onRemove={(id) => startRemove([id])} />
+            <StepDownModal
+                nodes={model?.nodes ?? []}
+                onClose={() => setStepOpen(false)}
+                onConfirm={startStepDown}
+                opened={stepOpen}
+            />
+
+            <NodeDrawer history={status?.history ?? []} node={openNode} onClose={() => setOpenId(null)} onRemove={(id) => startRemove([id])} />
 
             <ConfirmModal
                 confirmLabel={bulk ? t('remove.confirmMany', { count: toRemove?.length ?? 0 }) : t('remove.confirm')}
@@ -757,6 +941,7 @@ export function ClusterPage() {
 
 function NodeRow({
     checked,
+    lagScale,
     node,
     onOpen,
     onRemove,
@@ -764,13 +949,18 @@ function NodeRow({
     open
 }: {
     checked: boolean
+    lagScale: number
     node: NodeVM
     onOpen: () => void
     onRemove: () => void
     onToggle: () => void
     open: boolean
 }) {
-    const { t } = useTranslation('cluster')
+    const { i18n, t } = useTranslation('cluster')
+    const m = node.metrics
+    const unreachable = m?.reachable === false
+    const dash = <span className={styles.dim}>—</span>
+    const lag = m?.lag_entries
     return (
         <tr className={cx(open && styles.sel)} onClick={onOpen}>
             <td onClick={(e) => e.stopPropagation()}>
@@ -791,6 +981,26 @@ function NodeRow({
                 <RolePill role={node.role} />
             </td>
             <td>{node.suffrage}</td>
+            <td className={cx(unreachable && styles.badTxt)}>
+                {m?.last_contact_ms !== undefined ? fmtAge(m.last_contact_ms) : dash}
+            </td>
+            <td>{m ? m.last_log_index.toLocaleString(i18n.language) : dash}</td>
+            <td>
+                {lag !== undefined ? (
+                    <div className={styles.lagCell}>
+                        <span>{lag.toLocaleString(i18n.language)}</span>
+                        <span aria-hidden className={styles.lagbar}>
+                            <i
+                                className={cx(unreachable ? styles.bad : lag > 0 && styles.warn)}
+                                style={{ width: `${Math.min(100, (lag / lagScale) * 100)}%` }}
+                            />
+                        </span>
+                    </div>
+                ) : (
+                    dash
+                )}
+            </td>
+            <td>{m?.heartbeat_rtt_ms !== undefined ? `${fmtMs(m.heartbeat_rtt_ms)} ms` : dash}</td>
             <td className={styles.act} onClick={(e) => e.stopPropagation()}>
                 <Button color="red" onClick={onRemove} size="compact-sm" variant="outline">
                     {t('table.remove')}
@@ -813,12 +1023,31 @@ const SINGLE_CMD = [
     { r: '    --cluster-join ', s: 'https://node-1:8200' }
 ]
 
-const JOIN_CMD = [
-    { c: '# new node' },
-    { p: '$', w: 'tuck', r: ' --cluster --cluster-node-id ', s: 'node-4', after: ' \\' },
-    { r: '    --cluster-bind-addr ', s: '0.0.0.0:8201', after: ' \\' },
-    { r: '    --cluster-join ', s: 'https://leader:8200' }
-]
+/**
+ * Join command from values this node really knows (bind port, TLS server name). Node ID and file
+ * paths belong to the operator and stay as <placeholders>. The API URL is filled in only when this
+ * node is the leader, i.e. when it is the address the browser is already talking to.
+ */
+function joinLines(status: ClusterStatus, comment: string, leaderNote: string): Line[] {
+    const port = status.advertise_addr?.match(/:(\d{2,5})$/)?.[1] ?? '8201'
+    const tls = status.tls && !status.tls.error ? status.tls : undefined
+    const lines: Line[] = [{ c: comment }]
+    if (!status.is_leader) lines.push({ c: leaderNote })
+    lines.push(
+        { p: '$', w: 'tuck', r: ' --cluster --cluster-node-id ', s: '<new-node-id>', after: ' \\' },
+        { r: '    --cluster-bind-addr ', s: `0.0.0.0:${port}`, after: ' \\' }
+    )
+    if (tls) {
+        lines.push(
+            { r: '    --cluster-tls-cert ', s: '<node.pem>', after: ' \\' },
+            { r: '    --cluster-tls-key ', s: '<node-key.pem>', after: ' \\' },
+            { r: '    --cluster-tls-ca ', s: '<ca.pem>', after: ' \\' }
+        )
+        if (tls.server_name) lines.push({ r: '    --cluster-tls-server-name ', s: tls.server_name, after: ' \\' })
+    }
+    lines.push({ r: '    --cluster-join ', s: status.is_leader ? window.location.origin : '<leader-api-url>' })
+    return lines
+}
 
 type Line = { after?: string; blank?: boolean; c?: string; p?: string; r?: string; s?: string; w?: string }
 

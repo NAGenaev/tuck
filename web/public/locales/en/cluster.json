@@ -92,13 +92,27 @@
     "me": "this node",
     "remove": "Remove",
     "none": "The server reports no nodes.",
-    "noMatch": "No nodes match the filter."
+    "noMatch": "No nodes match the filter.",
+    "lastLog": "Last log",
+    "lag": "Lag",
+    "contact": "Last contact",
+    "rtt": "RTT"
   },
   "drawer": {
     "thisNode": "this node",
     "remove": "Remove from cluster",
     "leaderNote": "The leader replicates every write to the followers. Removing it triggers a new election.",
-    "followerNote": "Removal is sent to the leader and takes effect once the configuration change is committed."
+    "followerNote": "Removal is sent to the leader and takes effect once the configuration change is committed.",
+    "repl": "Replication",
+    "source": "Source",
+    "srcLocal": "this node (exact)",
+    "srcHeartbeat": "leader heartbeats (observed)",
+    "reachable": "Reachable",
+    "yes": "yes",
+    "no": "no",
+    "noMetrics": "The answering server has no replication metrics for this node. Open the cluster page on the leader to see followers.",
+    "rttHist": "Heartbeat RTT, ms",
+    "lagHist": "Lag, entries"
   },
   "remove": {
     "title": "Remove node",
@@ -145,26 +159,45 @@
   },
   "snap": {
     "title": "Snapshot",
-    "sub": "Download a consistent copy of the data from this node.",
+    "sub": "Create a snapshot on this node's disk or download a fresh copy.",
     "pillDone": "downloaded",
     "pillNone": "none yet",
     "last": "Last download",
     "size": "Size",
     "session": "This session",
-    "download": "Download snapshot",
+    "download": "Download a fresh copy",
     "busy": "Downloading {{size}}",
     "done": "Snapshot saved",
     "failed": "Snapshot failed",
     "forbidden": "The token cannot read sys/snapshot.",
     "unsupported": "Snapshots need cluster mode.",
-    "failedHint": "The server did not return a snapshot"
+    "failedHint": "The server did not return a snapshot",
+    "pillStored_one": "{{count}} stored",
+    "pillStored_other": "{{count}} stored",
+    "create": "Create snapshot",
+    "created": "Snapshot created",
+    "createdMsg": "Raft index {{index}}",
+    "unchanged": "Nothing new",
+    "unchangedMsg": "No new data since index {{index}}.",
+    "index": "Index",
+    "get": "Download",
+    "empty": "No snapshots stored on this node yet.",
+    "nodeLocal": "Stored on {{id}} in its Raft snapshot directory; the 3 most recent are kept. Other nodes keep their own.",
+    "restoreTitle": "Restore is not offered here.",
+    "restoreText": "It replaces the whole cluster state, and the caches of a running node would go stale. Keep downloaded copies for disaster recovery.",
+    "listFailed": "Could not list stored snapshots.",
+    "listForbidden": "The token cannot read sys/cluster/snapshot.",
+    "term": "term {{term}}"
   },
   "add": {
     "title": "Adding a node",
     "sub": "Joining is done from the new node or through the API.",
     "s1": "Start the new node with <code>--cluster</code> and its own <code>--cluster-node-id</code>.",
     "s2": "Point it at the leader with <code>--cluster-join</code>, or press <b>Add node</b> above.",
-    "s3": "Keep an odd number of voters: 3 or 5."
+    "s3": "Keep an odd number of voters: 3 or 5.",
+    "cmdComment": "# new node; <placeholders> are yours to fill",
+    "cmdLeader": "# leader raft address: {{addr}}; --cluster-join takes its HTTP API URL",
+    "placeholders": "Values in angle brackets cannot be known by the server: node ID, certificate paths and, when you are on a follower, the leader API URL."
   },
   "log": {
     "eyebrow": "Observed",
@@ -187,7 +220,11 @@
       "stateChanged": "State of this node: {{from}} to {{to}}",
       "nodeJoined": "Node {{id}} joined ({{addr}})",
       "suffrageChanged": "{{id}} is now {{to}}",
-      "nodeLeft": "Node {{id}} left the configuration"
+      "nodeLeft": "Node {{id}} left the configuration",
+      "termChanged": "Term increased: {{from}} to {{to}}",
+      "stepDownRequested": "Leadership transfer requested from {{from}} (target: {{target}})",
+      "stepDownFailed": "Transfer failed: {{reason}}",
+      "stepDownDone": "Transfer confirmed by the server (leader was {{from}})"
     }
   },
   "single": {
@@ -211,5 +248,83 @@
   "error": {
     "title": "Could not load the cluster",
     "message": "The server did not return cluster status."
+  },
+  "calc": {
+    "title": "What if a node goes down?",
+    "badge": "calculation, nothing is stopped",
+    "sub": "Click voters to mark them as down. This is arithmetic on the current configuration; no node is touched.",
+    "okTitle": "Quorum holds",
+    "badTitle": "Quorum lost",
+    "math": "{{alive}} of {{total}} voters alive, quorum needs {{quorum}}.",
+    "spare_one": "One more voter could fail.",
+    "spare_other": "{{count}} more voters could fail.",
+    "noSpare": "No spare: one more failure stops writes.",
+    "stopped": "No leader could be elected and no write could be committed.",
+    "reset": "Reset"
+  },
+  "stepdown": {
+    "open": "Step down leader",
+    "title": "Transfer leadership",
+    "text": "The current leader hands leadership to another voter. Writes pause briefly during the election; no data is lost.",
+    "target": "New leader",
+    "auto": "Most up-to-date voter (automatic)",
+    "lag_one": "{{count}} entry behind",
+    "lag_other": "{{count}} entries behind",
+    "warn": "Requests sent to this node while the election runs are answered with a redirect to the new leader.",
+    "confirm": "Transfer leadership",
+    "liveEyebrow": "Leadership transfer",
+    "pillLive": "in progress",
+    "pillDone": "completed",
+    "step": {
+      "sent": "Transfer requested",
+      "released": "{{id}} released leadership",
+      "elected": "{{id}} elected leader"
+    },
+    "liveNote": "Observed from status polls every second. Current leader: {{leader}}, state of this node: {{state}}.",
+    "autoShort": "automatic",
+    "done": "Leadership transferred",
+    "doneMsg": "The server confirmed the transfer.",
+    "failed": "Transfer failed",
+    "failedHint": "The server refused the transfer.",
+    "notLeader": "Only the leader can step down. Leader: {{addr}}",
+    "busy": "A transfer is already in progress.",
+    "single": "Needs at least two voters."
+  },
+  "repl": {
+    "title": "Replication",
+    "sub": "Raft indexes of this node and a ring of its own recent samples.",
+    "term": "Term",
+    "commit": "Commit index",
+    "applied": "Applied index",
+    "lastLog": "Last log index",
+    "rate": "Commit rate",
+    "lag": "Max follower lag",
+    "rtt": "Max heartbeat RTT",
+    "unitRate": "entries/s",
+    "unitEntries": "entries",
+    "leaderOnly": "Only the leader sees followers.",
+    "collecting": "Collecting samples...",
+    "window_one": "{{count}} sample over {{secs}} s, recorded by the node itself",
+    "window_other": "{{count}} samples over {{secs}} s, recorded by the node itself"
+  },
+  "tls": {
+    "title": "Raft transport TLS",
+    "pillOn": "TLS",
+    "pillOff": "plain TCP",
+    "offText": "This node talks to its peers over unencrypted TCP.",
+    "offWarn": "Replication traffic is neither encrypted nor authenticated. Start nodes with --cluster-tls-cert, --cluster-tls-key and --cluster-tls-ca.",
+    "sub": "Certificate presented by {{id}}.",
+    "subject": "Subject",
+    "issuer": "Issuer",
+    "notAfter": "Valid until",
+    "expired": "expired",
+    "daysLeft_one": "{{count}} day left",
+    "daysLeft_other": "{{count}} days left",
+    "san": "Names",
+    "ca": "Trusted CAs",
+    "caCount_one": "{{count}} certificate",
+    "caCount_other": "{{count}} certificates",
+    "serverName": "Server name",
+    "localOnly": "Shown for this node only; certificates of peers are not visible here."
   }
 }

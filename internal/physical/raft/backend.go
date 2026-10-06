@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	hraft "github.com/hashicorp/raft"
@@ -65,6 +66,12 @@ type ServerInfo struct {
 	ID       string `json:"id"`
 	Address  string `json:"address"`
 	Suffrage string `json:"suffrage"`
+	// Self marks the node that answered the request.
+	Self bool `json:"self,omitempty"`
+	// Metrics is the replication view of this server as seen from the node that
+	// answered the request: exact for that node itself, observed through
+	// heartbeats for followers when it is the leader, absent otherwise.
+	Metrics *ServerMetrics `json:"metrics,omitempty"`
 }
 
 // ClusterStatus is returned by Backend.Status.
@@ -74,18 +81,47 @@ type ClusterStatus struct {
 	LeaderAddr string       `json:"leader_addr"`
 	State      string       `json:"state"`
 	Servers    []ServerInfo `json:"servers"`
+
+	// Additive fields: local Raft statistics of the node that answered.
+	NodeID            string `json:"node_id,omitempty"`
+	AdvertiseAddr     string `json:"advertise_addr,omitempty"`
+	Term              uint64 `json:"term"`
+	CommitIndex       uint64 `json:"commit_index"`
+	AppliedIndex      uint64 `json:"applied_index"`
+	LastLogIndex      uint64 `json:"last_log_index"`
+	LastLogTerm       uint64 `json:"last_log_term"`
+	LastSnapshotIndex uint64 `json:"last_snapshot_index"`
+	LastSnapshotTerm  uint64 `json:"last_snapshot_term"`
+	FSMPending        uint64 `json:"fsm_pending"`
+	// LastContactMs is the time since this node last heard from the leader;
+	// null on the leader itself or before the first contact.
+	LastContactMs      *int64 `json:"last_contact_ms"`
+	HeartbeatTimeoutMs int64  `json:"heartbeat_timeout_ms"`
+	// TLS describes this node's Raft transport certificate; nil without mTLS.
+	TLS *TLSInfo `json:"tls,omitempty"`
+	// History is a ring of the most recent real samples taken by this node.
+	History []Sample `json:"history,omitempty"`
 }
 
 // Backend implements physical.Backend using Raft consensus.
 // Writes (Put/Delete) are replicated through the Raft log; reads are served
 // from the local FSM state. Only the leader can accept writes.
 type Backend struct {
-	raft     *hraft.Raft
-	fsm      *fsm
-	log      *raftbolt.BoltStore
-	trans    *hraft.NetworkTransport
-	nodeID   string
+	raft      *hraft.Raft
+	fsm       *fsm
+	log       *raftbolt.BoltStore
+	trans     *hraft.NetworkTransport
+	nodeID    string
 	advertise string
+
+	snaps     hraft.SnapshotStore
+	obs       *observer
+	tlsCfg    *TLSConfig
+	heartbeat time.Duration
+	stopOnce  sync.Once
+	stop      chan struct{}
+	tlsMu     sync.Mutex
+	tlsCache  *tlsCacheEntry
 }
 
 // Open creates or rejoins a Raft cluster and returns a ready Backend.
@@ -167,7 +203,8 @@ func Open(cfg Config) (*Backend, error) {
 		rc.SnapshotThreshold = cfg.SnapshotThreshold
 	}
 
-	r, err := hraft.NewRaft(rc, machine, logStore, logStore, snapStore, transport)
+	obs := newObserver()
+	r, err := hraft.NewRaft(rc, machine, logStore, logStore, snapStore, &observedTransport{NetworkTransport: transport, obs: obs})
 	if err != nil {
 		_ = transport.Close()
 		_ = logStore.Close()
@@ -195,14 +232,21 @@ func Open(cfg Config) (*Backend, error) {
 		}
 	}
 
-	return &Backend{
+	b := &Backend{
 		raft:      r,
 		fsm:       machine,
 		log:       logStore,
 		trans:     transport,
 		nodeID:    cfg.NodeID,
 		advertise: advertise,
-	}, nil
+		snaps:     snapStore,
+		obs:       obs,
+		tlsCfg:    cfg.TLS,
+		heartbeat: rc.HeartbeatTimeout,
+		stop:      make(chan struct{}),
+	}
+	go b.sampleLoop()
+	return b, nil
 }
 
 // IsLeader reports whether this node is the current Raft leader.
@@ -229,32 +273,31 @@ func (b *Backend) RemoveServer(id string) error {
 // ClusterStatus implements core.ClusterBackender — returns Status() as any.
 func (b *Backend) ClusterStatus() any { return b.Status() }
 
-// Status returns the current cluster topology and this node's role.
+// Status returns the current cluster topology, this node's role and its local
+// Raft statistics.
 func (b *Backend) Status() ClusterStatus {
 	leaderAddr, leaderID := b.raft.LeaderWithID()
 	cs := ClusterStatus{
-		IsLeader:   b.IsLeader(),
-		Leader:     string(leaderID),
-		LeaderAddr: string(leaderAddr),
-		State:      b.raft.State().String(),
+		IsLeader:           b.IsLeader(),
+		Leader:             string(leaderID),
+		LeaderAddr:         string(leaderAddr),
+		State:              b.raft.State().String(),
+		NodeID:             b.nodeID,
+		AdvertiseAddr:      b.advertise,
+		HeartbeatTimeoutMs: b.heartbeat.Milliseconds(),
 	}
-	cfgFuture := b.raft.GetConfiguration()
-	if err := cfgFuture.Error(); err == nil {
-		cfg := cfgFuture.Configuration()
-		for _, srv := range cfg.Servers {
-			suf := "Voter"
-			if srv.Suffrage == hraft.Nonvoter {
-				suf = "Nonvoter"
-			} else if srv.Suffrage == hraft.Staging {
-				suf = "Staging"
-			}
-			cs.Servers = append(cs.Servers, ServerInfo{
-				ID:       string(srv.ID),
-				Address:  string(srv.Address),
-				Suffrage: suf,
-			})
-		}
+	st := b.localStats()
+	cs.Term, cs.CommitIndex, cs.AppliedIndex = st.term, st.commit, st.applied
+	cs.LastLogIndex, cs.LastLogTerm = st.lastLog, st.lastLogTerm
+	cs.LastSnapshotIndex, cs.LastSnapshotTerm = st.snapIndex, st.snapTerm
+	cs.FSMPending = st.fsmPending
+	if !cs.IsLeader && !st.lastContact.IsZero() {
+		ms := time.Since(st.lastContact).Milliseconds()
+		cs.LastContactMs = &ms
 	}
+	cs.Servers = b.servers(cs.IsLeader, st)
+	cs.TLS = b.tlsInfo()
+	cs.History = b.obs.history()
 	return cs
 }
 
@@ -292,6 +335,7 @@ func (b *Backend) Snapshot(_ context.Context, w io.Writer) error {
 
 // Close shuts down the Raft node gracefully.
 func (b *Backend) Close() error {
+	b.stopOnce.Do(func() { close(b.stop) })
 	if f := b.raft.Shutdown(); f.Error() != nil {
 		return f.Error()
 	}

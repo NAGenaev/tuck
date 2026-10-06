@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { isAxiosError } from 'axios'
 
-import type { ClusterStatus } from '@shared/api/endpoints/cluster'
+import type { ClusterSample, ClusterServerMetrics, ClusterStatus } from '@shared/api/endpoints/cluster'
 
 export type NodeRole = 'follower' | 'leader' | 'nonvoter'
 export type Health = 'down' | 'electing' | 'nofault' | 'ok'
@@ -12,6 +12,8 @@ export interface NodeVM {
     id: string
     /** true only when the API node we talk to is the leader and this is it */
     isMe: boolean
+    /** replication numbers the answering node really has for this server (absent when it has none) */
+    metrics?: ClusterServerMetrics
     role: NodeRole
     suffrage: string
 }
@@ -43,6 +45,7 @@ export function buildModel(status: ClusterStatus): ClusterModel {
             address: s.address,
             id: s.id,
             isMe: isLeader && status.is_leader,
+            metrics: s.metrics,
             role: isLeader ? 'leader' : s.suffrage === 'Nonvoter' ? 'nonvoter' : 'follower',
             suffrage: s.suffrage
         }
@@ -87,6 +90,9 @@ export function diffStatus(prev: ClusterStatus | null, next: ClusterStatus): Arr
         if (!next.leader) out.push({ key: 'leaderLost', level: 'w', params: { id: prev.leader } })
         else if (!prev.leader) out.push({ key: 'leaderElected', level: 'o', params: { id: next.leader } })
         else out.push({ key: 'leaderChanged', level: 'v', params: { from: prev.leader, to: next.leader } })
+    }
+    if (prev.term !== undefined && next.term !== undefined && next.term > prev.term) {
+        out.push({ key: 'termChanged', level: 'v', params: { from: prev.term, to: next.term } })
     }
     if (prev.state !== next.state) {
         out.push({
@@ -139,4 +145,90 @@ export function fmtBytes(n: number, locale: string) {
         i++
     }
     return `${v.toLocaleString(locale, { maximumFractionDigits: i === 0 ? 0 : 1 })} ${units[i]}`
+}
+
+// ---------------------------------------------------------------------------
+// Quorum arithmetic (pure calculation over the real peer list, no cluster call)
+// ---------------------------------------------------------------------------
+
+export interface LossResult {
+    /** voters still up in the scenario */
+    alive: number
+    hasQuorum: boolean
+    quorum: number
+    /** how many more voters could fail before quorum is lost (negative = already lost) */
+    spare: number
+    total: number
+}
+
+/** What the voter majority looks like if the voters in `down` were gone. Non-voters never count. */
+export function simulateLoss(nodes: NodeVM[], down: ReadonlySet<string>): LossResult {
+    const voters = nodes.filter((n) => n.suffrage !== 'Nonvoter')
+    const total = voters.length
+    const quorum = Math.floor(total / 2) + 1
+    const alive = voters.filter((n) => !down.has(n.id)).length
+    return { alive, hasQuorum: alive >= quorum, quorum, spare: alive - quorum, total }
+}
+
+// ---------------------------------------------------------------------------
+// Series for the sparklines: every point is a real sample from the history ring
+// ---------------------------------------------------------------------------
+
+/** Committed entries per second between consecutive samples (negative deltas are skipped). */
+export function commitRate(history: ClusterSample[]): number[] {
+    const out: number[] = []
+    for (let i = 1; i < history.length; i++) {
+        const dt = (history[i].t - history[i - 1].t) / 1000
+        const di = history[i].commit_index - history[i - 1].commit_index
+        if (dt > 0 && di >= 0) out.push(di / dt)
+    }
+    return out
+}
+
+/** Worst follower lag (entries) in each sample taken while this node was the leader. */
+export function maxLagSeries(history: ClusterSample[]): number[] {
+    return history
+        .filter((h) => h.is_leader && h.peers)
+        .map((h) => Math.max(0, ...Object.values(h.peers ?? {}).map((p) => p.lag)))
+}
+
+/** Heartbeat round trip (ms) to one follower, from the samples that have it. */
+export function peerRttSeries(history: ClusterSample[], id: string): number[] {
+    return history.map((h) => h.peers?.[id]?.rtt_ms).filter((v): v is number => typeof v === 'number')
+}
+
+export function peerLagSeries(history: ClusterSample[], id: string): number[] {
+    return history.filter((h) => h.peers?.[id]).map((h) => h.peers?.[id]?.lag ?? 0)
+}
+
+export function fmtMs(ms: number) {
+    return ms < 10 ? ms.toFixed(1) : String(Math.round(ms))
+}
+
+/** Age of the last contact: "320 ms", "4.2 s", "3 min". */
+export function fmtAge(ms: number) {
+    if (ms < 1000) return `${Math.round(ms)} ms`
+    if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`
+    return `${Math.round(ms / 60_000)} min`
+}
+
+export type CertTone = 'bad' | 'brass' | 'mute' | 'ok'
+
+export function certTone(daysLeft: number | undefined): CertTone {
+    if (daysLeft === undefined) return 'mute'
+    if (daysLeft < 0) return 'bad'
+    if (daysLeft < 14) return 'brass'
+    return 'ok'
+}
+
+/** Slowest follower heartbeat round trip (ms) in each sample that has any. */
+export function maxRttSeries(history: ClusterSample[]): number[] {
+    const out: number[] = []
+    for (const h of history) {
+        const v = Object.values(h.peers ?? {})
+            .map((p) => p.rtt_ms)
+            .filter((x): x is number => typeof x === 'number')
+        if (v.length) out.push(Math.max(...v))
+    }
+    return out
 }

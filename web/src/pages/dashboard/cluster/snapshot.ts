@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { instance } from '@shared/api/axios'
+import type { ClusterSnapshot } from '@shared/api/endpoints/cluster'
 
 import { pad2 } from './lib'
 
@@ -7,6 +8,27 @@ export interface SnapshotResult {
     bytes: number
     filename: string
     savedAt: number
+}
+
+function saveBlob(data: Blob, filename: string) {
+    const url = URL.createObjectURL(data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
+}
+
+/** Downloads one snapshot stored on the node (GET /v1/sys/cluster/snapshot/{id}). */
+export async function downloadStoredSnapshot(snap: ClusterSnapshot): Promise<SnapshotResult> {
+    const { data } = await instance.get<Blob>(`/v1/sys/cluster/snapshot/${encodeURIComponent(snap.id)}`, {
+        responseType: 'blob'
+    })
+    const filename = `tuck-snapshot-${snap.index}.db`
+    saveBlob(data, filename)
+    return { bytes: data.size, filename, savedAt: Date.now() }
 }
 
 /**
@@ -22,13 +44,6 @@ export async function downloadSnapshot(
     })
     const now = new Date()
     const filename = `tuck-snapshot-${now.getFullYear()}${pad2(now.getMonth() + 1)}${pad2(now.getDate())}-${pad2(now.getHours())}${pad2(now.getMinutes())}.db`
-    const url = URL.createObjectURL(data)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    saveBlob(data, filename)
     return { bytes: data.size, filename, savedAt: now.getTime() }
 }

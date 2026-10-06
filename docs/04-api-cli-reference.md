@@ -42,14 +42,22 @@ flowchart LR
 | POST | `/v1/sys/leases/renew` | token | Продлить lease |
 | GET/DELETE | `/v1/sys/leases/{id...}` | token | Просмотр / отзыв lease |
 | LIST | `/v1/sys/leases/` | token | Список leases |
-| GET | `/v1/sys/mounts` | token | Таблица монтирования |
+| GET | `/v1/sys/mounts` | token | Таблица монтирования (`?stats=true` добавляет карту счётчиков по пути) |
 | POST/DELETE | `/v1/sys/mounts/{path...}` | token | Создать / удалить mount |
-| GET/POST | `/v1/sys/mounts-tune/{path...}` | token | Тюнинг mount |
-| POST/PUT/DELETE/LIST | `/v1/sys/namespaces[/{name}]` | token | Управление неймспейсами |
-| PUT/DELETE/LIST | `/v1/sys/audit/...` | token | Audit sinks (webhook) |
+| GET/POST | `/v1/sys/mounts-tune/{path...}` | token | Тюнинг mount (`?stats=true` добавляет счётчики использования) |
+| POST/PUT/DELETE/LIST | `/v1/sys/namespaces[/{name}]` | token | Управление неймспейсами; `POST`/`PUT` принимают `description`/`owner`/`labels`, `LIST ?stats=true` добавляет счётчики по каждому namespace |
+| GET | `/v1/sys/namespaces/{name}/stats` | token | Счётчики одного namespace (секреты, токены, политики, роли аутентификации); поле скрывается, если нет capability `list` |
+| GET | `/v1/sys/usage/secrets` | token | Число секретов (KV v1+v2), видимых вызывающему в его namespace |
+| PUT/DELETE/LIST | `/v1/sys/audit/{webhook,file,syslog,state}/...` | token | Audit sinks (webhook/file/syslog, пауза/резюме, статистика в LIST); `syslog` — за `capabilities.syslog`, недоступен на Windows |
+| GET | `/v1/sys/audit/events[/stream]` | root-namespace token | Журнал аудита: недавние записи с фильтрами, или живой хвост по SSE |
+| GET | `/v1/sys/audit/stats` | root-namespace token | Счётчики: записи за сегодня, скорость в минуту, гистограмма, по операциям |
+| POST | `/v1/sys/audit/verify` | root-namespace token | Проверка цепочки хешей (память и/или файловый синк) |
 | GET | `/v1/sys/cluster` | token | Статус Raft-кластера |
 | POST | `/v1/sys/cluster/join` | token | Добавить Raft-voter |
 | DELETE | `/v1/sys/cluster/node/{id}` | token | Удалить Raft-voter |
+| POST | `/v1/sys/cluster/step-down` | token (leader) | Передать лидерство (опционально `target_id`) |
+| GET/POST | `/v1/sys/cluster/snapshot` | token | Список / создание снапшота на диске узла |
+| GET | `/v1/sys/cluster/snapshot/{id}` | token | Скачать сохранённый снапшот |
 | POST | `/v1/sys/wrapping/wrap` | token | Завернуть payload |
 | POST | `/v1/sys/wrapping/unwrap` | token | Развернуть (одноразово) |
 | POST | `/v1/sys/wrapping/lookup` | token | Метаданные wrapping-токена |
@@ -70,6 +78,15 @@ flowchart LR
 | POST | `/v2/secret/undelete/{path...}` | Восстановить soft-deleted версию |
 | POST | `/v2/secret/destroy/{path...}` | Перманентное удаление |
 | GET/PUT/DELETE/LIST | `/v2/secret/metadata/{path...}` | Метаданные версий, `max_versions`, CAS |
+| PATCH | `/v2/secret/metadata/{path...}` | Частичное обновление: `max_versions`, `cas_required`, `custom_metadata` (merge, `null` удаляет ключ) |
+
+Метаданные KV v2 (подробности и коды ответов в `openapi.json`):
+
+- У каждой версии есть `created_at` и `created_by` (`display_name`, `accessor`, `fingerprint` — отпечаток из аудит-лога; сам токен не хранится). У версий, записанных до появления поля, его нет.
+- `custom_metadata` — строковые пары (до 64 пар, ключ до 128 байт, значение до 512 байт). PUT заменяет карту целиком, PATCH сливает. Это не секретные значения.
+- `cas_required` у секрета и на уровне монтирования (`POST /v1/sys/mounts-tune/secret` с `max_versions` / `cas_required`; только для `secret/`, действует на новые секреты и на проверку CAS). Запись без `?cas=` при включённом `cas_required` даёт 400 `{"cas_required": true}`, несовпадение версии — 409.
+- `oldest_version` в метаданных показывает, что версии ниже вытеснены `max_versions` (0 — без ограничения).
+- `GET /v2/secret/metadata/{prefix}?list=true&detailed=true&totals=true` (и LIST): по каждому ключу текущая версия, время/автор последней записи, флаги `deleted`/`destroyed`, `cas_required`; `totals` — число секретов, папок, версий, удалённых и уничтоженных версий. Значения не читаются; ключи без права `read` отдаются как `restricted` и учитываются в `totals.hidden`. Обычный `{"keys": [...]}` без параметров не меняется.
 
 **Cubbyhole** (`/v1/cubbyhole/{path...}`): GET / PUT / DELETE / LIST — приватное хранилище токена.
 

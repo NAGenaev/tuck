@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { isAxiosError } from 'axios'
 
+import type { WrappedCapsule } from '@shared/api/endpoints/wrapping'
+
 /** Circumference of the stage ring (r = 46). */
 export const RING = 289.03
 
 export type Status = 'active' | 'expired' | 'missing' | 'revoked' | 'used'
-export type Op = 'expire' | 'lookup' | 'revoke' | 'unwrap' | 'wrap'
+export type Op = 'lookup' | 'revoke' | 'unwrap' | 'wrap'
 export type Tab = 'look' | 'unwrap' | 'wrap'
 
 /** A capsule this browser session knows about: wrapped here, looked up, unwrapped or revoked. */
@@ -21,35 +23,16 @@ export interface Capsule {
     usedAt?: number
 }
 
-export interface LogRow {
-    fresh?: boolean
-    id: number
-    ok: boolean
-    op: Op
-    t: number
-    text: string
-    token: string
-}
-
 export interface Problem {
     message?: string
     status?: number
 }
 
 export const OP_PATH: Record<Op, string> = {
-    expire: '—',
     lookup: 'sys/wrapping/lookup',
     revoke: 'sys/wrapping/revoke',
     unwrap: 'sys/wrapping/unwrap',
     wrap: 'sys/wrapping/wrap'
-}
-
-export const OP_TONE: Record<Op, 'b' | 'c' | 'g' | 'n'> = {
-    expire: 'n',
-    lookup: 'c',
-    revoke: 'n',
-    unwrap: 'g',
-    wrap: 'b'
 }
 
 export const STATUS_TONE: Record<Status, 'b' | 'g' | 'n' | 'r'> = {
@@ -65,6 +48,17 @@ export function statusOf(c: Capsule | undefined, now: number): Status | undefine
     if (!c) return undefined
     if (c.status === 'active' && c.expires !== undefined && now > c.expires) return 'expired'
     return c.status
+}
+
+/** The stage view of a capsule the server lists (no token: it is only known by its accessor). */
+export function fromServer(c: WrappedCapsule): Capsule {
+    return {
+        created: Date.parse(c.creation_time),
+        expires: Date.parse(c.expires_at),
+        status: 'active',
+        token: '',
+        ttl: c.creation_ttl
+    }
 }
 
 export const short = (t: string) => (t.length > 20 ? `${t.slice(0, 14)}…${t.slice(-4)}` : t)
@@ -119,6 +113,12 @@ export const TEMPLATES = {
 } as const
 
 export type TemplateKey = keyof typeof TEMPLATES
+
+/** 512 B, 1.5 KB ... for a payload size. */
+export function fmtBytes(n: number, unit: string) {
+    if (n < 1024) return `${n} ${unit}`
+    return `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} K${unit}`
+}
 
 export const byteLength = (s: string) => new TextEncoder().encode(s).length
 

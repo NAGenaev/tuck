@@ -19,9 +19,10 @@ const SEAL_MS = 1500
 
 export function WrapPanel({ ctx, hidden }: { ctx: WrapCtx; hidden: boolean }) {
     const { t, i18n } = useTranslation('wrapping')
-    const { addLog, upsert, setCur } = ctx.session
+    const { upsert, setCur } = ctx.session
     const [payload, setPayload] = useState('')
     const [ttl, setTtl] = useState('5m')
+    const [path, setPath] = useState('')
     const [jsonErr, setJsonErr] = useState('')
     const [ttlErr, setTtlErr] = useState('')
     const [jsonShake, setJsonShake] = useState(0)
@@ -29,11 +30,11 @@ export function WrapPanel({ ctx, hidden }: { ctx: WrapCtx; hidden: boolean }) {
     const [result, setResult] = useState<null | { expires: number; token: string; n: number }>(null)
 
     const mutation = useMutation({
-        mutationFn: async (vars: { data: unknown; ttl: string }) => {
+        mutationFn: async (vars: { data: unknown; path: string; ttl: string }) => {
             // hold the sealing animation long enough to read, the request itself is instant
             const hold = prefersReducedMotion() ? 0 : SEAL_MS
             const started = Date.now()
-            const res = await wrap(vars.data, vars.ttl)
+            const res = await wrap(vars.data, vars.ttl, vars.path)
             await new Promise((r) => window.setTimeout(r, Math.max(0, hold - (Date.now() - started))))
             return res
         },
@@ -41,7 +42,6 @@ export function WrapPanel({ ctx, hidden }: { ctx: WrapCtx; hidden: boolean }) {
             ctx.seal(false)
             const p = problemOf(err)
             ctx.setProblem('wrap', p)
-            addLog('wrap', '', false, String(p.status ?? 'net'))
             toast.error(t('toast.error'), t('toast.wrapFailed'))
         },
         onSuccess: (res, vars) => {
@@ -54,7 +54,6 @@ export function WrapPanel({ ctx, hidden }: { ctx: WrapCtx; hidden: boolean }) {
                 ttl: parseTtl(vars.ttl) ?? undefined
             })
             setCur(res.token)
-            addLog('wrap', res.token, true, t('log.created'))
             ctx.seal(false)
             setResult({ expires: Number.isNaN(expires) ? created : expires, n: created, token: res.token })
             toast.success(t('toast.wrapped'), t('toast.wrappedMsg', { ttl: vars.ttl.trim() }))
@@ -80,7 +79,7 @@ export function WrapPanel({ ctx, hidden }: { ctx: WrapCtx; hidden: boolean }) {
         ctx.clearProblem('wrap')
         setResult(null)
         ctx.seal(true)
-        mutation.mutate({ data, ttl: ttl.trim() })
+        mutation.mutate({ data, path: path.trim(), ttl: ttl.trim() })
     }
 
     const pick = (k: TemplateKey) => {
@@ -157,6 +156,22 @@ export function WrapPanel({ ctx, hidden }: { ctx: WrapCtx; hidden: boolean }) {
                     ))}
                 </div>
                 <Msg>{ttlErr}</Msg>
+            </div>
+
+            <div className={styles.field}>
+                <label className={styles.lab} htmlFor="wrap-path">
+                    {t('wrap.path')} <em>{t('wrap.pathHint')}</em>
+                </label>
+                <input
+                    autoComplete="off"
+                    className={styles.inp}
+                    id="wrap-path"
+                    maxLength={256}
+                    onChange={(e) => setPath(e.currentTarget.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && submit()}
+                    placeholder="secret/db/prod"
+                    value={path}
+                />
             </div>
 
             <div className={styles.row}>

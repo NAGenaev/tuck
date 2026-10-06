@@ -18,7 +18,7 @@ const cx = (...p: Array<false | null | string | undefined>) => p.filter(Boolean)
 
 export function LookPanel({ ctx, hidden }: { ctx: WrapCtx; hidden: boolean }) {
     const { t, i18n } = useTranslation('wrapping')
-    const { addLog, now, setCur, upsert } = ctx.session
+    const { now, setCur, upsert } = ctx.session
     const token = ctx.tokens.look.trim()
     const [msg, setMsg] = useState('')
     const [shake, setShake] = useState(0)
@@ -38,7 +38,6 @@ export function LookPanel({ ctx, hidden }: { ctx: WrapCtx; hidden: boolean }) {
             ctx.setProblem('lookup', p)
             ctx.failed(tok, p.status)
             setCur(tok)
-            addLog('lookup', tok, false, p.status === 410 ? t('log.expired') : String(p.status ?? 'net'))
             ctx.shake()
             toast.error(t('toast.error'), t('toast.lookupFailed'))
         },
@@ -52,7 +51,6 @@ export function LookPanel({ ctx, hidden }: { ctx: WrapCtx; hidden: boolean }) {
             })
             setCur(tok)
             ctx.clearProblem('lookup')
-            addLog('lookup', tok, true, t('log.found'))
             setInfo({ ...res, token: tok })
         }
     })
@@ -75,14 +73,12 @@ export function LookPanel({ ctx, hidden }: { ctx: WrapCtx; hidden: boolean }) {
             ctx.setProblem('revoke', p)
             ctx.failed(token, p.status)
             setCur(token)
-            addLog('revoke', token, false, String(p.status ?? 'net'))
             toast.error(t('toast.error'), t('toast.revokeFailed'))
             setConfirm(false)
             return
         }
         upsert(token, { revokedAt: Date.now(), status: 'revoked' })
         setCur(token)
-        addLog('revoke', token, true, t('log.revoked'))
         setInfo(null)
         toast.success(t('toast.revoked'), t('toast.revokedMsg'))
     }

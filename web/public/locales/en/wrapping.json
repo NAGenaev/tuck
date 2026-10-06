@@ -5,9 +5,13 @@
     "h1b": "for one use",
     "lead": "Seal data in a capsule and hand the recipient <b>only the token</b>. It can be unwrapped once, before the TTL runs out. There is no second attempt.",
     "facts": {
-        "wrapped": "wrapped this session",
+        "wrapped": "wrapped",
         "unwrapped": "unwrapped",
-        "active": "active capsules"
+        "expired": "expired",
+        "revoked": "revoked",
+        "active": "active now",
+        "since": "Counters since {{date}}",
+        "denied": "No read access to sys/wrapping/stats: counters unavailable"
     },
     "tabsLabel": "Wrapping tools",
     "tabs": {
@@ -39,7 +43,9 @@
         "expires": "Expires {{date}}",
         "warn": "The token is shown once. Hand it to the recipient over a secure channel: the data is gone after the first unwrap.",
         "errJson": "Invalid JSON: {{message}}",
-        "errTtl": "Invalid TTL. Examples: 30s, 5m, 1h, 1h30m"
+        "errTtl": "Invalid TTL. Examples: 30s, 5m, 1h, 1h30m",
+        "path": "Source",
+        "pathHint": "optional · label in the capsule list"
     },
     "look": {
         "token": "Wrapping token",
@@ -75,7 +81,8 @@
         "none": "— none selected —",
         "status": "Status",
         "created": "Created",
-        "left": "Remaining"
+        "left": "Remaining",
+        "selectedAcc": "Selected capsule (accessor)"
     },
     "status": {
         "none": "no data",
@@ -151,36 +158,30 @@
         "expired": "Capsule expired",
         "expiredMsg": "{{token}}: TTL ran out"
     },
-    "log": {
-        "title": "Session log",
-        "filter": "Filter",
-        "f": {
-            "all": "All",
-            "wrap": "Wrap",
-            "lookup": "Lookup",
-            "unwrap": "Unwrap",
-            "err": "Errors"
-        },
+    "live": {
+        "title": "Live capsules",
+        "refresh": "Refresh",
         "bulk": "Revoke selected",
-        "bulkTitle": "Revoke the selected tokens?",
-        "bulkText": "Active tokens to revoke: {{count}}. Their data will be destroyed.",
-        "bulkNone": "None of the selected tokens are active, nothing to revoke.",
+        "scope": {
+            "own": "my capsules",
+            "all": "all capsules"
+        },
         "selectAll": "Select all",
         "select": "Select",
-        "time": "Time",
-        "op": "Operation",
-        "token": "Token",
-        "path": "Path",
-        "result": "Result",
-        "empty": "Nothing has happened yet. Wrap a secret and the operation shows up here.",
-        "emptyFilter": "No entries match this filter.",
-        "note": "The log lives in this tab only: Tuck keeps no list of wrapping tokens, and the tokens themselves are never stored.",
-        "created": "created",
-        "found": "found",
-        "revoked": "revoked",
-        "expired": "expired",
-        "unwrapped": "unwrapped",
-        "gone": "not found",
-        "failed": "failed"
+        "created": "Created",
+        "accessor": "Accessor",
+        "creator": "Creator",
+        "path": "Source",
+        "size": "Size",
+        "ns": "Namespace",
+        "left": "Left",
+        "actions": "Actions",
+        "revokeOne": "Revoke capsule",
+        "empty": "No live capsules. Wrap a secret and it shows up here.",
+        "loading": "Loading…",
+        "error": "Could not load the capsule list.",
+        "revokeTitle": "Revoke the capsules?",
+        "revokeText": "Capsules to revoke: {{count}}. Their data will be destroyed and they can no longer be unwrapped.",
+        "note": "Server-side list: metadata only, no tokens and no data. An accessor can revoke a capsule but never unwrap it. Refreshes every {{sec}} s, last at {{time}}."
     }
 }

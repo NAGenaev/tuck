@@ -81,7 +81,6 @@ export function Alert({
 }
 
 const CAP: Record<Op, string> = {
-    expire: '',
     lookup: 'update',
     revoke: 'delete',
     unwrap: 'update',

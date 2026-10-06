@@ -208,7 +208,8 @@
 
 .facts {
     display: flex;
-    gap: 28px;
+    flex-wrap: wrap;
+    gap: 14px 28px;
     padding-bottom: 4px;
 }
 
@@ -1340,6 +1341,35 @@
     accent-color: var(--brass);
     width: 15px;
     height: 15px;
+}
+
+.fp {
+    color: var(--dim);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+}
+
+.rowAct {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: transparent;
+    border: 1px solid var(--line2);
+    color: var(--mute);
+    cursor: pointer;
+    transition:
+        color 0.2s,
+        border-color 0.2s,
+        background 0.2s;
+}
+
+.rowAct:hover,
+.rowAct:focus-visible {
+    color: var(--alarm);
+    border-color: var(--alarm);
+    background: rgba(255, 107, 107, 0.08);
 }
 
 .logNote {

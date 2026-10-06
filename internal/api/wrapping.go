@@ -5,13 +5,15 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/NAGenaev/tuck/internal/audit"
 	"github.com/NAGenaev/tuck/internal/wrapping"
 )
 
 // POST /v1/sys/wrapping/wrap
-// Body: {"data": {...}, "ttl": "5m"}
+// Body: {"data": {...}, "ttl": "5m", "creation_path": "optional label"}
 // Response: {"token": "tuck_wrap_...", "expires_at": "..."}
 func (s *Server) wrapPayload(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
@@ -22,6 +24,9 @@ func (s *Server) wrapPayload(w http.ResponseWriter, r *http.Request) {
 	var wire struct {
 		Data json.RawMessage `json:"data"`
 		TTL  string         `json:"ttl"`
+		// CreationPath is an optional free-text label of where the data came from;
+		// it is shown in the wrapped-response list and is never interpreted.
+		CreationPath string `json:"creation_path"`
 	}
 	if err := json.Unmarshal(body, &wire); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -42,7 +47,13 @@ func (s *Server) wrapPayload(w http.ResponseWriter, r *http.Request) {
 		ttl = d
 	}
 
-	token, expiresAt, err := s.core.WrapPayload(r.Context(), wire.Data, ttl)
+	meta := wrapping.Meta{Namespace: nsFromCtx(r.Context()), CreationPath: strings.TrimSpace(wire.CreationPath)}
+	if tok, aerr := s.core.Authenticate(r.Context(), tokenFromCtx(r.Context())); aerr == nil {
+		meta.CreatorAccessor = tok.Accessor
+		meta.CreatorName = tok.DisplayName
+		meta.CreatorFingerprint = audit.Fingerprint(tok.ID)
+	}
+	token, expiresAt, err := s.core.WrapPayloadWithMeta(r.Context(), wire.Data, ttl, meta)
 	if err != nil {
 		writeErr(w, err)
 		return

@@ -18,7 +18,7 @@ const cx = (...p: Array<false | null | string | undefined>) => p.filter(Boolean)
 
 export function UnwrapPanel({ ctx, hidden }: { ctx: WrapCtx; hidden: boolean }) {
     const { t } = useTranslation('wrapping')
-    const { addLog, setCur, upsert } = ctx.session
+    const { setCur, upsert } = ctx.session
     const token = ctx.tokens.unwrap.trim()
     const [msg, setMsg] = useState('')
     const [shake, setShake] = useState(0)
@@ -37,7 +37,6 @@ export function UnwrapPanel({ ctx, hidden }: { ctx: WrapCtx; hidden: boolean }) 
             ctx.setProblem('unwrap', p)
             ctx.failed(tok, p.status)
             setCur(tok)
-            addLog('unwrap', tok, false, p.status === 410 ? t('log.expired') : p.status === 404 ? t('log.gone') : String(p.status ?? 'net'))
             ctx.shake()
             toast.error(t('toast.error'), t('toast.unwrapFailed'))
         },
@@ -46,7 +45,6 @@ export function UnwrapPanel({ ctx, hidden }: { ctx: WrapCtx; hidden: boolean }) 
             upsert(tok, { delivered: ctx.session.capsules[tok]?.delivered ?? now, status: 'used', usedAt: now })
             setCur(tok)
             ctx.clearProblem('unwrap')
-            addLog('unwrap', tok, true, t('log.unwrapped'))
             setRevealed(false)
             setData({ n: now, text: JSON.stringify(res ?? null, null, 2) })
             ctx.playUnwrap()

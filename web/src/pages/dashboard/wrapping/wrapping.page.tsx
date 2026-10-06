@@ -2,6 +2,7 @@
 import { CSSProperties, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 
+import type { WrappedCapsule } from '@shared/api/endpoints/wrapping'
 import { CountUp, prefersReducedMotion } from '@shared/ui/kit'
 import { Page } from '@shared/ui/page/page'
 import { Eyebrow, Pill, Plate, PlateBar } from '@shared/ui/tuck/tuck'
@@ -9,37 +10,45 @@ import { Eyebrow, Pill, Plate, PlateBar } from '@shared/ui/tuck/tuck'
 import { WrapCtx } from './components/ctx'
 import { WIcon } from './components/icons'
 import { Lifecycle } from './components/lifecycle'
-import { LogPlate } from './components/log-plate'
+import { LivePlate } from './components/live-plate'
 import { LookPanel } from './components/look-panel'
 import { rich, TokBox } from './components/parts'
 import { Stage, StageState } from './components/stage'
 import { UnwrapPanel } from './components/unwrap-panel'
 import { WrapPanel } from './components/wrap-panel'
 import {
+    Capsule,
     clock,
     fmtDate,
     fmtLeft,
+    fromServer,
     Op,
     Particle,
     Problem,
     randomParticles,
     RING,
     STATUS_TONE,
+    Status,
     statusOf,
     Tab
 } from './lib'
 import { useSession } from './use-session'
+import { useWrapped } from './use-wrapped'
 import styles from './wrapping.module.css'
 
 const cx = (...p: Array<false | null | string | undefined>) => p.filter(Boolean).join(' ')
 const d = (n: number) => ({ '--d': n }) as CSSProperties
 
 const TABS: Tab[] = ['wrap', 'look', 'unwrap']
+const FACTS = ['wrapped', 'unwrapped', 'expired', 'revoked', 'active'] as const
 
 export function WrappingPage() {
     const { t, i18n } = useTranslation('wrapping')
     const session = useSession()
+    const wrapped = useWrapped()
     const { capsules, cur, now, setCur, upsert } = session
+    // a row of the server-side list picked for the stage; it has no token, only an accessor
+    const [pick, setPick] = useState<null | { gone?: Status; goneAt?: number; snap: WrappedCapsule }>(null)
 
     const [tab, setTab] = useState<Tab>('wrap')
     const [tokens, setTokens] = useState({ look: '', unwrap: '' })
@@ -53,6 +62,10 @@ export function WrappingPage() {
     const later = useCallback((fn: () => void, ms: number) => {
         timers.current.push(window.setTimeout(fn, ms))
     }, [])
+
+    useEffect(() => {
+        if (cur) setPick(null)
+    }, [cur])
 
     useEffect(() => {
         const list = timers.current
@@ -110,7 +123,17 @@ export function WrappingPage() {
         [capsules, later, problems, session, setCur, tokens, upsert]
     )
 
-    const capsule = cur ? capsules[cur] : undefined
+    const listed = pick ? wrapped.capsules.find((c) => c.accessor === pick.snap.accessor) : undefined
+    let capsule: Capsule | undefined
+    if (cur) capsule = capsules[cur]
+    else if (pick) {
+        capsule = fromServer(listed ?? pick.snap)
+        // no longer listed: revoked from here, otherwise the clock or another consumer ended it
+        if (!listed) {
+            capsule.status = pick.gone ?? (now > (capsule.expires ?? 0) ? 'expired' : 'missing')
+            if (pick.gone === 'revoked') capsule.revokedAt = pick.goneAt
+        }
+    }
     const status = statusOf(capsule, now)
     const left = capsule?.expires !== undefined ? capsule.expires - now : 0
     const total = capsule?.expires !== undefined && capsule.created !== undefined ? capsule.expires - capsule.created : 0
@@ -126,10 +149,11 @@ export function WrappingPage() {
     const active = status === 'active' && !override
     const offset = active && total > 0 ? Math.min(RING, Math.max(0, RING * (1 - left / total))) : 0
 
-    const caps = Object.values(capsules)
-    const wrapped = caps.filter((c) => c.created !== undefined).length
-    const unwrapped = caps.filter((c) => c.status === 'used').length
-    const live = caps.filter((c) => statusOf(c, now) === 'active').length
+    // real counters from the server; without the stats capability only the live count is known
+    const st = wrapped.stats
+    const fact = (k: (typeof FACTS)[number]): null | number =>
+        k === 'active' ? (st ? st.active : wrapped.error ? null : wrapped.capsules.length) : st ? st[k] : null
+    const sinceTitle = st ? t('facts.since', { date: fmtDate(Date.parse(st.since), i18n.language) }) : wrapped.statsDenied ? t('facts.denied') : undefined
 
     const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
         const i = TABS.indexOf(tab)
@@ -158,25 +182,15 @@ export function WrappingPage() {
                             <Trans components={rich} i18nKey="lead" ns="wrapping" />
                         </p>
                     </div>
-                    <div className={cx(styles.facts, styles.rv)} style={d(4)}>
-                        <div>
-                            <b>
-                                <CountUp value={wrapped} />
-                            </b>
-                            {t('facts.wrapped')}
-                        </div>
-                        <div>
-                            <b>
-                                <CountUp value={unwrapped} />
-                            </b>
-                            {t('facts.unwrapped')}
-                        </div>
-                        <div>
-                            <b>
-                                <CountUp value={live} />
-                            </b>
-                            {t('facts.active')}
-                        </div>
+                    <div className={cx(styles.facts, styles.rv)} style={d(4)} title={sinceTitle}>
+                        {FACTS.map((k) => (
+                            <div key={k}>
+                                <b>
+                                    {fact(k) === null ? '—' : <CountUp value={fact(k) ?? 0} />}
+                                </b>
+                                {t(`facts.${k}`)}
+                            </div>
+                        ))}
                     </div>
                 </div>
 
@@ -227,10 +241,10 @@ export function WrappingPage() {
                             />
                             <div className={styles.meta}>
                                 <div className={styles.lab} style={{ marginBottom: 8 }}>
-                                    {t('meta.selected')}
+                                    {t(cur || !pick ? 'meta.selected' : 'meta.selectedAcc')}
                                 </div>
                                 <div style={{ marginBottom: 14 }}>
-                                    <TokBox emptyText={t('meta.none')} value={cur} />
+                                    <TokBox emptyText={t('meta.none')} value={cur ?? pick?.snap.accessor} />
                                 </div>
                                 <dl className={styles.dl}>
                                     <div>
@@ -262,7 +276,19 @@ export function WrappingPage() {
                 </div>
 
                 <div className={styles.rv} style={d(7)}>
-                    <LogPlate session={session} />
+                    <LivePlate
+                        now={now}
+                        onRevoked={(accs) => {
+                            if (pick && accs.includes(pick.snap.accessor))
+                                setPick({ ...pick, gone: 'revoked', goneAt: Date.now() })
+                        }}
+                        onSelect={(c) => {
+                            setCur(null)
+                            setPick({ snap: c })
+                        }}
+                        selected={cur ? null : (pick?.snap.accessor ?? null)}
+                        wrapped={wrapped}
+                    />
                 </div>
             </div>
         </Page>

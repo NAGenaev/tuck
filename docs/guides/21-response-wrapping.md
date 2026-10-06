@@ -58,6 +58,38 @@ curl -k -X POST "$env:TUCK_ADDR/v1/sys/wrapping/lookup" `
 | unwrap | `data` с исходным payload |
 | повторный unwrap | 404 |
 
+### 6. Список живых капсул (без токенов)
+
+`GET /v1/sys/wrapping/list` возвращает метаданные живых wrapped-ответов: `accessor`
+(НЕ unwrap-токен — только отзыв), время создания/истечения, TTL, размер payload,
+namespace, личность создателя (accessor/отпечаток/имя токена) и `creation_path`,
+если он был указан при `wrap` (`creation_path` в теле запроса). Токен и payload
+никогда не возвращаются. Обычный caller видит только свои капсулы (`scope: "own"`);
+caller с правом `list` на `sys/wrapping/list` (root) видит все (`scope: "all"`),
+в пределах текущего namespace.
+
+```powershell
+curl -k "$env:TUCK_ADDR/v1/sys/wrapping/list" -H "X-Tuck-Token: $env:TUCK_TOKEN"
+```
+
+### 7. Отзыв по accessor
+
+Отзывает капсулу без необходимости знать wrapping token (список её не содержит):
+
+```powershell
+curl -k -X DELETE "$env:TUCK_ADDR/v1/sys/wrapping/revoke-accessor/$accessor" `
+  -H "X-Tuck-Token: $env:TUCK_TOKEN"
+```
+
+Чужая капсула или несуществующий accessor — `404` (как и для несуществующего
+accessor), чтобы не раскрывать существование чужих капсул.
+
+### 8. Счётчики
+
+`GET /v1/sys/wrapping/stats` (нужен `read` на `sys/wrapping/stats`) — счётчики за
+всё время работы сервера (переживают перезапуск): `wrapped`, `unwrapped`,
+`expired`, `revoked`, текущее число живых капсул `active`, `since`.
+
 ## Типичные сценарии
 
 - Передача credentials при onboarding нового admin

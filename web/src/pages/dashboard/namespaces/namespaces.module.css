@@ -111,20 +111,11 @@
 /* ---------- metrics ---------- */
 .metrics {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 1px;
     background: var(--line);
     border: 1px solid var(--line);
     margin-bottom: 22px;
-}
-
-@media (max-width: 640px) {
-    .metrics {
-        grid-template-columns: 1fr 1fr;
-    }
-    .metrics > :last-child {
-        grid-column: 1 / -1;
-    }
 }
 
 .metric {
@@ -794,6 +785,134 @@
 
 .warn b {
     color: var(--alarm);
+}
+
+/* ---------- metadata and counters ---------- */
+.desc {
+    margin: 0;
+    font: 500 12px / 1.5 var(--body);
+    color: var(--mute);
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.counts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+}
+
+.counts div {
+    background: var(--vault);
+    padding: 9px 12px;
+    min-width: 0;
+}
+
+.counts small {
+    display: block;
+    font: 600 9px var(--label);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.counts b {
+    font: 700 18px var(--disp);
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+}
+
+.partial {
+    margin: 0;
+    font: 500 11px var(--mono);
+    color: var(--dim);
+}
+
+.labels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.labels span {
+    font: 500 11px var(--mono);
+    color: var(--mute);
+    border: 1px solid var(--line2);
+    padding: 2px 8px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.labels em {
+    font-style: normal;
+    color: var(--brassL);
+}
+
+.rowWide {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) repeat(4, 72px) auto auto;
+}
+
+.cOwner {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cNum {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 900px) {
+    .rowWide {
+        grid-template-columns: minmax(0, 1fr) auto auto;
+    }
+    .cOwner,
+    .cStat {
+        display: none;
+    }
+}
+
+.ta {
+    resize: vertical;
+    min-height: 56px;
+    font-family: var(--mono);
+}
+
+.delList {
+    list-style: none;
+    margin: 12px 0 0;
+    padding: 0;
+    display: grid;
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+}
+
+.delList li {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    background: var(--vault);
+    padding: 8px 12px;
+    font: 500 12px var(--mono);
+    color: var(--mute);
+}
+
+.delList b {
+    color: var(--bone);
+    font-variant-numeric: tabular-nums;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -6,17 +6,27 @@ import { CSSProperties, FormEvent, ReactNode, useEffect, useMemo, useState } fro
 import { Trans, useTranslation } from 'react-i18next'
 
 import { lookupSelf } from '@shared/api/endpoints/auth'
-import { createNamespace, deleteNamespace, listNamespaces } from '@shared/api/endpoints/namespace'
+import {
+    createNamespace,
+    deleteNamespace,
+    listNamespaceDetails,
+    NamespaceStats,
+    NamespaceView,
+    updateNamespace
+} from '@shared/api/endpoints/namespace'
 import { getNamespace, setNamespace } from '@shared/auth/token'
 import {
     ConfirmModal,
     CopyButton,
     CountUp,
     Icon,
+    KeyValueEditor,
+    KvPair,
     Modal,
     SkeletonLine,
     StateBlock,
-    toast
+    toast,
+    validateKv
 } from '@shared/ui/kit'
 import { Page } from '@shared/ui/page/page'
 import { Eyebrow, Pill } from '@shared/ui/tuck/tuck'
@@ -26,6 +36,11 @@ import styles from './namespaces.module.css'
 // Mirrors internal/namespace: ^[a-z0-9][a-z0-9-]*$ and not "root".
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/
 const VIEW_KEY = 'tuck.ns.view'
+// Mirrors namespace.Max* on the server.
+const MAX_DESC = 512
+const MAX_OWNER = 128
+const MAX_LABELS = 32
+const LABEL_KEY_RE = /^[A-Za-z0-9][A-Za-z0-9_./-]{0,63}$/
 
 type View = 'cards' | 'list'
 
@@ -53,6 +68,73 @@ function serverMessage(err: unknown): string | undefined {
         return d?.error
     }
     return undefined
+}
+
+const STAT_KEYS = ['secrets', 'tokens', 'policies', 'auth_roles'] as const
+type StatKey = (typeof STAT_KEYS)[number]
+
+/** Sum of one counter over namespaces; undefined when any of them hides it. */
+function sumStat(items: NamespaceView[], key: StatKey): number | undefined {
+    let total = 0
+    for (const n of items) {
+        const v = n.stats?.[key]
+        if (v === undefined) return undefined
+        total += v
+    }
+    return items.length ? total : undefined
+}
+
+function pairsOf(labels?: Record<string, string>): KvPair[] {
+    return Object.entries(labels ?? {})
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, value]) => ({ key, value }))
+}
+
+function labelsOf(pairs: KvPair[]): Record<string, string> {
+    const out: Record<string, string> = {}
+    for (const p of pairs) {
+        const k = p.key.trim()
+        if (k) out[k] = p.value
+    }
+    return out
+}
+
+/** What lives in a namespace about to be deleted (only the counters the caller may see). */
+function DeleteImpact({ stats }: { stats?: NamespaceStats }) {
+    const { t } = useTranslation('namespaces')
+    if (!stats) return null
+    const shown = STAT_KEYS.filter((k) => stats[k] !== undefined)
+    if (shown.length === 0) return null
+    return (
+        <ul className={styles.delList}>
+            {shown.map((k) => (
+                <li key={k}>
+                    <span>{t(`counts.${k}`)}</span>
+                    <b>{stats[k]}</b>
+                </li>
+            ))}
+        </ul>
+    )
+}
+
+/** Counters of one namespace; a counter the caller may not see is not rendered at all. */
+function Counts({ stats }: { stats?: NamespaceStats }) {
+    const { t } = useTranslation('namespaces')
+    if (!stats) return null
+    const shown = STAT_KEYS.filter((k) => stats[k] !== undefined)
+    if (shown.length === 0) return null
+    return (
+        <div className={styles.counts}>
+            {shown.map((k) => (
+                <div key={k}>
+                    <small>{t(`counts.${k}`)}</small>
+                    <b>
+                        <CountUp value={stats[k] as number} />
+                    </b>
+                </div>
+            ))}
+        </div>
+    )
 }
 
 function NsName({ name }: { name: string }) {
@@ -123,6 +205,10 @@ export function NamespacesPage() {
     const [view, setView] = useState<View>(readView)
     const [creating, setCreating] = useState(false)
     const [name, setName] = useState('')
+    const [description, setDescription] = useState('')
+    const [owner, setOwner] = useState('')
+    const [labels, setLabels] = useState<KvPair[]>([])
+    const [editing, setEditing] = useState<null | string>(null)
     const [serverErr, setServerErr] = useState('')
     const [toDelete, setToDelete] = useState<null | string>(null)
     const [dying, setDying] = useState<null | string>(null)
@@ -131,24 +217,50 @@ export function NamespacesPage() {
     const current = getNamespace() ?? ''
 
     const {
-        data: namespaces,
+        data: details,
         error,
         isError,
         isFetching,
         isLoading,
         refetch
     } = useQuery({
-        queryKey: ['namespaces', 'list'],
-        queryFn: listNamespaces,
+        // a separate key from the shell switcher's name-only ['namespaces','list']
+        queryKey: ['namespaces', 'details'],
+        queryFn: () => listNamespaceDetails(true),
         retry: (count, err) => !(isAxiosError(err) && err.response?.status === 403) && count < 2
     })
-    const { data: self } = useQuery({ queryKey: ['auth', 'lookup-self'], queryFn: lookupSelf, staleTime: 60_000 })
+    const { data: self } = useQuery({
+        queryKey: ['auth', 'lookup-self'],
+        queryFn: lookupSelf,
+        staleTime: 60_000
+    })
     const bound = (self as { namespace?: string } | undefined)?.namespace ?? ''
 
     const forbidden = isError && isAxiosError(error) && error.response?.status === 403
-    const all = useMemo(() => [...(namespaces ?? [])].sort(), [namespaces])
+    const items = useMemo(() => [...(details ?? [])].sort((a, b) => a.name.localeCompare(b.name)), [details])
+    const all = useMemo(() => items.map((n) => n.name), [items])
     const filter = q.trim().toLowerCase()
-    const list = useMemo(() => all.filter((n) => !filter || n.includes(filter)), [all, filter])
+    const listItems = useMemo(
+        () =>
+            items.filter(
+                (n) =>
+                    !filter ||
+                    n.name.includes(filter) ||
+                    (n.owner ?? '').toLowerCase().includes(filter) ||
+                    (n.description ?? '').toLowerCase().includes(filter) ||
+                    Object.entries(n.labels ?? {}).some(([k, v]) => `${k}=${v}`.toLowerCase().includes(filter))
+            ),
+        [items, filter]
+    )
+    const list = useMemo(() => listItems.map((n) => n.name), [listItems])
+    const byName = useMemo(() => new Map(items.map((n) => [n.name, n])), [items])
+    const totals = useMemo(
+        () => ({
+            secrets: sumStat(items, 'secrets'),
+            tokens: sumStat(items, 'tokens')
+        }),
+        [items]
+    )
 
     // --- create ---
     const trimmed = name.trim()
@@ -160,8 +272,16 @@ export function NamespacesPage() {
     }
     const shownErr = nameErr || serverErr
 
+    const kvCheck = validateKv(labels, LABEL_KEY_RE)
+    const metaErr = description.length > MAX_DESC || owner.length > MAX_OWNER || !kvCheck.valid
+    const meta = () => ({
+        description: description.trim(),
+        owner: owner.trim(),
+        labels: labelsOf(labels)
+    })
+
     const createMutation = useMutation({
-        mutationFn: () => createNamespace(trimmed),
+        mutationFn: () => createNamespace(trimmed, meta()),
         onSuccess: async () => {
             const created = trimmed
             setCreating(false)
@@ -169,7 +289,7 @@ export function NamespacesPage() {
             setQ('')
             setFresh(created)
             toast.success(t('toast.created'), t('toast.createdMsg', { name: created }))
-            await queryClient.invalidateQueries({ queryKey: ['namespaces', 'list'] })
+            await queryClient.invalidateQueries({ queryKey: ['namespaces'] })
         },
         onError: (err) => {
             const msg = serverMessage(err)
@@ -178,17 +298,52 @@ export function NamespacesPage() {
         }
     })
 
+    const resetMeta = (n?: NamespaceView) => {
+        setDescription(n?.description ?? '')
+        setOwner(n?.owner ?? '')
+        setLabels(pairsOf(n?.labels))
+    }
+
     const openCreate = () => {
         setName('')
+        resetMeta()
         setServerErr('')
         setCreating(true)
     }
 
     const submitCreate = (e?: FormEvent) => {
         e?.preventDefault()
-        if (!trimmed || nameErr || createMutation.isPending) return
+        if (!trimmed || nameErr || metaErr || createMutation.isPending) return
         setServerErr('')
         createMutation.mutate()
+    }
+
+    // --- edit metadata ---
+    const openEdit = (ns: string) => {
+        resetMeta(byName.get(ns))
+        setServerErr('')
+        setEditing(ns)
+    }
+
+    const editMutation = useMutation({
+        mutationFn: (ns: string) => updateNamespace(ns, meta()),
+        onSuccess: async (_d, ns) => {
+            setEditing(null)
+            toast.success(t('toast.updated'), t('toast.updatedMsg', { name: ns }))
+            await queryClient.invalidateQueries({ queryKey: ['namespaces'] })
+        },
+        onError: (err) => {
+            const msg = serverMessage(err)
+            setServerErr(msg ?? '')
+            toast.error(t('toast.updateFailed'), msg)
+        }
+    })
+
+    const submitEdit = (e?: FormEvent) => {
+        e?.preventDefault()
+        if (!editing || metaErr || editMutation.isPending) return
+        setServerErr('')
+        editMutation.mutate(editing)
     }
 
     useEffect(() => {
@@ -196,7 +351,10 @@ export function NamespacesPage() {
         const el = document.querySelector(`[data-ns="${CSS.escape(fresh)}"]`)
         if (el) {
             const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-            el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' })
+            el.scrollIntoView({
+                block: 'center',
+                behavior: reduce ? 'auto' : 'smooth'
+            })
             const id = window.setTimeout(() => setFresh(null), 2200)
             return () => window.clearTimeout(id)
         }
@@ -220,7 +378,7 @@ export function NamespacesPage() {
             window.location.reload()
             return
         }
-        await queryClient.invalidateQueries({ queryKey: ['namespaces', 'list'] })
+        await queryClient.invalidateQueries({ queryKey: ['namespaces'] })
         setDying(null)
     }
 
@@ -251,6 +409,15 @@ export function NamespacesPage() {
                 type="button"
             >
                 <SwitchIcon />
+            </button>
+            <button
+                aria-label={t('card.edit', { name: ns })}
+                className={styles.ib}
+                onClick={() => openEdit(ns)}
+                title={t('card.edit', { name: ns })}
+                type="button"
+            >
+                <Icon name="gear" size={15} />
             </button>
             <CopyButton label={t('card.copy')} size={32} value={ns} />
             <button
@@ -370,82 +537,163 @@ export function NamespacesPage() {
                     </div>
                 ) : view === 'cards' ? (
                     <div className={styles.grid}>
-                        {list.map((ns, i) => (
-                            <article
-                                className={cx(
-                                    styles.ns,
-                                    ns === current && styles.sel,
-                                    dying === ns && styles.dying,
-                                    fresh === ns && styles.fresh
-                                )}
-                                data-ns={ns}
-                                key={ns}
-                                style={{ '--i': Math.min(i, 12) } as CSSProperties}
-                            >
-                                <div className={styles.top}>
-                                    <div className={styles.topText}>
-                                        <div className={styles.path}>
-                                            <NsName name={ns} />
+                        {listItems.map((item, i) => {
+                            const ns = item.name
+                            return (
+                                <article
+                                    className={cx(
+                                        styles.ns,
+                                        ns === current && styles.sel,
+                                        dying === ns && styles.dying,
+                                        fresh === ns && styles.fresh
+                                    )}
+                                    data-ns={ns}
+                                    key={ns}
+                                    style={{ '--i': Math.min(i, 12) } as CSSProperties}
+                                >
+                                    <div className={styles.top}>
+                                        <div className={styles.topText}>
+                                            <div className={styles.path}>
+                                                <NsName name={ns} />
+                                            </div>
+                                            <div className={styles.meta}>
+                                                {item.owner
+                                                    ? `${t('card.owner')}: ${item.owner}`
+                                                    : `X-Tuck-Namespace: ${ns}`}
+                                            </div>
                                         </div>
-                                        <div className={styles.meta}>X-Tuck-Namespace: {ns}</div>
+                                        <div className={styles.acts}>{actions(ns)}</div>
                                     </div>
-                                    <div className={styles.acts}>{actions(ns)}</div>
-                                </div>
-                                {ns === current && (
-                                    <div>
-                                        <Pill dot tone="ok">
-                                            {t('card.current')}
-                                        </Pill>
+                                    {ns === current && (
+                                        <div>
+                                            <Pill dot tone="ok">
+                                                {t('card.current')}
+                                            </Pill>
+                                        </div>
+                                    )}
+                                    {item.description && <p className={styles.desc}>{item.description}</p>}
+                                    <Counts stats={item.stats} />
+                                    {item.stats?.truncated && <p className={styles.partial}>{t('card.partial')}</p>}
+                                    {Object.keys(item.labels ?? {}).length > 0 && (
+                                        <div className={styles.labels}>
+                                            {pairsOf(item.labels)
+                                                .slice(0, 6)
+                                                .map((l) => (
+                                                    <span key={l.key} title={`${l.key}=${l.value}`}>
+                                                        {l.key}
+                                                        {l.value && <em>={l.value}</em>}
+                                                    </span>
+                                                ))}
+                                            {Object.keys(item.labels ?? {}).length > 6 && (
+                                                <span>+{Object.keys(item.labels ?? {}).length - 6}</span>
+                                            )}
+                                        </div>
+                                    )}
+                                    <div className={styles.iso}>
+                                        <MiniIso />
+                                        <p>
+                                            <Trans components={rich} i18nKey="card.isolated" ns="namespaces" />
+                                        </p>
                                     </div>
-                                )}
-                                <div className={styles.iso}>
-                                    <MiniIso />
-                                    <p>
-                                        <Trans components={rich} i18nKey="card.isolated" ns="namespaces" />
-                                    </p>
-                                </div>
-                            </article>
-                        ))}
+                                </article>
+                            )
+                        })}
                     </div>
                 ) : (
                     <div className={styles.list}>
-                        <div className={cx(styles.row, styles.head)}>
+                        <div className={cx(styles.row, styles.rowWide, styles.head)}>
                             <span>{t('list.name')}</span>
+                            <span className={styles.cOwner}>{t('list.owner')}</span>
+                            {STAT_KEYS.map((k) => (
+                                <span className={cx(styles.cNum, styles.cStat)} key={k}>
+                                    {t(`counts.${k}`)}
+                                </span>
+                            ))}
                             <span />
                             <span />
                         </div>
-                        {list.map((ns) => (
-                            <div
-                                className={cx(
-                                    styles.row,
-                                    ns === current && styles.sel,
-                                    dying === ns && styles.dying,
-                                    fresh === ns && styles.fresh
-                                )}
-                                data-ns={ns}
-                                key={ns}
-                            >
-                                <span className={styles.nm}>
-                                    <i className={styles.dot} />
-                                    <span className={styles.path}>
-                                        <NsName name={ns} />
-                                    </span>
-                                </span>
-                                <span>
-                                    {ns === current && (
-                                        <Pill dot tone="ok">
-                                            {t('card.current')}
-                                        </Pill>
+                        {listItems.map((item) => {
+                            const ns = item.name
+                            return (
+                                <div
+                                    className={cx(
+                                        styles.row,
+                                        styles.rowWide,
+                                        ns === current && styles.sel,
+                                        dying === ns && styles.dying,
+                                        fresh === ns && styles.fresh
                                     )}
-                                </span>
-                                <span className={styles.rowActs}>{actions(ns)}</span>
-                            </div>
-                        ))}
+                                    data-ns={ns}
+                                    key={ns}
+                                >
+                                    <span className={styles.nm}>
+                                        <i className={styles.dot} />
+                                        <span className={styles.path}>
+                                            <NsName name={ns} />
+                                        </span>
+                                    </span>
+                                    <span className={styles.cOwner} title={item.description || undefined}>
+                                        {item.owner || '—'}
+                                    </span>
+                                    {STAT_KEYS.map((k) => (
+                                        <span className={cx(styles.cNum, styles.cStat)} key={k}>
+                                            {item.stats?.[k] ?? '—'}
+                                        </span>
+                                    ))}
+                                    <span>
+                                        {ns === current && (
+                                            <Pill dot tone="ok">
+                                                {t('card.current')}
+                                            </Pill>
+                                        )}
+                                    </span>
+                                    <span className={styles.rowActs}>{actions(ns)}</span>
+                                </div>
+                            )
+                        })}
                     </div>
                 )}
             </>
         )
     }
+
+    const metaFields = (
+        <>
+            <div className={styles.fld}>
+                <label htmlFor="ns-owner">{t('meta.owner')}</label>
+                <input
+                    autoComplete="off"
+                    className={cx(styles.inp, owner.length > MAX_OWNER && styles.bad)}
+                    id="ns-owner"
+                    onChange={(e) => setOwner(e.currentTarget.value)}
+                    placeholder={t('meta.ownerPlaceholder')}
+                    value={owner}
+                />
+            </div>
+            <div className={styles.fld}>
+                <label htmlFor="ns-desc">{t('meta.description')}</label>
+                <textarea
+                    className={cx(styles.inp, styles.ta, description.length > MAX_DESC && styles.bad)}
+                    id="ns-desc"
+                    onChange={(e) => setDescription(e.currentTarget.value)}
+                    placeholder={t('meta.descriptionPlaceholder')}
+                    rows={2}
+                    value={description}
+                />
+                {description.length > MAX_DESC && (
+                    <p className={styles.err}>{t('meta.descTooLong', { max: MAX_DESC })}</p>
+                )}
+            </div>
+            <KeyValueEditor
+                addLabel={t('meta.addLabel')}
+                keyPattern={LABEL_KEY_RE}
+                label={t('meta.labels')}
+                maxPairs={MAX_LABELS}
+                onChange={setLabels}
+                value={labels}
+            />
+        </>
+    )
 
     return (
         <Page title={t('title')}>
@@ -501,6 +749,24 @@ export function NamespacesPage() {
                         </strong>
                         <em>{t('metrics.shownHint')}</em>
                     </div>
+                    {totals.secrets !== undefined && (
+                        <div className={styles.metric}>
+                            <small>{t('metrics.secrets')}</small>
+                            <strong>
+                                <CountUp value={totals.secrets} />
+                            </strong>
+                            <em>{t('metrics.secretsHint')}</em>
+                        </div>
+                    )}
+                    {totals.tokens !== undefined && (
+                        <div className={styles.metric}>
+                            <small>{t('metrics.tokens')}</small>
+                            <strong>
+                                <CountUp value={totals.tokens} />
+                            </strong>
+                            <em>{t('metrics.tokensHint')}</em>
+                        </div>
+                    )}
                     <div className={styles.metric}>
                         <small>{t('metrics.current')}</small>
                         <strong className={styles.mono} title={current || t('ctx.root')}>
@@ -559,7 +825,7 @@ export function NamespacesPage() {
                             {t('createModal.cancel')}
                         </Button>
                         <Button
-                            disabled={!trimmed || !!nameErr}
+                            disabled={!trimmed || !!nameErr || metaErr}
                             loading={createMutation.isPending}
                             onClick={() => submitCreate()}
                         >
@@ -595,6 +861,31 @@ export function NamespacesPage() {
                     <div className={styles.prev}>
                         {t('createModal.preview')} <b>{trimmed || t('createModal.placeholder')}</b>
                     </div>
+                    {metaFields}
+                </form>
+            </Modal>
+
+            <Modal
+                busy={editMutation.isPending}
+                footer={
+                    <>
+                        <Button disabled={editMutation.isPending} onClick={() => setEditing(null)} variant="default">
+                            {t('editModal.cancel')}
+                        </Button>
+                        <Button disabled={metaErr} loading={editMutation.isPending} onClick={() => submitEdit()}>
+                            {t('editModal.submit')}
+                        </Button>
+                    </>
+                }
+                icon="gear"
+                onClose={() => setEditing(null)}
+                opened={editing !== null}
+                title={t('editModal.title')}
+            >
+                <form className={styles.form} noValidate onSubmit={submitEdit}>
+                    <p className={styles.hint}>{t('editModal.hint', { name: editing ?? '' })}</p>
+                    {metaFields}
+                    {serverErr && <p className={styles.err}>{serverErr}</p>}
                 </form>
             </Modal>
 
@@ -604,6 +895,7 @@ export function NamespacesPage() {
                     toDelete && (
                         <>
                             {t('deleteModal.message', { name: toDelete })}
+                            <DeleteImpact stats={byName.get(toDelete)?.stats} />
                             <div className={styles.warn}>
                                 <b>{t('deleteModal.warnTitle')}</b> {t('deleteModal.warn')}
                                 {toDelete === current && (

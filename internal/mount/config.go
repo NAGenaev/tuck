@@ -26,6 +26,12 @@ type Config struct {
 	PassthroughRequestHeaders []string `json:"passthrough_request_headers,omitempty"`
 	// Description is a human-readable label; mirrors Entry.Description if unset.
 	Description string `json:"description,omitempty"`
+	// MaxVersions and CASRequired are KV v2 options, honoured on the "secret/"
+	// mount: MaxVersions seeds max_versions of newly created secrets (0 = the
+	// built-in default of 10) and CASRequired demands a cas parameter on every
+	// KV v2 write.
+	MaxVersions int  `json:"max_versions,omitempty"`
+	CASRequired bool `json:"cas_required,omitempty"`
 	// UpdatedAt is the last time this config was written.
 	UpdatedAt time.Time `json:"updated_at"`
 }

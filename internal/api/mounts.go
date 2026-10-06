@@ -23,7 +23,21 @@ func (s *Server) listMounts(w http.ResponseWriter, r *http.Request) {
 	if entries == nil {
 		entries = []*mount.Entry{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"mounts": entries})
+	resp := map[string]any{"mounts": entries}
+	if r.URL.Query().Get("stats") == "true" {
+		// Additive: counters keyed by mount path, limited to what the caller may list.
+		stats := make(map[string]*mountStats, len(entries))
+		for _, e := range entries {
+			st, err := s.mountStatsFor(r.Context(), e)
+			if err != nil {
+				writeErr(w, err)
+				return
+			}
+			stats[e.Path] = st
+		}
+		resp["stats"] = stats
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // POST /v1/sys/mounts/{path...}

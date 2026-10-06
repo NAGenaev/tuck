@@ -17,6 +17,7 @@ func (s *Server) createNamespace(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Name string `json:"name"`
+		namespace.Metadata
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes)).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -26,9 +27,9 @@ func (s *Server) createNamespace(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
 		return
 	}
-	ns, err := s.core.CreateNamespace(r.Context(), body.Name)
+	ns, err := s.core.CreateNamespaceWithMetadata(r.Context(), body.Name, body.Metadata)
 	if err != nil {
-		if errors.Is(err, namespace.ErrInvalidName) {
+		if errors.Is(err, namespace.ErrInvalidName) || errors.Is(err, namespace.ErrInvalidMetadata) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
@@ -85,5 +86,14 @@ func (s *Server) listNamespaces(w http.ResponseWriter, r *http.Request) {
 	if names == nil {
 		names = []string{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"keys": names})
+	resp := map[string]any{"keys": names}
+	// Additive: per-namespace metadata, and with ?stats=true the object counts
+	// (limited to what the caller may list).
+	details, err := s.namespaceDetails(r.Context(), names, r.URL.Query().Get("stats") == "true")
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	resp["namespaces"] = details
+	writeJSON(w, http.StatusOK, resp)
 }

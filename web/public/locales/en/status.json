@@ -100,7 +100,8 @@
     "stable": "unchanged since the page was opened",
     "noSealed": "no data: the vault is sealed",
     "noError": "no data: request failed",
-    "total": "total entries: {{n}}"
+    "total": "total entries: {{n}}",
+    "secrets": "KV secrets"
   },
   "ha": {
     "eyebrow": "High availability",

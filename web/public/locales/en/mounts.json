@@ -47,7 +47,23 @@
     "api": "Tuning API",
     "loadFailed": "could not be read",
     "copyPath": "Copy path",
-    "tune": "Tune"
+    "tune": "Tune",
+    "counts": {
+      "secrets": "Secrets",
+      "versions": "Versions",
+      "deletedVersions": "Deleted versions",
+      "destroyedVersions": "Destroyed versions",
+      "roles": "Roles",
+      "connections": "Connections",
+      "issuedCerts": "Issued certificates",
+      "leases": "Active leases",
+      "tokens": "Tokens"
+    },
+    "lastWrite": "Last write",
+    "data": "Data",
+    "tableOnly": "A mount-table entry without an engine: nothing is stored under this path.",
+    "partial": "More secrets than the scan limit: the version figures are approximate.",
+    "hidden": "Secrets whose metadata you cannot read: {{count}}. They are left out of the version figures."
   },
   "section": {
     "all": "All mounts",
@@ -96,16 +112,56 @@
     "intro": "Mount a new secrets engine or auth method at any path. Existing mounts are not affected. TTLs and other settings are tuned after mounting.",
     "catalogLabel": "Engine catalog",
     "types": {
-      "kv": { "name": "KV", "desc": "Key-value store for application secrets.", "tag": "secrets" },
-      "transit": { "name": "Transit", "desc": "Encryption as a service: the app never sees the key.", "tag": "stores no data" },
-      "database": { "name": "Database", "desc": "Dynamic credentials for databases.", "tag": "dynamic secrets" },
-      "kubernetes": { "name": "Kubernetes", "desc": "ServiceAccount login through TokenReview.", "tag": "auth · clusters" },
-      "approle": { "name": "AppRole", "desc": "Machine login with role_id and secret_id for CI/CD.", "tag": "auth · machines" },
-      "jwt": { "name": "JWT / OIDC", "desc": "Login with a JWT from the corporate identity provider.", "tag": "auth · SSO" },
-      "pki": { "name": "PKI", "desc": "Certificates from your own CA for internal use (mTLS, tests).", "tag": "experimental" },
-      "ssh": { "name": "SSH", "desc": "Signed SSH certificates for host access.", "tag": "experimental" },
-      "totp": { "name": "TOTP", "desc": "Generate and verify one-time codes (RFC 6238).", "tag": "experimental" },
-      "custom": { "name": "Other type", "desc": "Any other type the server understands.", "tag": "manual" }
+      "kv": {
+        "name": "KV",
+        "desc": "Key-value store for application secrets.",
+        "tag": "secrets"
+      },
+      "transit": {
+        "name": "Transit",
+        "desc": "Encryption as a service: the app never sees the key.",
+        "tag": "stores no data"
+      },
+      "database": {
+        "name": "Database",
+        "desc": "Dynamic credentials for databases.",
+        "tag": "dynamic secrets"
+      },
+      "kubernetes": {
+        "name": "Kubernetes",
+        "desc": "ServiceAccount login through TokenReview.",
+        "tag": "auth · clusters"
+      },
+      "approle": {
+        "name": "AppRole",
+        "desc": "Machine login with role_id and secret_id for CI/CD.",
+        "tag": "auth · machines"
+      },
+      "jwt": {
+        "name": "JWT / OIDC",
+        "desc": "Login with a JWT from the corporate identity provider.",
+        "tag": "auth · SSO"
+      },
+      "pki": {
+        "name": "PKI",
+        "desc": "Certificates from your own CA for internal use (mTLS, tests).",
+        "tag": "experimental"
+      },
+      "ssh": {
+        "name": "SSH",
+        "desc": "Signed SSH certificates for host access.",
+        "tag": "experimental"
+      },
+      "totp": {
+        "name": "TOTP",
+        "desc": "Generate and verify one-time codes (RFC 6238).",
+        "tag": "experimental"
+      },
+      "custom": {
+        "name": "Other type",
+        "desc": "Any other type the server understands.",
+        "tag": "manual"
+      }
     },
     "expPill": "off",
     "expTitle": "The {{type}}/ engine is off by default.",
@@ -155,7 +211,14 @@
     "message": "This unmounts \"{{path}}\" together with its data.",
     "warnTitle": "Irreversible.",
     "warn": "All data under {{path}} is lost for good, and clients using this path lose access. It can only be restored from a snapshot.",
-    "confirm": "Unmount"
+    "confirm": "Unmount",
+    "impactLoading": "Counting what depends on this mount...",
+    "tableOnly": "This is a mount-table entry without an engine: no data or leases live under it, only the entry is removed.",
+    "impact": {
+      "secrets": "Secrets",
+      "leases": "Leases",
+      "tokens": "Tokens"
+    }
   },
   "toast": {
     "mounted": "Mounted",

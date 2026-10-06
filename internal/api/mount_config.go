@@ -5,8 +5,12 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/NAGenaev/tuck/internal/core"
+	"github.com/NAGenaev/tuck/internal/kvv2"
 	"github.com/NAGenaev/tuck/internal/mount"
 	"github.com/NAGenaev/tuck/internal/policy"
 )
@@ -19,7 +23,8 @@ func (s *Server) getMountConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Ensure the mount exists.
-	if _, err := s.core.MountStore().Get(r.Context(), mountPath); err != nil {
+	entry, err := s.core.MountStore().Get(r.Context(), mountPath)
+	if err != nil {
 		if errors.Is(err, mount.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "mount not found"})
 			return
@@ -30,6 +35,19 @@ func (s *Server) getMountConfig(w http.ResponseWriter, r *http.Request) {
 	cfg, err := s.core.MountConfigStore().Get(r.Context(), mountPath)
 	if err != nil {
 		writeErr(w, err)
+		return
+	}
+	if r.URL.Query().Get("stats") == "true" {
+		// Additive: usage counters next to the tuning fields.
+		st, err := s.mountStatsFor(r.Context(), entry)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, struct {
+			mount.Config
+			Stats *mountStats `json:"stats"`
+		}{cfg, st})
 		return
 	}
 	writeJSON(w, http.StatusOK, cfg)
@@ -64,10 +82,23 @@ func (s *Server) putMountConfig(w http.ResponseWriter, r *http.Request) {
 		AllowedResponseHeaders    []string `json:"allowed_response_headers"`
 		PassthroughRequestHeaders []string `json:"passthrough_request_headers"`
 		Description               string   `json:"description"`
+		// KV v2 options (secret/ mount only); absent = unchanged.
+		MaxVersions *int  `json:"max_versions"`
+		CASRequired *bool `json:"cas_required"`
 	}
 	if err := json.Unmarshal(body, &wire); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 		return
+	}
+	if wire.MaxVersions != nil || wire.CASRequired != nil {
+		if strings.Trim(mountPath, "/") != strings.Trim(core.KV2MountPath, "/") {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "max_versions and cas_required are KV v2 options and can only be set on the secret/ mount"})
+			return
+		}
+		if wire.MaxVersions != nil && (*wire.MaxVersions < 0 || *wire.MaxVersions > kvv2.MaxVersionsLimit) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "max_versions must be between 0 and " + strconv.Itoa(kvv2.MaxVersionsLimit)})
+			return
+		}
 	}
 
 	// Load existing config so we can merge.
@@ -102,6 +133,12 @@ func (s *Server) putMountConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if wire.Description != "" {
 		cfg.Description = wire.Description
+	}
+	if wire.MaxVersions != nil {
+		cfg.MaxVersions = *wire.MaxVersions
+	}
+	if wire.CASRequired != nil {
+		cfg.CASRequired = *wire.CASRequired
 	}
 
 	if cfg.MaxLeaseTTL > 0 && cfg.DefaultLeaseTTL > cfg.MaxLeaseTTL {

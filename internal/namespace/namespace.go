@@ -32,6 +32,88 @@ const (
 type Namespace struct {
 	Name      string    `json:"name"`
 	CreatedAt time.Time `json:"created_at"`
+	// Descriptive metadata. Optional and omitted when empty, so namespaces
+	// stored before these fields existed load unchanged.
+	Description string            `json:"description,omitempty"`
+	Owner       string            `json:"owner,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	UpdatedAt   time.Time         `json:"updated_at,omitzero"`
+}
+
+// Metadata limits.
+const (
+	MaxDescription = 512
+	MaxOwner       = 128
+	MaxLabels      = 32
+	MaxLabelKey    = 64
+	MaxLabelValue  = 256
+)
+
+// ErrInvalidMetadata is returned when description, owner or labels are invalid.
+var ErrInvalidMetadata = errors.New("invalid namespace metadata")
+
+// Metadata is the editable, non-secret part of a namespace.
+type Metadata struct {
+	Description string            `json:"description"`
+	Owner       string            `json:"owner"`
+	Labels      map[string]string `json:"labels"`
+}
+
+// Validate checks the size limits and that the text has no control characters.
+func (m Metadata) Validate() error {
+	bad := func(msg string) error { return fmt.Errorf("%w: %s", ErrInvalidMetadata, msg) }
+	if len(m.Description) > MaxDescription {
+		return bad(fmt.Sprintf("description exceeds %d bytes", MaxDescription))
+	}
+	if len(m.Owner) > MaxOwner {
+		return bad(fmt.Sprintf("owner exceeds %d bytes", MaxOwner))
+	}
+	if len(m.Labels) > MaxLabels {
+		return bad(fmt.Sprintf("at most %d labels", MaxLabels))
+	}
+	if !printable(m.Description, true) || !printable(m.Owner, false) {
+		return bad("control characters are not allowed")
+	}
+	for k, v := range m.Labels {
+		if k == "" || len(k) > MaxLabelKey || len(v) > MaxLabelValue {
+			return bad("label key must be 1-" + fmt.Sprint(MaxLabelKey) + " bytes and value up to " + fmt.Sprint(MaxLabelValue))
+		}
+		if !printable(k, false) || !printable(v, false) {
+			return bad("control characters are not allowed")
+		}
+	}
+	return nil
+}
+
+// printable reports whether s has no control characters (newlines and tabs
+// are accepted when multiline is true).
+func printable(s string, multiline bool) bool {
+	for _, r := range s {
+		if r == '\n' || r == '\t' {
+			if multiline {
+				continue
+			}
+			return false
+		}
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+// Apply copies m onto ns (a nil or empty Labels map clears the labels).
+func (ns *Namespace) Apply(m Metadata) {
+	ns.Description = m.Description
+	ns.Owner = m.Owner
+	if len(m.Labels) == 0 {
+		ns.Labels = nil
+	} else {
+		ns.Labels = make(map[string]string, len(m.Labels))
+		for k, v := range m.Labels {
+			ns.Labels[k] = v
+		}
+	}
 }
 
 // ValidateName returns ErrInvalidName if name is not a valid namespace identifier.

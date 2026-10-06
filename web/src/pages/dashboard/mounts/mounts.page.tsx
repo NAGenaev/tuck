@@ -5,17 +5,14 @@ import { isAxiosError } from 'axios'
 import { CSSProperties, KeyboardEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 
-import { deleteMount, getMountConfig, listMounts, type MountEntry } from '@shared/api/endpoints/mounts'
 import {
-    ConfirmModal,
-    CopyButton,
-    CountUp,
-    cx,
-    Icon,
-    StateBlock,
-    toast,
-    useCopy
-} from '@shared/ui/kit'
+    deleteMount,
+    getMountDetails,
+    listMounts,
+    type MountEntry,
+    type MountStats
+} from '@shared/api/endpoints/mounts'
+import { ConfirmModal, CopyButton, CountUp, cx, Icon, StateBlock, toast, useCopy } from '@shared/ui/kit'
 import { Page } from '@shared/ui/page/page'
 import { Eyebrow, Pill } from '@shared/ui/tuck/tuck'
 
@@ -69,13 +66,32 @@ function Rivets() {
 function Detail({ m, open }: { m: MountEntry; open: boolean }) {
     const { t, i18n } = useTranslation('mounts')
     const { copied, copy } = useCopy({ toast: false })
-    const { data, isError, isPending } = useQuery({
+    // the tune drawer invalidates ['mounts','config',path], which prefixes this key
+    const {
+        data: details,
+        isError,
+        isPending
+    } = useQuery({
         enabled: open,
-        queryFn: () => getMountConfig(m.path),
-        queryKey: ['mounts', 'config', m.path],
+        queryFn: () => getMountDetails(m.path),
+        queryKey: ['mounts', 'config', m.path, 'stats'],
         retry: 1
     })
+    const data = details?.config
+    const stats = details?.stats
     const cfg = (v: ReactNode) => (isPending ? '…' : isError ? t('detail.loadFailed') : v)
+    // a counter the caller may not see (or that does not apply) is simply not rendered
+    const counters: Array<[string, number | undefined]> = [
+        ['secrets', stats?.secrets],
+        ['versions', stats?.versions],
+        ['deletedVersions', stats?.deleted_versions],
+        ['destroyedVersions', stats?.destroyed_versions],
+        ['roles', stats?.roles],
+        ['connections', stats?.connections],
+        ['issuedCerts', stats?.issued_certs],
+        ['leases', stats?.leases],
+        ['tokens', stats?.tokens]
+    ]
 
     return (
         <div className={styles.detail}>
@@ -101,6 +117,41 @@ function Detail({ m, open }: { m: MountEntry; open: boolean }) {
                         <small>{t('detail.noCache')}</small>
                         <span>{cfg(data?.force_no_cache ? t('detail.yes') : t('detail.no'))}</span>
                     </div>
+                    {counters
+                        .filter(([, v]) => v !== undefined)
+                        .map(([k, v]) => (
+                            <div className={styles.kv} key={k}>
+                                <small>{t(`detail.counts.${k}`)}</small>
+                                <span className={styles.num}>
+                                    {v}
+                                    {k === 'versions' && stats?.truncated ? '+' : ''}
+                                </span>
+                            </div>
+                        ))}
+                    {stats?.last_write_at && (
+                        <div className={styles.kv}>
+                            <small>{t('detail.lastWrite')}</small>
+                            <span>{fmtDate(stats.last_write_at, i18n.language)}</span>
+                        </div>
+                    )}
+                    {stats && !stats.engine_backed && (
+                        <div className={cx(styles.kv, styles.kvWide)}>
+                            <small>{t('detail.data')}</small>
+                            <span>{t('detail.tableOnly')}</span>
+                        </div>
+                    )}
+                    {stats?.truncated && (
+                        <div className={cx(styles.kv, styles.kvWide)}>
+                            <small>{t('detail.data')}</small>
+                            <span>{t('detail.partial')}</span>
+                        </div>
+                    )}
+                    {!!stats?.hidden_secrets && (
+                        <div className={cx(styles.kv, styles.kvWide)}>
+                            <small>{t('detail.data')}</small>
+                            <span>{t('detail.hidden', { count: stats.hidden_secrets })}</span>
+                        </div>
+                    )}
                     <div className={styles.kv}>
                         <small>{t('detail.api')}</small>
                         <span>GET /v1/sys/mounts-tune/{m.path}</span>
@@ -203,6 +254,13 @@ export function MountsPage() {
         timers.push(window.setTimeout(() => setFresh(null), 3800))
         return () => timers.forEach((id) => window.clearTimeout(id))
     }, [fresh])
+
+    const { data: impact, isPending: impactPending } = useQuery({
+        enabled: toDelete !== null,
+        queryFn: () => getMountDetails((toDelete as MountEntry).path),
+        queryKey: ['mounts', 'config', toDelete?.path, 'stats'],
+        retry: 1
+    })
 
     const deleteMutation = useMutation({ mutationFn: (path: string) => deleteMount(path) })
 
@@ -506,9 +564,7 @@ export function MountsPage() {
                             {showData ? <CountUp value={all.length} /> : '—'}
                             {showData && <em>{t('stats.totalUnit')}</em>}
                         </div>
-                        {showData && (
-                            <p>{t('stats.totalHint', { builtin: stats.builtin, custom: stats.custom })}</p>
-                        )}
+                        {showData && <p>{t('stats.totalHint', { builtin: stats.builtin, custom: stats.custom })}</p>}
                     </div>
                     <div className={styles.stat}>
                         <small>{t('stats.types')}</small>
@@ -578,12 +634,7 @@ export function MountsPage() {
                 {body}
             </div>
 
-            <CreateWizard
-                mounts={all}
-                onClose={() => setCreating(false)}
-                onCreated={onCreated}
-                opened={creating}
-            />
+            <CreateWizard mounts={all} onClose={() => setCreating(false)} onCreated={onCreated} opened={creating} />
             <TuneDrawer mount={tuning} onClose={() => setTuning(null)} />
 
             <ConfirmModal
@@ -596,6 +647,7 @@ export function MountsPage() {
                             <div className={styles.warn}>
                                 <b>{t('unmount.warnTitle')}</b> {t('unmount.warn', { path: toDelete.path })}
                             </div>
+                            <Impact loading={impactPending} stats={impact?.stats} />
                         </>
                     )
                 }
@@ -605,6 +657,33 @@ export function MountsPage() {
                 title={t('unmount.title')}
             />
         </Page>
+    )
+}
+
+/** What depends on the mount being removed: only the counters the caller may see. */
+function Impact({ loading, stats }: { loading: boolean; stats?: MountStats }) {
+    const { t } = useTranslation('mounts')
+    if (loading) return <div className={styles.impactNote}>{t('unmount.impactLoading')}</div>
+    if (!stats) return null
+    const cells: Array<[string, number | undefined]> = [
+        ['secrets', stats.secrets],
+        ['leases', stats.leases],
+        ['tokens', stats.tokens]
+    ]
+    const shown = cells.filter(([, v]) => v !== undefined)
+    if (shown.length === 0) return null
+    return (
+        <>
+            <div className={styles.impact}>
+                {shown.map(([k, v]) => (
+                    <div key={k}>
+                        <small>{t(`unmount.impact.${k}`)}</small>
+                        <b>{v}</b>
+                    </div>
+                ))}
+            </div>
+            {!stats.engine_backed && <div className={styles.impactNote}>{t('unmount.tableOnly')}</div>}
+        </>
     )
 }
 

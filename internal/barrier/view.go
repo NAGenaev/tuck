@@ -2,6 +2,7 @@ package barrier
 
 import (
 	"context"
+	"strings"
 
 	"github.com/NAGenaev/tuck/internal/physical"
 )
@@ -36,5 +37,16 @@ func (v *View) Delete(ctx context.Context, key string) error {
 }
 
 func (v *View) List(ctx context.Context, prefix string) ([]string, error) {
-	return v.barrier.List(ctx, v.prefix+prefix)
+	keys, err := v.barrier.List(ctx, v.prefix+prefix)
+	if err != nil {
+		return nil, err
+	}
+	// Return keys relative to the view, symmetric with Get/Put/Delete, so a
+	// store works the same in the root and in a namespace view.
+	if v.prefix != "" {
+		for i, k := range keys {
+			keys[i] = strings.TrimPrefix(k, v.prefix)
+		}
+	}
+	return keys, nil
 }

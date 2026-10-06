@@ -17,7 +17,11 @@
     "shown": "Shown",
     "shownHint": "after the current filter",
     "current": "Context",
-    "currentHint": "where UI requests go"
+    "currentHint": "where UI requests go",
+    "secrets": "Secrets",
+    "secretsHint": "KV v1 and v2 across all namespaces",
+    "tokens": "Tokens",
+    "tokensHint": "live, bound to namespaces"
   },
   "search": {
     "placeholder": "Filter by name, e.g. team-",
@@ -32,14 +36,18 @@
     "found": "Found: {{count}}"
   },
   "list": {
-    "name": "Name"
+    "name": "Name",
+    "owner": "Owner"
   },
   "card": {
     "current": "current",
     "use": "Make current",
     "remove": "Delete {{name}}",
     "copy": "Copy name",
-    "isolated": "own enclosure: <b>secrets, policies and auth methods</b> are hidden from neighbours"
+    "isolated": "own enclosure: <b>secrets, policies and auth methods</b> are hidden from neighbours",
+    "owner": "Owner",
+    "edit": "Edit details of {{name}}",
+    "partial": "Token count is approximate: the scan limit was reached."
   },
   "noMatch": {
     "title": "Nothing <em>found</em>",
@@ -95,6 +103,30 @@
     "createFailed": "Could not create",
     "deleted": "Deleted",
     "deletedMsg": "Namespace \"{{name}}\" deleted",
-    "deleteFailed": "Could not delete"
+    "deleteFailed": "Could not delete",
+    "updated": "Saved",
+    "updatedMsg": "Metadata of \"{{name}}\" updated",
+    "updateFailed": "Could not save"
+  },
+  "counts": {
+    "secrets": "Secrets",
+    "tokens": "Tokens",
+    "policies": "Policies",
+    "auth_roles": "Roles"
+  },
+  "meta": {
+    "owner": "Owner",
+    "ownerPlaceholder": "Payments team",
+    "description": "Description",
+    "descriptionPlaceholder": "What this namespace is for and who owns it",
+    "descTooLong": "At most {{max}} bytes.",
+    "labels": "Labels",
+    "addLabel": "Add label"
+  },
+  "editModal": {
+    "title": "Namespace details",
+    "hint": "Metadata of namespace \"{{name}}\": owner, description and labels. The name and creation time never change.",
+    "submit": "Save",
+    "cancel": "Cancel"
   }
 }

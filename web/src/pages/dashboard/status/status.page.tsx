@@ -8,6 +8,7 @@ import { Trans, useTranslation } from 'react-i18next'
 import { listLeases } from '@shared/api/endpoints/leases'
 import { rotate, seal, snapshot, unseal } from '@shared/api/endpoints/sys'
 import { listTokens } from '@shared/api/endpoints/token'
+import { getSecretsUsage } from '@shared/api/endpoints/usage'
 import { useHealth } from '@shared/api/hooks/use-health'
 import { useSealStatus } from '@shared/api/hooks/use-seal-status'
 import {
@@ -78,6 +79,17 @@ export function StatusPage() {
         refetchInterval: ACTIVITY_POLL,
         retry: false
     })
+
+    // secrets tile: needs list on secret/; without it the tile is not shown at all
+    const secretsQuery = useQuery({
+        queryKey: ['sys', 'usage', 'secrets'],
+        queryFn: getSecretsUsage,
+        enabled: unsealedKnown,
+        refetchInterval: ACTIVITY_POLL,
+        retry: false
+    })
+    const secretsForbidden =
+        secretsQuery.isError && isAxiosError(secretsQuery.error) && secretsQuery.error.response?.status === 403
 
     const deadFor = (isError: boolean): 'error' | 'sealed' | null => {
         if (view === 'sealed' || view === 'auto') return 'sealed'
@@ -507,7 +519,7 @@ export function StatusPage() {
                     </div>
                     <div className={styles.bento}>
                         <ActivityTile
-                            className={styles.w3}
+                            className={secretsForbidden ? styles.w3 : styles.w2}
                             dead={deadFor(leasesQuery.isError)}
                             label={t('activity.leases')}
                             loading={view === 'loading' || leasesQuery.isLoading}
@@ -516,13 +528,23 @@ export function StatusPage() {
                             value={activeLeases}
                         />
                         <ActivityTile
-                            className={styles.w3}
+                            className={secretsForbidden ? styles.w3 : styles.w2}
                             dead={deadFor(tokensQuery.isError)}
                             label={t('activity.tokens')}
                             loading={view === 'loading' || tokensQuery.isLoading}
                             stamp={tokensQuery.dataUpdatedAt}
                             value={tokensQuery.data?.length}
                         />
+                        {!secretsForbidden && (
+                            <ActivityTile
+                                className={styles.w2}
+                                dead={deadFor(secretsQuery.isError)}
+                                label={t('activity.secrets')}
+                                loading={view === 'loading' || secretsQuery.isLoading}
+                                stamp={secretsQuery.dataUpdatedAt}
+                                value={secretsQuery.data?.secrets}
+                            />
+                        )}
                     </div>
                 </section>
 

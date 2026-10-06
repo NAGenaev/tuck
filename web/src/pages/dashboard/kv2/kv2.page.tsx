@@ -16,7 +16,7 @@ import { Entry, ListStatus, SecretList } from './components/secret-list'
 import { EditSeed, SecretDrawer } from './components/secret-drawer'
 import { WriteModal } from './components/write-modal'
 import styles from './kv2.module.css'
-import { useKv2List } from './use-kv2'
+import { useKv2List, useKv2Totals } from './use-kv2'
 
 type Chip = 'all' | 'folder' | 'secret'
 
@@ -47,6 +47,10 @@ export function KV2Page() {
     const seen = useRef(false)
 
     const list = useKv2List(prefix)
+    const totalsQ = useKv2Totals()
+    const totals = totalsQ.data
+    // never invent a number: without totals (no list capability on the root, or still loading) the strip shows a dash
+    const stat = (v: number | undefined) => (v === undefined ? '—' : <CountUp value={v} />)
 
     // the row entrance animation plays only for the first paint; later refreshes stay still
     useEffect(() => {
@@ -58,9 +62,9 @@ export function KV2Page() {
     }, [list.isSuccess])
 
     const all = useMemo<Entry[]>(() => {
-        const items = (list.data ?? []).map((k) => {
-            const folder = k.endsWith('/')
-            return { folder, name: k, path: `${prefix}${k}` }
+        const items: Entry[] = (list.data ?? []).map((d) => {
+            const name = d.name ?? ''
+            return { detail: d, folder: name.endsWith('/'), name, path: `${prefix}${name}` }
         })
         items.sort((a, b) => (a.folder === b.folder ? a.name.localeCompare(b.name) : a.folder ? -1 : 1))
         return items
@@ -205,13 +209,21 @@ export function KV2Page() {
                         <p className={styles.sub}>{t('kv2.sub')}</p>
                     </div>
                     <div className={styles.stats}>
-                        <div className={styles.stat}>
-                            <b data-br>{status === 'ready' ? <CountUp value={nSecrets} /> : '—'}</b>
+                        <div className={styles.stat} title={t('kv2.stats.hintMount')}>
+                            <b data-br>{stat(totals?.secrets)}</b>
                             {t('kv2.stats.secrets')}
                         </div>
-                        <div className={styles.stat}>
-                            <b>{status === 'ready' ? <CountUp value={nFolders} /> : '—'}</b>
+                        <div className={styles.stat} title={t('kv2.stats.hintMount')}>
+                            <b>{stat(totals?.folders)}</b>
                             {t('kv2.stats.folders')}
+                        </div>
+                        <div className={styles.stat} title={t('kv2.stats.hintMount')}>
+                            <b>{stat(totals?.versions)}</b>
+                            {t('kv2.stats.versions')}
+                        </div>
+                        <div className={styles.stat} title={t('kv2.stats.hintDeleted')}>
+                            <b>{totals ? <CountUp value={(totals.deleted ?? 0) + (totals.destroyed ?? 0)} /> : '—'}</b>
+                            {t('kv2.stats.deleted')}
                         </div>
                     </div>
                 </div>

@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { KVMeta } from '@shared/api/endpoints/kvv2'
 
+import type { KvAuthor } from './api'
+
 export type VerState = 'active' | 'deleted' | 'destroyed'
 
 export interface VerRow {
+    /** who wrote the version; absent for versions stored before authorship was recorded */
+    author?: KvAuthor
     createdAt?: string
     state: VerState
     version: number
@@ -13,11 +17,17 @@ export function versionRows(meta?: KVMeta): VerRow[] {
     if (!meta?.versions) return []
     return Object.entries(meta.versions)
         .map(([v, info]) => ({
+            author: info.created_by,
             createdAt: info.created_at,
             state: (info.destroyed ? 'destroyed' : info.deleted_at ? 'deleted' : 'active') as VerState,
             version: Number(v)
         }))
         .sort((a, b) => a.version - b.version)
+}
+
+/** display name, then accessor, then audit fingerprint; '' when the author is unknown */
+export function authorLabel(a: KvAuthor | undefined): string {
+    return a?.display_name || a?.accessor || a?.fingerprint || ''
 }
 
 export type ParsedValue = { kind: 'pairs'; pairs: Array<[string, string]> } | { kind: 'text'; text: string }
@@ -138,7 +148,8 @@ export function lcsDiff(A: DiffLine[], B: DiffLine[]): DiffRow[] {
 export function fmtDate(iso: string | undefined, lng: string): string {
     if (!iso) return '—'
     const d = new Date(iso)
-    if (Number.isNaN(d.getTime())) return '—'
+    // entries written before the server tracked times carry the zero date
+    if (Number.isNaN(d.getTime()) || d.getFullYear() < 2000) return '—'
     return d.toLocaleString(lng === 'ru' ? 'ru-RU' : 'en-GB', {
         day: '2-digit',
         hour: '2-digit',
@@ -150,8 +161,9 @@ export function fmtDate(iso: string | undefined, lng: string): string {
 
 export function fmtRel(iso: string | undefined, lng: string): string {
     if (!iso) return '—'
-    const ms = new Date(iso).getTime() - Date.now()
-    if (Number.isNaN(ms)) return '—'
+    const when = new Date(iso)
+    if (Number.isNaN(when.getTime()) || when.getFullYear() < 2000) return '—'
+    const ms = when.getTime() - Date.now()
     const rtf = new Intl.RelativeTimeFormat(lng === 'ru' ? 'ru' : 'en', { numeric: 'auto' })
     const min = Math.round(ms / 60000)
     if (Math.abs(min) < 1) return rtf.format(0, 'minute')

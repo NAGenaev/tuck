@@ -26,6 +26,13 @@
     color: var(--dim);
 }
 
+/* author of a version: display name, bold, before the date */
+.by {
+    font-weight: 600;
+    color: var(--bone);
+    margin-right: 6px;
+}
+
 .tabs {
     display: flex;
     overflow-x: auto;

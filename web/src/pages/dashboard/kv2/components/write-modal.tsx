@@ -5,10 +5,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import { CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { getKVv2Meta } from '@shared/api/endpoints/kvv2'
 import { cx, Icon, Modal, prefersReducedMotion, toast } from '@shared/ui/kit'
 
-import { errMessage, errStatus, writeSecret } from '../api'
+import { errMessage, errStatus, getMetaFull, isCasRequiredError, writeSecret } from '../api'
 import common from '../common.module.css'
 import { useKv2Meta } from '../use-kv2'
 import { dirName, KEY_PATTERN, pairsToJson, parseValue, validateName } from '../utils'
@@ -55,6 +54,7 @@ export function WriteModal({
     const [saving, setSaving] = useState(false)
     const [conflict, setConflict] = useState<null | { actual: number }>(null)
     const [serverErr, setServerErr] = useState('')
+    const [casDemanded, setCasDemanded] = useState(false)
     const formRef = useRef<HTMLFormElement | null>(null)
 
     const base = seed ? dirName(seed.path) : prefix
@@ -66,6 +66,7 @@ export function WriteModal({
         setSaving(false)
         setConflict(null)
         setServerErr('')
+        setCasDemanded(false)
         setShowText(false)
         if (seed) {
             setName(seed.path.slice(dirName(seed.path).length))
@@ -102,7 +103,8 @@ export function WriteModal({
     const [debPath] = useDebouncedValue(fullPath, 350)
     const lookup = opened && !nameReason && debPath === fullPath
     const metaQ = useKv2Meta(fullPath, lookup)
-    const existing = metaQ.data
+    const existing = metaQ.data?.metadata
+    const casRequired = !!metaQ.data?.cas_required_effective || casDemanded
     const missing = metaQ.isError && errStatus(metaQ.error) === 404
     const existingVersion = existing?.current_version
 
@@ -143,9 +145,10 @@ export function WriteModal({
         let casErr = ''
         const c = cas.trim()
         if (c !== '' && !/^\d+$/.test(c)) casErr = t('kv2.write.casFormat')
+        else if (c === '' && casDemanded) casErr = t('kv2.write.casRequiredErr')
 
         return { casErr, nameErr, rowErr, valueErr }
-    }, [cas, fullPath, isFolder, mode, nameReason, rows, t, text])
+    }, [cas, casDemanded, fullPath, isFolder, mode, nameReason, rows, t, text])
 
     const hasErrors = !!(errors.nameErr || errors.valueErr || errors.casErr)
     const show = tried
@@ -215,16 +218,20 @@ export function WriteModal({
                 let actual = 0
                 try {
                     const m = await qc.fetchQuery({
-                        queryFn: () => getKVv2Meta(fullPath),
+                        queryFn: () => getMetaFull(fullPath),
                         queryKey: ['kv2', 'meta', fullPath],
                         staleTime: 0
                     })
-                    actual = m.current_version ?? 0
+                    actual = m.metadata?.current_version ?? 0
                 } catch {
                     actual = 0
                 }
                 setConflict({ actual })
                 toast.error(t('kv2.write.toast409'), t('kv2.write.toast409Text'))
+            } else if (isCasRequiredError(err)) {
+                setCasDemanded(true)
+                toast.error(t('kv2.write.casRequiredTitle'), t('kv2.write.casRequiredErr'))
+                window.setTimeout(() => formRef.current?.querySelector<HTMLInputElement>('#kv2-wcas')?.focus(), 0)
             } else {
                 const msg = errMessage(err) || t('kv2.toast.failed')
                 setServerErr(msg)
@@ -468,7 +475,8 @@ export function WriteModal({
 
                 <div className={common.fld}>
                     <label className={common.lab} htmlFor="kv2-wcas">
-                        {t('kv2.write.cas')} <small>{t('kv2.write.optional')}</small>
+                        {t('kv2.write.cas')}{' '}
+                        <small>{casRequired ? t('kv2.write.required') : t('kv2.write.optional')}</small>
                     </label>
                     <div className={styles.casbox} data-err={(show && !!errors.casErr) || undefined}>
                         <div className={common.inp} data-err={(show && !!errors.casErr) || undefined}>

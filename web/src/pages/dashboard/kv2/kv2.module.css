@@ -271,10 +271,68 @@
 .row,
 .skrow {
     display: grid;
-    grid-template-columns: 44px minmax(0, 1fr) 110px 28px;
+    grid-template-columns: 44px minmax(0, 1fr) 100px 150px 104px 130px 28px;
     align-items: center;
     gap: 0 10px;
     padding: 0 18px 0 16px;
+}
+
+.verCol,
+.updCol,
+.byCol {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.verCol {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font: 500 12px var(--mono);
+    color: var(--bone);
+}
+
+.updCol,
+.byCol {
+    font: 400 12px var(--mono);
+    color: var(--dim);
+}
+
+.byCol b {
+    font-weight: 500;
+    color: var(--bone);
+}
+
+.fcount {
+    font: 400 11px var(--mono);
+    color: var(--dim);
+    margin-left: 8px;
+}
+
+@media (max-width: 1100px) {
+    .cols,
+    .row,
+    .skrow {
+        grid-template-columns: 44px minmax(0, 1fr) 100px 150px 104px 28px;
+    }
+
+    .byCol {
+        display: none;
+    }
+}
+
+@media (max-width: 820px) {
+    .cols,
+    .row,
+    .skrow {
+        grid-template-columns: 44px minmax(0, 1fr) 100px 104px 28px;
+    }
+
+    .updCol {
+        display: none;
+    }
 }
 
 @media (max-width: 520px) {
@@ -285,7 +343,8 @@
         padding: 0 12px 0 8px;
     }
 
-    .typeCol {
+    .typeCol,
+    .verCol {
         display: none;
     }
 }

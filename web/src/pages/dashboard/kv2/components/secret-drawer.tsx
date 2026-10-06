@@ -8,11 +8,11 @@ import { destroyKVv2, softDeleteKVv2, undeleteKVv2 } from '@shared/api/endpoints
 import { ConfirmModal, copyText, Drawer, Icon, toast } from '@shared/ui/kit'
 import { Pill } from '@shared/ui/tuck/tuck'
 
-import { errMessage, updateMaxVersions } from '../api'
+import { errMessage, patchMetadata, putMetadata } from '../api'
 import common from '../common.module.css'
 import styles from '../detail.module.css'
 import { useKv2Meta, useKv2Version } from '../use-kv2'
-import { dirName, fmtDate, fmtRel, parseValue, versionRows } from '../utils'
+import { authorLabel, dirName, fmtDate, fmtRel, parseValue, versionRows } from '../utils'
 import { DiffTab } from './diff-tab'
 import { MetaTab } from './meta-tab'
 import { revealKeys, ValueTab } from './value-tab'
@@ -78,14 +78,15 @@ function DrawerBody({
     const [dshow, setDshow] = useState(false)
     const [pending, setPending] = useState<Pending>(null)
     const [busyVersion, setBusyVersion] = useState<number | undefined>(undefined)
-    const [savingMax, setSavingMax] = useState(false)
+    const [saving, setSaving] = useState({ cas: false, custom: false, max: false })
     const [leftMs, setLeftMs] = useState(TTL_MS)
     const end = useRef(0)
     const [pathCopied, setPathCopied] = useState(false)
 
     const metaQ = useKv2Meta(path)
-    const rows = useMemo(() => versionRows(metaQ.data), [metaQ.data])
-    const current = metaQ.data?.current_version ?? rows[rows.length - 1]?.version ?? 0
+    const meta = metaQ.data?.metadata
+    const rows = useMemo(() => versionRows(meta), [meta])
+    const current = meta?.current_version ?? rows[rows.length - 1]?.version ?? 0
     const shownVersion = view ?? current
     const row = rows.find((r) => r.version === shownVersion)
     const curRow = rows.find((r) => r.version === current)
@@ -103,7 +104,9 @@ function DrawerBody({
     const refresh = useCallback(async () => {
         await Promise.all([
             qc.invalidateQueries({ queryKey: ['kv2', 'get', path] }),
-            qc.invalidateQueries({ queryKey: ['kv2', 'meta', path] })
+            qc.invalidateQueries({ queryKey: ['kv2', 'meta', path] }),
+            // the list row (version, deleted flag) and the totals strip show the same data
+            qc.invalidateQueries({ queryKey: ['kv2', 'list'] })
         ])
     }, [qc, path])
 
@@ -181,18 +184,30 @@ function DrawerBody({
         }
     }
 
-    const saveMax = async (n: number) => {
-        setSavingMax(true)
+    const saveMeta = async (part: 'cas' | 'custom' | 'max', call: () => Promise<void>, what: string) => {
+        setSaving((v) => ({ ...v, [part]: true }))
         try {
-            await updateMaxVersions(path, n)
-            await qc.invalidateQueries({ queryKey: ['kv2', 'meta', path] })
-            toast.success(t('kv2.toast.metaSaved'), `max_versions = ${n === 0 ? '∞' : n}`)
+            await call()
+            await refresh()
+            toast.success(t('kv2.toast.metaSaved'), what)
         } catch (err) {
             toast.error(t('kv2.toast.failed'), errMessage(err))
         } finally {
-            setSavingMax(false)
+            setSaving((v) => ({ ...v, [part]: false }))
         }
     }
+
+    const saveMax = (n: number) =>
+        saveMeta('max', () => patchMetadata(path, { max_versions: n }), `max_versions = ${n === 0 ? '∞' : n}`)
+    const toggleCas = (next: boolean) =>
+        saveMeta('cas', () => patchMetadata(path, { cas_required: next }), `cas_required = ${next}`)
+    // PUT replaces the whole map: what the editor shows is exactly what gets stored
+    const saveCustom = (map: Record<string, string>) =>
+        saveMeta(
+            'custom',
+            () => putMetadata(path, { custom_metadata: map }),
+            t('kv2.meta.cmCount', { count: Object.keys(map).length })
+        )
 
     const dir = dirName(path)
     const tabs: Array<[Tab, string, number | undefined]> = [
@@ -258,10 +273,12 @@ function DrawerBody({
                                 </span>
                                 <StatePill state={curRow.state} />
                                 <Pill tone="mute">
-                                    max_versions {metaQ.data?.max_versions ? metaQ.data.max_versions : '∞'}
+                                    max_versions {meta?.max_versions ? meta.max_versions : '∞'}
                                 </Pill>
+                                {metaQ.data?.cas_required_effective && <Pill tone="brass">cas_required</Pill>}
                                 <span className={styles.when} title={fmtDate(curRow.createdAt, i18n.language)}>
                                     {t('kv2.drawer.updated', { when: fmtRel(curRow.createdAt, i18n.language) })}
+                                    {authorLabel(curRow.author) ? ` · ${authorLabel(curRow.author)}` : ''}
                                 </span>
                             </>
                         ) : (
@@ -328,6 +345,8 @@ function DrawerBody({
                     <VersionsTab
                         busyVersion={busyVersion}
                         current={current}
+                        maxVersions={meta?.max_versions}
+                        oldestVersion={meta?.oldest_version}
                         onCompare={(v) => {
                             setDa(v)
                             setDb(current)
@@ -344,12 +363,13 @@ function DrawerBody({
                     <DiffTab a={da} b={db} onA={setDa} onB={setDb} onShow={setDshow} path={path} rows={rows} show={dshow} />
                 ) : (
                     <MetaTab
-                        current={current}
-                        key={metaQ.data?.max_versions ?? 0}
-                        maxVersions={metaQ.data?.max_versions ?? 0}
+                        key={JSON.stringify([meta?.max_versions ?? 0, meta?.custom_metadata ?? {}])}
+                        meta={meta}
+                        mount={metaQ.data?.mount_options}
+                        onSaveCustom={(m) => void saveCustom(m)}
                         onSaveMax={(n) => void saveMax(n)}
-                        rows={rows}
-                        saving={savingMax}
+                        onToggleCas={(v) => void toggleCas(v)}
+                        saving={saving}
                     />
                 )}
             </Drawer>

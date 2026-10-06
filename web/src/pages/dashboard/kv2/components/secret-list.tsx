@@ -6,9 +6,13 @@ import { useTranslation } from 'react-i18next'
 import { cx, Icon, StateBlock } from '@shared/ui/kit'
 import { Pill, Plate } from '@shared/ui/tuck/tuck'
 
+import type { KvListEntry } from '../api'
 import styles from '../kv2.module.css'
+import { fmtDate, fmtRel } from '../utils'
 
 export interface Entry {
+    /** what the detailed list says about the entry (never the values) */
+    detail?: KvListEntry
     folder: boolean
     name: string
     path: string
@@ -84,7 +88,7 @@ export function SecretList({
     status: ListStatus
     still: boolean
 }) {
-    const { t } = useTranslation('kv')
+    const { t, i18n } = useTranslation('kv')
     const secrets = shown.filter((e) => !e.folder)
     const nSel = selected.size
     const allOn = secrets.length > 0 && secrets.every((e) => selected.has(e.path))
@@ -109,6 +113,23 @@ export function SecretList({
         }
     }
 
+    // Version cell: v<current> plus what the server knows about it; restricted rows carry no metadata
+    const verCell = (e: Entry): ReactNode => {
+        const d = e.detail
+        if (e.folder || !d || d.restricted || !d.current_version) return '—'
+        return (
+            <>
+                v{d.current_version}
+                {d.cas_required && <Pill tone="brass">cas</Pill>}
+                {d.destroyed ? (
+                    <Pill tone="bad">{t('kv2.list.destroyed')}</Pill>
+                ) : d.deleted ? (
+                    <Pill tone="violet">{t('kv2.list.deleted')}</Pill>
+                ) : null}
+            </>
+        )
+    }
+
     let head: ReactNode
     let body: ReactNode
 
@@ -128,6 +149,9 @@ export function SecretList({
                     <span />
                     <span>{t('kv2.list.name')}</span>
                     <span className={styles.typeCol}>{t('kv2.list.type')}</span>
+                    <span className={styles.verCol}>{t('kv2.list.version')}</span>
+                    <span className={styles.updCol}>{t('kv2.list.updated')}</span>
+                    <span className={styles.byCol}>{t('kv2.list.author')}</span>
                     <span />
                 </div>
                 {Array.from({ length: 6 }, (_, i) => (
@@ -138,6 +162,9 @@ export function SecretList({
                             <i className={styles.sk} style={{ width: 120 + ((i * 37) % 110) }} />
                         </span>
                         <i className={cx(styles.sk, styles.typeCol)} style={{ width: 64 }} />
+                        <i className={cx(styles.sk, styles.verCol)} style={{ width: 40 }} />
+                        <i className={cx(styles.sk, styles.updCol)} style={{ width: 70 }} />
+                        <i className={cx(styles.sk, styles.byCol)} style={{ width: 60 }} />
                         <span />
                     </div>
                 ))}
@@ -282,6 +309,9 @@ export function SecretList({
                         </button>
                         <span>{t('kv2.list.name')}</span>
                         <span className={styles.typeCol}>{t('kv2.list.type')}</span>
+                        <span className={styles.verCol}>{t('kv2.list.version')}</span>
+                        <span className={styles.updCol}>{t('kv2.list.updated')}</span>
+                        <span className={styles.byCol}>{t('kv2.list.author')}</span>
                         <span />
                     </div>
                     {shown.map((e, i) => {
@@ -327,11 +357,21 @@ export function SecretList({
                                     <span className={styles.t}>
                                         <Highlight filter={filter} name={e.name} />
                                     </span>
+                                    {e.folder && e.detail?.count !== undefined && (
+                                        <span className={styles.fcount}>{t('kv2.list.inside', { count: e.detail.count })}</span>
+                                    )}
                                 </div>
                                 <span className={styles.typeCol}>
                                     <Pill tone={e.folder ? 'brass' : 'ice'}>
                                         {e.folder ? t('kv2.list.folder') : t('kv2.list.secret')}
                                     </Pill>
+                                </span>
+                                <span className={styles.verCol}>{verCell(e)}</span>
+                                <span className={styles.updCol} title={e.detail?.updated_at ? fmtDate(e.detail.updated_at, i18n.language) : undefined}>
+                                    {!e.folder && !e.detail?.restricted && e.detail?.updated_at ? fmtRel(e.detail.updated_at, i18n.language) : '—'}
+                                </span>
+                                <span className={styles.byCol}>
+                                    {!e.folder && !e.detail?.restricted && e.detail?.updated_by ? <b>{e.detail.updated_by}</b> : '—'}
                                 </span>
                                 <Icon className={styles.chev} name="right" size={16} />
                             </div>

@@ -1,19 +1,45 @@
 package api
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"path"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
+	"github.com/NAGenaev/tuck/internal/audit"
+	"github.com/NAGenaev/tuck/internal/kvv2"
 	"github.com/NAGenaev/tuck/internal/policy"
 )
 
 func v2EnforcePath(p string) string {
 	return "secret/" + path.Clean("/"+p)[1:]
+}
+
+// withKVAuthor tags ctx with the identity of the calling token so KV v2 can
+// record who wrote a version. Only the display name, accessor, entity id and
+// the audit-log fingerprint are stored, never the token ID itself.
+func (s *Server) withKVAuthor(ctx context.Context) context.Context {
+	id := tokenFromCtx(ctx)
+	tok, err := s.core.Authenticate(ctx, id)
+	if err != nil {
+		return ctx
+	}
+	name := tok.DisplayName
+	if len(name) > 128 {
+		name = strings.ToValidUTF8(name[:128], "")
+	}
+	return kvv2.WithAuthor(ctx, kvv2.Author{
+		DisplayName: name,
+		Accessor:    tok.Accessor,
+		Fingerprint: audit.Fingerprint(id),
+		EntityID:    tok.EntityID,
+	})
 }
 
 // PUT /v2/secret/{path...}
@@ -38,9 +64,17 @@ func (s *Server) v2WriteSecret(w http.ResponseWriter, r *http.Request) {
 		}
 		cas = &n
 	}
-	ver, err := s.core.KVv2(nsFromCtx(r.Context())).Write(r.Context(), p, body, cas)
+	ctx := s.withKVAuthor(r.Context())
+	ver, err := s.core.KVv2(nsFromCtx(ctx)).Write(ctx, p, body, cas)
 	if err != nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		switch {
+		case errors.Is(err, kvv2.ErrCASMismatch):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		case errors.Is(err, kvv2.ErrCASRequired):
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error(), "cas_required": true})
+		default:
+			writeErr(w, err)
+		}
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"version": ver, "path": p})
@@ -175,25 +209,53 @@ func (s *Server) v2GetMeta(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"path": p, "metadata": meta})
+	def := s.core.KVv2(nsFromCtx(r.Context())).MountDefaults(r.Context())
+	writeJSON(w, http.StatusOK, map[string]any{
+		"path":     p,
+		"metadata": meta,
+		// cas_required of the secret OR the mount: what a writer actually faces.
+		"cas_required_effective": meta.CASRequired || def.CASRequired,
+		"mount_options":          map[string]any{"max_versions": def.MaxVersions, "cas_required": def.CASRequired},
+	})
 }
 
-// PUT /v2/secret/metadata/{path...}
-// Body: {"max_versions":10}
+// PUT   /v2/secret/metadata/{path...}  fields present are applied; custom_metadata replaces
+// PATCH /v2/secret/metadata/{path...}  custom_metadata is merged, a null value deletes a key
+// Body: {"max_versions":10,"cas_required":true,"custom_metadata":{"owner":"team-a"}}
 func (s *Server) v2UpdateMeta(w http.ResponseWriter, r *http.Request) {
+	s.v2WriteMeta(w, r, true)
+}
+
+func (s *Server) v2PatchMeta(w http.ResponseWriter, r *http.Request) {
+	s.v2WriteMeta(w, r, false)
+}
+
+func (s *Server) v2WriteMeta(w http.ResponseWriter, r *http.Request, replace bool) {
 	p := r.PathValue("path")
 	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), v2EnforcePath(p), policy.CapWrite); err != nil {
 		writeErr(w, err)
 		return
 	}
 	var body struct {
-		MaxVersions int `json:"max_versions"`
+		MaxVersions    *int               `json:"max_versions"`
+		CASRequired    *bool              `json:"cas_required"`
+		CustomMetadata map[string]*string `json:"custom_metadata"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes)).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid body"})
 		return
 	}
-	if err := s.core.KVv2(nsFromCtx(r.Context())).UpdateMeta(r.Context(), p, body.MaxVersions); err != nil {
+	_, err := s.core.KVv2(nsFromCtx(r.Context())).UpdateMetadata(r.Context(), p, kvv2.MetaUpdate{
+		MaxVersions:    body.MaxVersions,
+		CASRequired:    body.CASRequired,
+		CustomMetadata: body.CustomMetadata,
+		Replace:        replace,
+	})
+	if err != nil {
+		if errors.Is(err, kvv2.ErrInvalidMetadata) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
 		writeErr(w, err)
 		return
 	}
@@ -225,6 +287,12 @@ func (s *Server) v2ListMeta(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	q := r.URL.Query()
+	detailed, totals := q.Get("detailed") == "true", q.Get("totals") == "true"
+	if detailed || totals {
+		s.v2ListDetailed(w, r, prefix, detailed, totals)
+		return
+	}
 	keys, err := s.core.KVv2(nsFromCtx(r.Context())).List(r.Context(), prefix)
 	if err != nil {
 		writeErr(w, err)
@@ -234,6 +302,39 @@ func (s *Server) v2ListMeta(w http.ResponseWriter, r *http.Request) {
 		keys = []string{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"keys": keys})
+}
+
+// v2ListDetailed serves ?detailed=true (per-key current version, time/author of
+// the last write, flags) and ?totals=true (counts for the whole subtree). Only
+// metadata is read, never secret values. Details and totals only cover
+// secrets whose metadata the token may read; the rest is listed by name only
+// (restricted) because "list" alone must not reveal versions or authors.
+func (s *Server) v2ListDetailed(w http.ResponseWriter, r *http.Request, prefix string, detailed, totals bool) {
+	canRead, err := s.core.CapabilityChecker(r.Context(), tokenFromCtx(r.Context()), policy.CapRead)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	entries, tot, err := s.core.KVv2(nsFromCtx(r.Context())).ListDetailed(r.Context(), prefix, kvv2.ListOptions{
+		Totals: totals,
+		Allow:  func(p string) bool { return canRead(v2EnforcePath(p)) },
+	})
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	keys := make([]string, 0, len(entries))
+	for _, e := range entries {
+		keys = append(keys, e.Name)
+	}
+	resp := map[string]any{"keys": keys}
+	if detailed {
+		resp["entries"] = entries
+	}
+	if totals {
+		resp["totals"] = tot
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func parseVersionBody(r *http.Request) ([]int, error) {

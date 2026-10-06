@@ -9,8 +9,12 @@
     "retry": "Retry",
     "writeBtn": "Write secret",
     "stats": {
-      "secrets": "Secrets here",
-      "folders": "Folders here"
+      "secrets": "Secrets",
+      "folders": "Folders",
+      "versions": "Versions",
+      "deleted": "Deleted / destroyed",
+      "hintMount": "Whole secret/ mount, not only this level",
+      "hintDeleted": "Soft-deleted plus destroyed versions across the mount"
     },
     "chip": {
       "all": "All",
@@ -43,7 +47,14 @@
       "select": "Select secret",
       "folder": "folder",
       "secret": "secret",
-      "up": "Up one level"
+      "up": "Up one level",
+      "version": "Version",
+      "updated": "Updated",
+      "author": "Author",
+      "deleted": "deleted",
+      "destroyed": "destroyed",
+      "inside_one": "{{count}} secret",
+      "inside_other": "{{count}} secrets"
     },
     "forbidden": {
       "title": "No access to this path",
@@ -119,7 +130,9 @@
       "delete": "Delete",
       "undelete": "Restore",
       "destroy": "Destroy",
-      "gone": "data removed"
+      "gone": "data removed",
+      "evictedTitle": "Older versions were evicted",
+      "evictedText": "max_versions is {{max}}: versions {{first}} to {{last}} were dropped on write and cannot be restored."
     },
     "diff": {
       "noneTitle": "Nothing to compare",
@@ -138,7 +151,19 @@
       "more": "Increase",
       "save": "Save",
       "reset": "Reset",
-      "hint": "max_versions: how many versions are kept. 0 means unlimited. Older versions are dropped on the next write."
+      "hint": "max_versions: how many versions are kept. 0 means unlimited. New secrets start with the mount default. Older versions are dropped on the next write. cas_required: every write must carry the cas parameter.",
+      "casOn": "required",
+      "casOff": "optional",
+      "casByMount": "required by the mount",
+      "mountNote": "Mount defaults: cas_required {{cas}}, max_versions {{max}}.",
+      "builtin": "built-in",
+      "cm": "Custom metadata",
+      "cmAdd": "Add key",
+      "cmCount_one": "{{count}} pair",
+      "cmCount_other": "{{count}} pairs",
+      "cmHint": "Plain strings, not secret values. Key up to {{keys}} bytes, value up to {{value}} bytes, at most {{pairs}} pairs.",
+      "cmTooLong": "A key is longer than {{key}} bytes or a value is longer than {{value}} bytes.",
+      "cmSave": "Save metadata"
     },
     "confirm": {
       "softTitle": "Delete version {{version}}?",
@@ -209,7 +234,10 @@
       "conflictTitle": "Version conflict",
       "conflictText": "You gave version {{given}}, but the secret is now at v{{actual}}. Someone wrote to it in the meantime.",
       "toast409": "Version conflict",
-      "toast409Text": "The secret changed. Check the CAS value."
+      "toast409Text": "The secret changed. Check the CAS value.",
+      "required": "required by the secret",
+      "casRequiredTitle": "cas is required",
+      "casRequiredErr": "This secret requires check-and-set: enter the current version, or 0 for a new one."
     }
   }
 }

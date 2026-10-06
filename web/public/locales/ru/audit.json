@@ -46,16 +46,23 @@
   },
   "status": {
     "ok": "Подключён",
-    "fail": "Сбои"
+    "fail": "Сбои",
+    "paused": "На паузе",
+    "inactive": "Неактивен"
   },
   "meta": {
     "rotation": "ротация {{size}} МБ × {{backups}}",
-    "timeout": "таймаут {{sec}} с"
+    "timeout": "таймаут {{sec}} с",
+    "facility": "facility {{facility}}"
   },
   "row": {
     "copy": "Копировать назначение",
     "remove": "Удалить приёмник «{{name}}»",
-    "errline": "{{count}} ошибок доставки с момента регистрации"
+    "errline": "{{count}} ошибок доставки с момента регистрации",
+    "sent": "записей: {{n}}",
+    "lastSuccess": "записано {{when}}",
+    "pause": "Поставить на паузу «{{name}}»",
+    "resume": "Снять с паузы «{{name}}»"
   },
   "guard": {
     "title": "Никогда не отключается молча",
@@ -107,7 +114,14 @@
     "errUrlRequired": "Укажите URL приёмника",
     "errUrlFormat": "Нужен адрес вида https://host/path",
     "errTimeout": "От 1 до 60 секунд",
-    "warnHttp": "Адрес http:// отправляет журнал без шифрования. Для банка нужен https://."
+    "warnHttp": "Адрес http:// отправляет журнал без шифрования. Для банка нужен https://.",
+    "typeSyslog": "Syslog",
+    "network": "Протокол",
+    "addr": "Адрес",
+    "addrPlaceholder": "rsyslog.example.internal:6514",
+    "facility": "Facility",
+    "errAddrRequired": "Укажите адрес (host:port)",
+    "syslogUnsupported": "Syslog-приёмник недоступен на этой платформе (Windows)."
   },
   "delete": {
     "title": "Удалить приёмник?",
@@ -121,6 +135,59 @@
     "createFailed": "Не удалось сохранить приёмник",
     "deleted": "Приёмник удалён",
     "deletedMsg": "«{{name}}»",
-    "deleteFailed": "Не удалось удалить приёмник"
+    "deleteFailed": "Не удалось удалить приёмник",
+    "stateFailed": "Не удалось изменить состояние приёмника"
+  },
+  "time": {
+    "now": "только что",
+    "secAgo": "{{n}} с назад",
+    "minAgo": "{{n}} мин назад",
+    "hourAgo": "{{n}} ч назад",
+    "dayAgo": "{{n}} дн назад"
+  },
+  "live": {
+    "today": "Записей сегодня",
+    "todaySub": "с 00:00 UTC · значения секретов не пишутся",
+    "rate": "Событий в минуту",
+    "rateUnit": "соб/мин",
+    "ratePeak": "пик за 30 мин: {{n}}",
+    "title": "Журнал запросов",
+    "paused": "Пауза",
+    "live": "Live",
+    "connecting": "Подключение",
+    "offline": "Offline",
+    "pause": "Поставить на паузу",
+    "resume": "Продолжить",
+    "export": "Экспорт NDJSON",
+    "histLabel": "Событий в минуту",
+    "histSub": "за последние 30 минут",
+    "chain": "Хеш-цепочка",
+    "chainOk": "Цепочка цела",
+    "chainBroken": "Разрыв на записи #{{n}}",
+    "chainHint": "Проверка охватывает текущее окно в памяти",
+    "verify": "Проверить",
+    "verifying": "Проверка…",
+    "pathPlaceholder": "путь, например secret/payments",
+    "operation": "Операция",
+    "allOps": "Все операции",
+    "status": "Результат",
+    "allStatus": "Все статусы",
+    "errorStatus": "Ошибки (4xx/5xx)",
+    "namespacePlaceholder": "namespace",
+    "qPlaceholder": "актор, request id, IP…",
+    "range": {
+      "15m": "15 мин",
+      "1h": "1 ч",
+      "24h": "24 ч",
+      "all": "Всё окно"
+    },
+    "gapNote": "Часть записей была перезаписана в буфере до отправки — используйте экспорт из файлового приёмника для полной истории.",
+    "gapDismiss": "Понятно",
+    "shown": "показано {{n}} из {{cap}}",
+    "matched": "подходит по фильтру: {{n}}",
+    "empty": "Нет записей, подходящих под фильтр.",
+    "prevHash": "prev_hash",
+    "hash": "hash",
+    "copyRid": "Копировать Request ID"
   }
 }

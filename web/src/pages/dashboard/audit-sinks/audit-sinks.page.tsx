@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { Button, NumberInput, TextInput } from '@mantine/core'
+import { Button, NumberInput, Select, TextInput } from '@mantine/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import { CSSProperties, FormEvent, ReactNode, useEffect, useMemo, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 
-import { AuditSink, deleteAuditSink, listAuditSinks, putFileSink, putWebhookSink } from '@shared/api/endpoints/audit'
+import {
+    AuditSink,
+    deleteAuditSink,
+    listAuditSinks,
+    putFileSink,
+    putSinkState,
+    putSyslogSink,
+    putWebhookSink
+} from '@shared/api/endpoints/audit'
 import {
     ConfirmModal,
     CopyButton,
@@ -19,8 +27,9 @@ import {
 import { Page } from '@shared/ui/page/page'
 import { Eyebrow, Plate, Pill } from '@shared/ui/tuck/tuck'
 
+import { LiveLogSection } from './components/live-log'
 import styles from './audit-sinks.module.css'
-import { buildBody, highlightJson, SinkType, sinkMeta, sinkTarget, urlWarning, validateSink } from './lib'
+import { buildBody, formatBytes, highlightJson, relTime, SinkType, sinkMeta, sinkTarget, urlWarning, validateSink } from './lib'
 
 const cx = (...p: Array<false | null | string | undefined>) => p.filter(Boolean).join(' ')
 
@@ -72,12 +81,15 @@ export function AuditSinksPage() {
     const [path, setPath] = useState('')
     const [maxSizeMb, setMaxSizeMb] = useState<number | string>(100)
     const [maxBackups, setMaxBackups] = useState<number | string>(7)
+    const [network, setNetwork] = useState('tcp')
+    const [addr, setAddr] = useState('')
+    const [facility, setFacility] = useState('local0')
     const [touched, setTouched] = useState(false)
     const [serverErr, setServerErr] = useState('')
     const [shakeKey, setShakeKey] = useState(0)
 
     const {
-        data: sinks,
+        data,
         error,
         isError,
         isFetching,
@@ -91,6 +103,8 @@ export function AuditSinksPage() {
     })
 
     const forbidden = isError && isAxiosError(error) && error.response?.status === 403
+    const sinks = data?.sinks
+    const capabilities = data?.capabilities
     const list = useMemo(() => [...(sinks ?? [])].sort((a, b) => a.name.localeCompare(b.name)), [sinks])
     const failing = useMemo(() => list.filter((s) => s.errors > 0), [list])
     const totalErrors = useMemo(() => list.reduce((a, s) => a + s.errors, 0), [list])
@@ -99,7 +113,7 @@ export function AuditSinksPage() {
     const showData = !isLoading && !isError
     const none = showData && list.length === 0
 
-    const fields = { type, name, url, timeoutSec, path, maxSizeMb, maxBackups }
+    const fields = { type, name, url, timeoutSec, path, maxSizeMb, maxBackups, network, addr, facility }
     const errors = validateSink(fields, t)
     const visibleErrors = touched ? errors : {}
     const exists = list.some((s) => s.name === name.trim())
@@ -113,6 +127,9 @@ export function AuditSinksPage() {
         setPath('')
         setMaxSizeMb(100)
         setMaxBackups(7)
+        setNetwork('tcp')
+        setAddr('')
+        setFacility('local0')
         setTouched(false)
         setServerErr('')
     }
@@ -125,9 +142,9 @@ export function AuditSinksPage() {
     const createMutation = useMutation({
         mutationFn: () => {
             const n = name.trim()
-            return type === 'webhook'
-                ? putWebhookSink(n, url.trim(), Number(timeoutSec))
-                : putFileSink(n, path.trim(), Number(maxSizeMb), Number(maxBackups))
+            if (type === 'webhook') return putWebhookSink(n, url.trim(), Number(timeoutSec))
+            if (type === 'syslog') return putSyslogSink(n, network, addr.trim(), facility)
+            return putFileSink(n, path.trim(), Number(maxSizeMb), Number(maxBackups))
         },
         onSuccess: async () => {
             const created = name.trim()
@@ -165,6 +182,15 @@ export function AuditSinksPage() {
             return () => window.clearTimeout(id)
         }
     }, [fresh, list])
+
+    // --- pause / resume ---
+    const stateMutation = useMutation({
+        mutationFn: ({ sinkName, enabled }: { enabled: boolean; sinkName: string }) => putSinkState(sinkName, enabled),
+        onSuccess: async () => {
+            await queryClient.invalidateQueries({ queryKey: QUERY_KEY })
+        },
+        onError: (err) => toast.error(t('toast.stateFailed'), serverMessage(err))
+    })
 
     // --- delete ---
     const deleteMutation = useMutation({ mutationFn: deleteAuditSink })
@@ -375,8 +401,9 @@ export function AuditSinksPage() {
                                 </div>
                             ) : (
                                 list.map((sink, i) => {
-                                    const bad = sink.errors > 0
+                                    const bad = sink.health === 'failing' || (!sink.health && sink.errors > 0)
                                     const target = sinkTarget(sink)
+                                    const togglePending = stateMutation.isPending && stateMutation.variables?.sinkName === sink.name
                                     return (
                                         <div
                                             className={cx(
@@ -409,10 +436,26 @@ export function AuditSinksPage() {
                                             </div>
                                             <div className={cx(styles.st, bad ? styles.r : styles.g)}>
                                                 <i className={cx(styles.dot, bad && styles.fail)} />
-                                                {bad ? t('status.fail') : t('status.ok')}
+                                                {sink.health === 'paused'
+                                                    ? t('status.paused')
+                                                    : sink.health === 'inactive'
+                                                      ? t('status.inactive')
+                                                      : bad
+                                                        ? t('status.fail')
+                                                        : t('status.ok')}
+                                                {sink.stats && (
+                                                    <small className={styles.sinkStats}>
+                                                        {t('row.sent', { n: sink.stats.sent })}
+                                                        {sink.stats.last_success_at &&
+                                                            ` · ${t('row.lastSuccess', { when: relTime(sink.stats.last_success_at, t) })}`}
+                                                        {sink.stats.last_error &&
+                                                            ` · ${sink.stats.last_error.slice(0, 48)}`}
+                                                    </small>
+                                                )}
                                             </div>
                                             <div className={styles.cMeta} data-l={t('cols.params')}>
                                                 {sinkMeta(sink, t)}
+                                                {sink.stats && sink.stats.bytes > 0 && ` · ${formatBytes(sink.stats.bytes)}`}
                                             </div>
                                             <div
                                                 className={cx(styles.cErr, bad && styles.bad)}
@@ -420,7 +463,23 @@ export function AuditSinksPage() {
                                             >
                                                 {sink.errors.toLocaleString()}
                                             </div>
-                                            <div>
+                                            <div className={styles.rowActs}>
+                                                <button
+                                                    aria-checked={sink.enabled}
+                                                    aria-label={
+                                                        sink.enabled
+                                                            ? t('row.pause', { name: sink.name })
+                                                            : t('row.resume', { name: sink.name })
+                                                    }
+                                                    className={styles.sw}
+                                                    disabled={togglePending}
+                                                    onClick={() =>
+                                                        stateMutation.mutate({ sinkName: sink.name, enabled: !sink.enabled })
+                                                    }
+                                                    role="switch"
+                                                    title={sink.enabled ? t('row.pause', { name: sink.name }) : t('row.resume', { name: sink.name })}
+                                                    type="button"
+                                                />
                                                 <button
                                                     aria-label={t('row.remove', { name: sink.name })}
                                                     className={styles.ib}
@@ -462,6 +521,8 @@ export function AuditSinksPage() {
                         </div>
                     </Plate>
                 </section>
+
+                <LiveLogSection />
             </>
         )
     }
@@ -502,6 +563,7 @@ export function AuditSinksPage() {
                             {t('drawer.cancel')}
                         </Button>
                         <Button
+                            disabled={type === 'syslog' && capabilities !== undefined && !capabilities.syslog}
                             leftSection={<Icon name="plus" size={14} />}
                             loading={createMutation.isPending}
                             onClick={() => submitCreate()}
@@ -520,19 +582,33 @@ export function AuditSinksPage() {
                     <div className={styles.f}>
                         <span className={styles.lb}>{t('drawer.type')}</span>
                         <div aria-label={t('drawer.type')} className={styles.seg} role="radiogroup">
-                            {(['webhook', 'file'] as const).map((v) => (
-                                <button
-                                    aria-checked={type === v}
-                                    className={type === v ? styles.on : undefined}
-                                    key={v}
-                                    onClick={() => setType(v)}
-                                    role="radio"
-                                    type="button"
-                                >
-                                    {t(v === 'file' ? 'drawer.typeFile' : 'drawer.typeWebhook')}
-                                </button>
-                            ))}
+                            {(['webhook', 'file', 'syslog'] as const).map((v) => {
+                                const disabled = v === 'syslog' && capabilities !== undefined && !capabilities.syslog
+                                return (
+                                    <button
+                                        aria-checked={type === v}
+                                        className={type === v ? styles.on : undefined}
+                                        disabled={disabled}
+                                        key={v}
+                                        onClick={() => setType(v)}
+                                        role="radio"
+                                        title={disabled ? t('drawer.syslogUnsupported') : undefined}
+                                        type="button"
+                                    >
+                                        {t(
+                                            v === 'file'
+                                                ? 'drawer.typeFile'
+                                                : v === 'syslog'
+                                                  ? 'drawer.typeSyslog'
+                                                  : 'drawer.typeWebhook'
+                                        )}
+                                    </button>
+                                )
+                            })}
                         </div>
+                        {type === 'syslog' && capabilities !== undefined && !capabilities.syslog && (
+                            <p className={styles.unsupported}>{t('drawer.syslogUnsupported')}</p>
+                        )}
                     </div>
 
                     <div className={nameError ? styles.shake : undefined} key={`n${shakeKey}`}>
@@ -574,7 +650,7 @@ export function AuditSinksPage() {
                                 <small>{t('drawer.timeoutHint')}</small>
                             </div>
                         </>
-                    ) : (
+                    ) : type === 'file' ? (
                         <>
                             <TextInput
                                 autoComplete="off"
@@ -600,6 +676,32 @@ export function AuditSinksPage() {
                                 />
                             </div>
                         </>
+                    ) : (
+                        <div className={styles.fr}>
+                            <Select
+                                data={['tcp', 'udp']}
+                                label={t('drawer.network')}
+                                onChange={(v) => setNetwork(v ?? 'tcp')}
+                                value={network}
+                            />
+                            <TextInput
+                                autoComplete="off"
+                                error={visibleErrors.addr || undefined}
+                                label={t('drawer.addr')}
+                                onChange={(e) => setAddr(e.currentTarget.value)}
+                                placeholder={t('drawer.addrPlaceholder')}
+                                spellCheck={false}
+                                value={addr}
+                            />
+                            <TextInput
+                                autoComplete="off"
+                                label={t('drawer.facility')}
+                                onChange={(e) => setFacility(e.currentTarget.value)}
+                                placeholder="local0"
+                                spellCheck={false}
+                                value={facility}
+                            />
+                        </div>
                     )}
 
                     <div className={styles.f}>

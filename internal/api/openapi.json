@@ -39,6 +39,117 @@
         "type": "object",
         "properties": { "error": { "type": "string" } }
       },
+      "ClusterSnapshot": {
+        "type": "object",
+        "required": ["id", "index", "term", "size", "voters"],
+        "properties": {
+          "id": { "type": "string" },
+          "index": { "type": "integer", "format": "int64" },
+          "term": { "type": "integer", "format": "int64" },
+          "size": { "type": "integer", "format": "int64" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "voters": { "type": "integer" }
+        }
+      },
+      "ClusterSnapshotResult": {
+        "type": "object",
+        "required": ["created"],
+        "properties": {
+          "created": { "type": "boolean" },
+          "reason": { "type": "string" },
+          "snapshot": { "$ref": "#/components/schemas/ClusterSnapshot" }
+        }
+      },
+      "ClusterServerMetrics": {
+        "type": "object",
+        "required": ["source", "term", "last_log_index"],
+        "properties": {
+          "source": { "type": "string", "enum": ["local", "heartbeat"] },
+          "term": { "type": "integer", "format": "int64" },
+          "last_log_index": { "type": "integer", "format": "int64" },
+          "lag_entries": { "type": "integer", "format": "int64" },
+          "last_contact_ms": { "type": "integer", "format": "int64" },
+          "heartbeat_rtt_ms": { "type": "number" },
+          "reachable": { "type": "boolean" },
+          "failures": { "type": "integer", "format": "int64" },
+          "commit_index": { "type": "integer", "format": "int64" },
+          "applied_index": { "type": "integer", "format": "int64" }
+        }
+      },
+      "ClusterServer": {
+        "type": "object",
+        "required": ["id", "address", "suffrage"],
+        "properties": {
+          "id": { "type": "string" },
+          "address": { "type": "string" },
+          "suffrage": { "type": "string", "enum": ["Voter", "Nonvoter", "Staging"] },
+          "self": { "type": "boolean" },
+          "metrics": { "$ref": "#/components/schemas/ClusterServerMetrics" }
+        }
+      },
+      "ClusterTLS": {
+        "type": "object",
+        "required": ["ca_certs"],
+        "properties": {
+          "subject": { "type": "string" },
+          "issuer": { "type": "string" },
+          "serial": { "type": "string" },
+          "not_before": { "type": "string", "format": "date-time" },
+          "not_after": { "type": "string", "format": "date-time" },
+          "days_left": { "type": "integer" },
+          "dns_names": { "type": "array", "items": { "type": "string" } },
+          "ip_addresses": { "type": "array", "items": { "type": "string" } },
+          "server_name": { "type": "string" },
+          "ca_certs": { "type": "integer" },
+          "error": { "type": "string" }
+        }
+      },
+      "ClusterSample": {
+        "type": "object",
+        "required": ["t", "term", "commit_index", "applied_index", "last_log_index", "is_leader"],
+        "properties": {
+          "t": { "type": "integer", "format": "int64", "description": "Unix time, milliseconds" },
+          "term": { "type": "integer", "format": "int64" },
+          "commit_index": { "type": "integer", "format": "int64" },
+          "applied_index": { "type": "integer", "format": "int64" },
+          "last_log_index": { "type": "integer", "format": "int64" },
+          "is_leader": { "type": "boolean" },
+          "peers": {
+            "type": "object",
+            "description": "Per-follower observations; present only while this node is the leader",
+            "additionalProperties": {
+              "type": "object",
+              "required": ["lag"],
+              "properties": { "rtt_ms": { "type": "number" }, "lag": { "type": "integer", "format": "int64" } }
+            }
+          }
+        }
+      },
+      "ClusterStatus": {
+        "type": "object",
+        "required": ["is_leader", "leader", "leader_addr", "state", "servers"],
+        "properties": {
+          "is_leader": { "type": "boolean" },
+          "leader": { "type": "string" },
+          "leader_addr": { "type": "string" },
+          "state": { "type": "string" },
+          "servers": { "type": "array", "items": { "$ref": "#/components/schemas/ClusterServer" } },
+          "node_id": { "type": "string" },
+          "advertise_addr": { "type": "string" },
+          "term": { "type": "integer", "format": "int64" },
+          "commit_index": { "type": "integer", "format": "int64" },
+          "applied_index": { "type": "integer", "format": "int64" },
+          "last_log_index": { "type": "integer", "format": "int64" },
+          "last_log_term": { "type": "integer", "format": "int64" },
+          "last_snapshot_index": { "type": "integer", "format": "int64" },
+          "last_snapshot_term": { "type": "integer", "format": "int64" },
+          "fsm_pending": { "type": "integer", "format": "int64" },
+          "last_contact_ms": { "type": "integer", "format": "int64", "nullable": true, "description": "Age of the last contact with the leader; null on the leader" },
+          "heartbeat_timeout_ms": { "type": "integer", "format": "int64" },
+          "tls": { "$ref": "#/components/schemas/ClusterTLS" },
+          "history": { "type": "array", "items": { "$ref": "#/components/schemas/ClusterSample" } }
+        }
+      },
       "SealStatus": {
         "type": "object",
         "properties": {
@@ -113,15 +224,89 @@
           "version": { "type": "integer" },
           "created_at": { "type": "string", "format": "date-time" },
           "deleted_at": { "type": "string", "format": "date-time", "nullable": true },
-          "destroyed": { "type": "boolean" }
+          "destroyed": { "type": "boolean" },
+          "created_by": { "$ref": "#/components/schemas/KVAuthor" }
+        }
+      },
+      "KVAuthor": {
+        "type": "object",
+        "description": "Who wrote a version. Never contains the token itself; absent for versions written before authorship was recorded.",
+        "properties": {
+          "display_name": { "type": "string" },
+          "accessor": { "type": "string" },
+          "fingerprint": { "type": "string", "description": "Audit-log fingerprint of the token" },
+          "entity_id": { "type": "string" }
         }
       },
       "KVMeta": {
         "type": "object",
         "properties": {
           "current_version": { "type": "integer" },
-          "max_versions": { "type": "integer" },
+          "oldest_version": { "type": "integer", "description": "Lowest version still stored; versions below it were evicted by max_versions" },
+          "max_versions": { "type": "integer", "description": "0 = unlimited" },
+          "cas_required": { "type": "boolean" },
+          "custom_metadata": { "type": "object", "additionalProperties": { "type": "string" } },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" },
           "versions": { "type": "object", "additionalProperties": { "$ref": "#/components/schemas/VerMeta" } }
+        }
+      },
+      "KVMetaResponse": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string" },
+          "metadata": { "$ref": "#/components/schemas/KVMeta" },
+          "cas_required_effective": { "type": "boolean", "description": "cas_required of the secret or of the mount" },
+          "mount_options": {
+            "type": "object",
+            "properties": { "max_versions": { "type": "integer" }, "cas_required": { "type": "boolean" } }
+          }
+        }
+      },
+      "KVMetaUpdate": {
+        "type": "object",
+        "description": "Fields that are present are applied. custom_metadata replaces the map on PUT and is merged on PATCH (a null value deletes a key). Limits: 64 pairs, keys up to 128 bytes, values up to 512 bytes, max_versions 0..1000.",
+        "properties": {
+          "max_versions": { "type": "integer", "minimum": 0, "maximum": 1000 },
+          "cas_required": { "type": "boolean" },
+          "custom_metadata": { "type": "object", "additionalProperties": { "type": "string", "nullable": true } }
+        }
+      },
+      "KVListEntry": {
+        "type": "object",
+        "description": "Metadata only, never values. For entries the token may not read (restricted) only name/folder/restricted are set.",
+        "properties": {
+          "name": { "type": "string" },
+          "folder": { "type": "boolean" },
+          "count": { "type": "integer", "description": "Folders: number of secrets below, recursively" },
+          "restricted": { "type": "boolean" },
+          "current_version": { "type": "integer" },
+          "versions": { "type": "integer", "description": "Stored versions" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "updated_by": { "type": "string" },
+          "max_versions": { "type": "integer" },
+          "cas_required": { "type": "boolean" },
+          "deleted": { "type": "boolean", "description": "The current version is soft-deleted" },
+          "destroyed": { "type": "boolean", "description": "The current version is destroyed" }
+        }
+      },
+      "KVTotals": {
+        "type": "object",
+        "properties": {
+          "secrets": { "type": "integer" },
+          "folders": { "type": "integer" },
+          "versions": { "type": "integer" },
+          "deleted": { "type": "integer", "description": "Soft-deleted versions" },
+          "destroyed": { "type": "integer", "description": "Destroyed versions" },
+          "hidden": { "type": "integer", "description": "Secrets the token may list but not read; not included in the other counts" }
+        }
+      },
+      "KVList": {
+        "type": "object",
+        "properties": {
+          "keys": { "type": "array", "items": { "type": "string" } },
+          "entries": { "type": "array", "items": { "$ref": "#/components/schemas/KVListEntry" } },
+          "totals": { "$ref": "#/components/schemas/KVTotals" }
         }
       },
       "TransitKey": {
@@ -180,7 +365,60 @@
         "properties": {
           "name": { "type": "string" },
           "path": { "type": "string" },
-          "created_at": { "type": "string", "format": "date-time" }
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time", "description": "Last metadata update; absent until the first PUT" },
+          "description": { "type": "string" },
+          "owner": { "type": "string" },
+          "labels": { "type": "object", "additionalProperties": { "type": "string" } }
+        }
+      },
+      "NamespaceMetadata": {
+        "type": "object",
+        "description": "Editable, non-secret namespace metadata. PUT replaces all three fields.",
+        "properties": {
+          "description": { "type": "string", "maxLength": 512 },
+          "owner": { "type": "string", "maxLength": 128 },
+          "labels": { "type": "object", "maxProperties": 32, "additionalProperties": { "type": "string", "maxLength": 256 }, "description": "Keys 1-64 bytes" }
+        }
+      },
+      "NamespaceStats": {
+        "type": "object",
+        "description": "Object counts of one namespace. A field is absent when the caller may not list the objects it counts (never zero in that case).",
+        "properties": {
+          "secrets": { "type": "integer", "description": "KV v1 + KV v2" },
+          "secrets_kv1": { "type": "integer" },
+          "secrets_kv2": { "type": "integer" },
+          "tokens": { "type": "integer", "description": "Live tokens bound to the namespace" },
+          "policies": { "type": "integer" },
+          "auth_roles": { "type": "integer", "description": "AppRole + JWT + LDAP roles bound to the namespace (Kubernetes roles are not counted)" },
+          "truncated": { "type": "boolean", "description": "A scan limit cut the token count short" }
+        }
+      },
+      "NamespaceView": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Namespace" },
+          { "type": "object", "properties": { "stats": { "$ref": "#/components/schemas/NamespaceStats" } } }
+        ]
+      },
+      "MountStats": {
+        "type": "object",
+        "description": "Usage counters of one mount, computed for the caller's namespace. Fields are absent when they do not apply or the caller may not list what they count.",
+        "properties": {
+          "engine_backed": { "type": "boolean", "description": "false for a mount-table-only entry: nothing is stored under it, removing it deletes no data" },
+          "secrets": { "type": "integer" },
+          "leases": { "type": "integer" },
+          "tokens": { "type": "integer" },
+          "secrets_kv1": { "type": "integer" },
+          "secrets_kv2": { "type": "integer" },
+          "versions": { "type": "integer", "description": "KV v2 version records, including deleted and destroyed" },
+          "deleted_versions": { "type": "integer" },
+          "destroyed_versions": { "type": "integer" },
+          "hidden_secrets": { "type": "integer", "description": "KV v2 secrets whose metadata the caller may not read; left out of the version figures" },
+          "last_write_at": { "type": "string", "format": "date-time" },
+          "truncated": { "type": "boolean", "description": "More secrets than the scan limit; version figures are partial" },
+          "roles": { "type": "integer" },
+          "connections": { "type": "integer" },
+          "issued_certs": { "type": "integer" }
         }
       },
       "Mount": {
@@ -207,6 +445,33 @@
           "token": { "type": "string" },
           "ttl": { "type": "integer" },
           "creation_time": { "type": "string", "format": "date-time" }
+        }
+      },
+      "WrappedCapsule": {
+        "type": "object",
+        "description": "Metadata of a live wrapped response. Never contains the wrapping token or the payload; the accessor cannot be used to unwrap.",
+        "properties": {
+          "accessor": { "type": "string" },
+          "creation_time": { "type": "string", "format": "date-time" },
+          "expires_at": { "type": "string", "format": "date-time" },
+          "creation_ttl": { "type": "integer", "description": "seconds" },
+          "size": { "type": "integer", "description": "payload size in bytes" },
+          "namespace": { "type": "string" },
+          "creator_accessor": { "type": "string" },
+          "creator_fingerprint": { "type": "string" },
+          "creator_name": { "type": "string" },
+          "creation_path": { "type": "string" }
+        }
+      },
+      "WrappingStats": {
+        "type": "object",
+        "properties": {
+          "wrapped": { "type": "integer" },
+          "unwrapped": { "type": "integer" },
+          "expired": { "type": "integer" },
+          "revoked": { "type": "integer" },
+          "active": { "type": "integer" },
+          "since": { "type": "string", "format": "date-time" }
         }
       }
     }
@@ -325,24 +590,125 @@
         "operationId": "putAuditFile",
         "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "path": { "type": "string" }, "max_size_mb": { "type": "integer" }, "max_backups": { "type": "integer" } } } } } },
-        "responses": { "204": { "description": "Enabled" } }
+        "responses": {
+          "204": { "description": "Enabled" },
+          "409": { "description": "Path is already used by the primary audit log or another file sink" }
+        }
+      }
+    },
+    "/v1/sys/audit/syslog/{name}": {
+      "put": {
+        "tags": ["sys"],
+        "summary": "Enable or update a syslog audit sink (not available on all platforms; see capabilities.syslog in the sink list)",
+        "operationId": "putAuditSyslog",
+        "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "network": { "type": "string", "enum": ["", "udp", "tcp"] }, "addr": { "type": "string" }, "facility": { "type": "string" } } } } } },
+        "responses": {
+          "204": { "description": "Enabled" },
+          "400": { "description": "Invalid network, address or facility" },
+          "501": { "description": "Syslog sinks are not supported on this platform" }
+        }
+      }
+    },
+    "/v1/sys/audit/state/{name}": {
+      "put": {
+        "tags": ["sys"],
+        "summary": "Pause or resume an audit sink",
+        "operationId": "putAuditSinkState",
+        "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "enabled": { "type": "boolean" } }, "required": ["enabled"] } } } },
+        "responses": {
+          "204": { "description": "Updated" },
+          "404": { "description": "Sink not found" }
+        }
       }
     },
     "/v1/sys/audit/{name}": {
       "delete": {
         "tags": ["sys"],
-        "summary": "Disable an audit sink",
+        "summary": "Remove an audit sink",
         "operationId": "deleteAudit",
         "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "204": { "description": "Disabled" } }
+        "responses": { "204": { "description": "Removed" }, "404": { "description": "Sink not found" } }
       }
     },
     "/v1/sys/audit/": {
       "get": {
         "tags": ["sys"],
-        "summary": "List audit sinks (LIST method)",
+        "summary": "List audit sinks (LIST method) with runtime stats and platform capabilities",
         "operationId": "listAuditSinks",
-        "responses": { "200": { "description": "Audit sinks", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
+        "responses": { "200": { "description": "Audit sinks", "content": { "application/json": { "schema": { "type": "object", "properties": { "sinks": { "type": "array", "items": { "type": "object" } }, "capabilities": { "type": "object", "properties": { "syslog": { "type": "boolean" }, "pause": { "type": "boolean" } } } } } } } } }
+      }
+    },
+    "/v1/sys/audit/events": {
+      "get": {
+        "tags": ["sys"],
+        "summary": "Read recent audit records (newest first) from the in-memory window; root-namespace token only",
+        "operationId": "getAuditEvents",
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 200, "maximum": 1000 } },
+          { "name": "after_seq", "in": "query", "schema": { "type": "integer" } },
+          { "name": "path", "in": "query", "schema": { "type": "string" } },
+          { "name": "operation", "in": "query", "schema": { "type": "string", "enum": ["", "all", "read", "write", "delete", "list", "login", "other"] } },
+          { "name": "status", "in": "query", "schema": { "type": "string" }, "description": "exact (\"404\"), class (\"4xx\") or \"error\" (>=400)" },
+          { "name": "namespace", "in": "query", "schema": { "type": "string" } },
+          { "name": "q", "in": "query", "schema": { "type": "string" }, "description": "free-text substring over path, request id, fingerprint, client IP and namespace" },
+          { "name": "since", "in": "query", "schema": { "type": "string" }, "description": "RFC 3339, unix seconds, or a duration such as \"15m\"" },
+          { "name": "until", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Audit records", "content": { "application/json": { "schema": { "type": "object", "properties": { "events": { "type": "array", "items": { "type": "object" } }, "matched": { "type": "integer" }, "truncated": { "type": "boolean" }, "window": { "type": "object" }, "head_hash": { "type": "string" }, "head_seq": { "type": "integer" } } } } } },
+          "400": { "description": "Invalid filter" },
+          "403": { "description": "Forbidden (requires a root-namespace token)" }
+        }
+      }
+    },
+    "/v1/sys/audit/events/stream": {
+      "get": {
+        "tags": ["sys"],
+        "summary": "Live tail of audit records as Server-Sent Events; root-namespace token only",
+        "operationId": "getAuditEventsStream",
+        "parameters": [
+          { "name": "since_seq", "in": "query", "schema": { "type": "integer" }, "description": "replay buffered records after this sequence number before streaming new ones" },
+          { "name": "path", "in": "query", "schema": { "type": "string" } },
+          { "name": "operation", "in": "query", "schema": { "type": "string" } },
+          { "name": "status", "in": "query", "schema": { "type": "string" } },
+          { "name": "namespace", "in": "query", "schema": { "type": "string" } },
+          { "name": "q", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "text/event-stream of \"hello\", \"audit\" and \"gap\" events, plus heartbeats", "content": { "text/event-stream": { "schema": { "type": "string" } } } },
+          "400": { "description": "Invalid filter" },
+          "403": { "description": "Forbidden (requires a root-namespace token)" },
+          "429": { "description": "Too many concurrent live-tail connections" }
+        }
+      }
+    },
+    "/v1/sys/audit/stats": {
+      "get": {
+        "tags": ["sys"],
+        "summary": "Aggregate audit counters: records today, trailing-minute rate, per-minute histogram and per-operation counts",
+        "operationId": "getAuditStats",
+        "parameters": [{ "name": "minutes", "in": "query", "schema": { "type": "integer", "default": 60, "maximum": 1440 } }],
+        "responses": {
+          "200": { "description": "Audit stats", "content": { "application/json": { "schema": { "type": "object", "properties": { "stats": { "type": "object" }, "window": { "type": "object" }, "head_hash": { "type": "string" }, "head_seq": { "type": "integer" } } } } } },
+          "400": { "description": "Invalid minutes" },
+          "403": { "description": "Forbidden (requires a root-namespace token)" }
+        }
+      }
+    },
+    "/v1/sys/audit/verify": {
+      "post": {
+        "tags": ["sys"],
+        "summary": "Verify the tamper-evidence hash chain of the in-memory window and, optionally, a file sink",
+        "operationId": "postAuditVerify",
+        "requestBody": { "required": false, "content": { "application/json": { "schema": { "type": "object", "properties": { "source": { "type": "string", "enum": ["memory", "file", "all"] }, "sink": { "type": "string", "description": "a registered file sink name, or \"primary\" (default) for the main audit log" } } } } } },
+        "responses": {
+          "200": { "description": "Verification result", "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "type": "boolean" }, "memory": { "type": "object" }, "file": { "type": "object" }, "file_source": { "type": "string" }, "file_error": { "type": "string" }, "head_hash": { "type": "string" }, "head_seq": { "type": "integer" }, "verified_at": { "type": "string" } } } } } },
+          "400": { "description": "Invalid body, or file-only verification without a primary log" },
+          "403": { "description": "Forbidden (requires a root-namespace token)" },
+          "404": { "description": "Named sink not found" }
+        }
       }
     },
     "/v1/sys/namespaces": {
@@ -350,9 +716,10 @@
         "tags": ["namespaces"],
         "summary": "Create a namespace",
         "operationId": "createNamespace",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] } } } },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "allOf": [{ "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] }, { "$ref": "#/components/schemas/NamespaceMetadata" }] } } } },
         "responses": {
           "200": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Namespace" } } } },
+          "400": { "description": "Invalid name or metadata" },
           "409": { "description": "Already exists" }
         }
       }
@@ -368,6 +735,18 @@
           "404": { "description": "Not found" }
         }
       },
+      "put": {
+        "tags": ["namespaces"],
+        "summary": "Update namespace metadata (description, owner, labels)",
+        "operationId": "putNamespace",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NamespaceMetadata" } } } },
+        "responses": {
+          "200": { "description": "Updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Namespace" } } } },
+          "400": { "description": "Invalid metadata" },
+          "403": { "description": "Forbidden (a namespace-bound token may only update its own namespace)" },
+          "404": { "description": "Not found" }
+        }
+      },
       "delete": {
         "tags": ["namespaces"],
         "summary": "Delete a namespace",
@@ -375,12 +754,37 @@
         "responses": { "204": { "description": "Deleted" } }
       }
     },
+    "/v1/sys/namespaces/{name}/stats": {
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["namespaces"],
+        "summary": "Object counts of a namespace (secrets, tokens, policies, auth roles)",
+        "operationId": "getNamespaceStats",
+        "responses": {
+          "200": { "description": "Counts the caller may list", "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" }, "stats": { "$ref": "#/components/schemas/NamespaceStats" } } } } } },
+          "403": { "description": "Forbidden (a namespace-bound token may only read its own namespace)" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
     "/v1/sys/namespaces/": {
       "get": {
         "tags": ["namespaces"],
         "summary": "List namespaces (LIST method)",
         "operationId": "listNamespaces",
-        "responses": { "200": { "description": "Namespace names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
+        "parameters": [{ "name": "stats", "in": "query", "required": false, "schema": { "type": "boolean" }, "description": "Also return object counts per namespace" }],
+        "responses": { "200": { "description": "Namespace names, plus metadata (and counts with stats=true) of the namespaces the caller may see", "content": { "application/json": { "schema": { "type": "object", "properties": { "keys": { "type": "array", "items": { "type": "string" } }, "namespaces": { "type": "array", "items": { "$ref": "#/components/schemas/NamespaceView" } } } } } } } }
+      }
+    },
+    "/v1/sys/usage/secrets": {
+      "get": {
+        "tags": ["sys"],
+        "summary": "Number of KV secrets in the caller's namespace",
+        "operationId": "getUsageSecrets",
+        "responses": {
+          "200": { "description": "Counts", "content": { "application/json": { "schema": { "type": "object", "properties": { "secrets": { "type": "integer" }, "secrets_kv1": { "type": "integer" }, "secrets_kv2": { "type": "integer" } } } } } },
+          "403": { "description": "Caller may not list secret/" }
+        }
       }
     },
     "/v1/sys/leases/renew": {
@@ -426,7 +830,8 @@
         "tags": ["sys"],
         "summary": "List all mounts",
         "operationId": "getMounts",
-        "responses": { "200": { "description": "Mount table" } }
+        "parameters": [{ "name": "stats", "in": "query", "required": false, "schema": { "type": "boolean" }, "description": "Also return usage counters keyed by mount path" }],
+        "responses": { "200": { "description": "Mount table (and, with stats=true, a stats map keyed by mount path)", "content": { "application/json": { "schema": { "type": "object", "properties": { "mounts": { "type": "array", "items": { "type": "object" } }, "stats": { "type": "object", "additionalProperties": { "$ref": "#/components/schemas/MountStats" } } } } } } } }
       }
     },
     "/v1/sys/mounts/{path}": {
@@ -451,14 +856,15 @@
         "tags": ["sys"],
         "summary": "Get mount tuning config",
         "operationId": "getMountTune",
-        "responses": { "200": { "description": "Tune config" } }
+        "parameters": [{ "name": "stats", "in": "query", "required": false, "schema": { "type": "boolean" }, "description": "Also return usage counters of the mount" }],
+        "responses": { "200": { "description": "Tune config (plus stats with stats=true)", "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true, "properties": { "stats": { "$ref": "#/components/schemas/MountStats" } } } } } } }
       },
       "post": {
         "tags": ["sys"],
         "summary": "Update mount tuning config",
         "operationId": "postMountTune",
-        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "default_lease_ttl": { "type": "string" }, "max_lease_ttl": { "type": "string" } } } } } },
-        "responses": { "204": { "description": "Updated" } }
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "default_lease_ttl": { "type": "string" }, "max_lease_ttl": { "type": "string" }, "max_versions": { "type": "integer", "minimum": 0, "maximum": 1000, "description": "KV v2 only (secret/ mount): default max_versions of new secrets, 0 = built-in 10" }, "cas_required": { "type": "boolean", "description": "KV v2 only (secret/ mount): every write must carry cas" } } } } } },
+        "responses": { "204": { "description": "Updated" }, "400": { "description": "Invalid value, or a KV v2 option on a mount other than secret/" } }
       }
     },
     "/v1/sys/cluster": {
@@ -466,7 +872,59 @@
         "tags": ["sys"],
         "summary": "Get cluster status (Raft HA)",
         "operationId": "getCluster",
-        "responses": { "200": { "description": "Cluster state" } }
+        "responses": { "200": { "description": "Cluster state as seen by the answering node", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ClusterStatus" } } } } }
+      }
+    },
+    "/v1/sys/cluster/step-down": {
+      "post": {
+        "tags": ["sys"],
+        "summary": "Hand Raft leadership to another voter (leader only)",
+        "operationId": "postClusterStepDown",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "target_id": { "type": "string", "description": "Node ID of the voter to promote; empty picks the most up-to-date follower" } } } } } },
+        "responses": {
+          "200": { "description": "Leadership transferred", "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string" }, "target_id": { "type": "string" } } } } } },
+          "400": { "description": "Invalid target (unknown, not a voter, or this node)" },
+          "403": { "description": "Forbidden" },
+          "409": { "description": "No other voter, or the transfer failed" },
+          "501": { "description": "Cluster mode not enabled" },
+          "503": { "description": "Not the leader (leader_addr is returned) or sealed" }
+        }
+      }
+    },
+    "/v1/sys/cluster/snapshot": {
+      "get": {
+        "tags": ["sys"],
+        "summary": "List snapshots stored on this node",
+        "operationId": "listClusterSnapshots",
+        "responses": {
+          "200": { "description": "Stored snapshots, newest first", "content": { "application/json": { "schema": { "type": "object", "properties": { "snapshots": { "type": "array", "items": { "$ref": "#/components/schemas/ClusterSnapshot" } } } } } } },
+          "403": { "description": "Forbidden" },
+          "501": { "description": "Cluster mode not enabled" }
+        }
+      },
+      "post": {
+        "tags": ["sys"],
+        "summary": "Take a snapshot now and store it on this node",
+        "operationId": "createClusterSnapshot",
+        "responses": {
+          "200": { "description": "Nothing changed since the latest snapshot; it is returned instead", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ClusterSnapshotResult" } } } },
+          "201": { "description": "Snapshot created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ClusterSnapshotResult" } } } },
+          "403": { "description": "Forbidden" },
+          "501": { "description": "Cluster mode not enabled" }
+        }
+      }
+    },
+    "/v1/sys/cluster/snapshot/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["sys"],
+        "summary": "Download a stored snapshot (encrypted, same format as /v1/sys/snapshot)",
+        "operationId": "getClusterSnapshot",
+        "responses": {
+          "200": { "description": "Binary snapshot", "content": { "application/octet-stream": {} } },
+          "403": { "description": "Forbidden" },
+          "404": { "description": "Unknown snapshot" }
+        }
       }
     },
     "/v1/sys/cluster/join": {
@@ -587,14 +1045,27 @@
         "tags": ["kv"],
         "summary": "Get version metadata (KV v2)",
         "operationId": "getKVv2Meta",
-        "responses": { "200": { "description": "Metadata", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KVMeta" } } } } }
+        "description": "With ?list=true (or the LIST method) returns the keys under the prefix instead; add detailed=true for per-key metadata (current version, update time and author, flags; never values) and totals=true for subtree counts. Details and totals only cover secrets the token may read.",
+        "parameters": [
+          { "name": "list", "in": "query", "schema": { "type": "boolean" } },
+          { "name": "detailed", "in": "query", "schema": { "type": "boolean" } },
+          { "name": "totals", "in": "query", "schema": { "type": "boolean" } }
+        ],
+        "responses": { "200": { "description": "Metadata, or the key list with ?list=true", "content": { "application/json": { "schema": { "oneOf": [{ "$ref": "#/components/schemas/KVMetaResponse" }, { "$ref": "#/components/schemas/KVList" }] } } } } }
       },
       "put": {
         "tags": ["kv"],
-        "summary": "Update metadata config (KV v2)",
+        "summary": "Update metadata config; custom_metadata is replaced (KV v2)",
         "operationId": "putKVv2Meta",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "max_versions": { "type": "integer" } } } } } },
-        "responses": { "204": { "description": "Updated" } }
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KVMetaUpdate" } } } },
+        "responses": { "204": { "description": "Updated" }, "400": { "description": "Invalid max_versions or custom_metadata" } }
+      },
+      "patch": {
+        "tags": ["kv"],
+        "summary": "Update metadata config; custom_metadata is merged, null deletes a key (KV v2)",
+        "operationId": "patchKVv2Meta",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KVMetaUpdate" } } } },
+        "responses": { "204": { "description": "Updated" }, "400": { "description": "Invalid max_versions or custom_metadata" } }
       },
       "delete": {
         "tags": ["kv"],
@@ -1361,7 +1832,7 @@
         "tags": ["wrapping"],
         "summary": "Wrap arbitrary data into a single-use token",
         "operationId": "wrap",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "object" }, "ttl": { "type": "string", "example": "5m" } } } } } },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "object" }, "ttl": { "type": "string", "example": "5m" }, "creation_path": { "type": "string", "description": "optional label shown in the wrapped-response list" } } } } } },
         "responses": { "200": { "description": "Wrapping token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WrappingInfo" } } } } }
       }
     },
@@ -1390,6 +1861,42 @@
         "operationId": "revokeWrapping",
         "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "token": { "type": "string" } } } } } },
         "responses": { "204": { "description": "Revoked" } }
+      }
+    },
+    "/v1/sys/wrapping/list": {
+      "get": {
+        "tags": ["wrapping"],
+        "summary": "List live wrapped responses (metadata only)",
+        "description": "Callers see the capsules they created; tokens with list capability on sys/wrapping/list (root) see all of them, narrowed to the request namespace. Never returns tokens or payloads.",
+        "operationId": "listWrapped",
+        "responses": {
+          "200": {
+            "description": "Capsules",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "scope": { "type": "string", "enum": ["own", "all"] }, "capsules": { "type": "array", "items": { "$ref": "#/components/schemas/WrappedCapsule" } } } } } }
+          }
+        }
+      }
+    },
+    "/v1/sys/wrapping/stats": {
+      "get": {
+        "tags": ["wrapping"],
+        "summary": "Lifetime response-wrapping counters",
+        "description": "Requires read capability on sys/wrapping/stats.",
+        "operationId": "getWrappingStats",
+        "responses": {
+          "200": { "description": "Counters", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WrappingStats" } } } },
+          "403": { "description": "Permission denied" }
+        }
+      }
+    },
+    "/v1/sys/wrapping/revoke-accessor/{accessor}": {
+      "parameters": [{ "name": "accessor", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "delete": {
+        "tags": ["wrapping"],
+        "summary": "Revoke a wrapped response by accessor",
+        "description": "Allowed for the creator of the capsule or a token with delete capability on sys/wrapping/revoke-accessor. A capsule the caller may not touch is reported as 404.",
+        "operationId": "revokeWrappedByAccessor",
+        "responses": { "204": { "description": "Revoked" }, "404": { "description": "Not found" } }
       }
     },
     "/metrics": {

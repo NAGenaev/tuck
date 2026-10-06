@@ -7,111 +7,61 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sync"
+	"net/url"
 	"time"
 )
 
 // Sink receives audit entries for forwarding to an external system.
-// Send must not block longer than a reasonable timeout — the caller
-// does not wait for delivery. Close releases any held resources.
+// Send must not block longer than a reasonable timeout — the Dispatcher
+// delivers from a per-sink worker, never from the request path.
+// Close releases any held resources.
 type Sink interface {
 	Send(e Entry) error
 	Close() error
 }
 
+// byteSender is implemented by sinks that can report how many bytes a
+// successful delivery put on the wire / on disk.
+type byteSender interface {
+	SendBytes(e Entry) (int, error)
+}
+
+// retrier is implemented by sinks whose failures are worth retrying with
+// exponential backoff (network sinks).
+type retrier interface {
+	RetryPolicy() (attempts int, base time.Duration)
+}
+
+// permanent marks an error that retrying cannot fix (e.g. HTTP 4xx).
+type permanent interface{ Permanent() bool }
+
+type permanentError struct{ error }
+
+func (permanentError) Permanent() bool { return true }
+func (p permanentError) Unwrap() error { return p.error }
+
 // SinkConfig describes a registered audit sink persisted in the barrier.
 type SinkConfig struct {
 	Name    string            `json:"name"`
-	Type    string            `json:"type"` // "webhook" | "syslog"
+	Type    string            `json:"type"` // "webhook" | "file" | "syslog"
 	Options map[string]string `json:"options"`
-}
-
-// Dispatcher fans audit entries to the hash-chain Logger and zero or more
-// additional Sinks. Sink failures are non-fatal: they are counted but never
-// block the request path.
-type Dispatcher struct {
-	logger Loggable
-
-	mu     sync.RWMutex
-	sinks  map[string]Sink
-	errors map[string]int // error counts per sink name
-}
-
-// NewDispatcher creates a Dispatcher wrapping l.
-// l may be *Logger, *RotatingFileLogger, or any Loggable.
-func NewDispatcher(l Loggable) *Dispatcher {
-	return &Dispatcher{
-		logger: l,
-		sinks:  make(map[string]Sink),
-		errors: make(map[string]int),
-	}
-}
-
-// Log writes e to the hash-chain Logger and all registered Sinks.
-func (d *Dispatcher) Log(e Entry) {
-	d.logger.Log(e)
-
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	for name, sink := range d.sinks {
-		if err := sink.Send(e); err != nil {
-			d.errors[name]++
-		}
-	}
-}
-
-// Register adds or replaces a named Sink. The old Sink (if any) is closed.
-func (d *Dispatcher) Register(name string, sink Sink) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if old, ok := d.sinks[name]; ok {
-		_ = old.Close()
-	}
-	d.sinks[name] = sink
-	d.errors[name] = 0
-}
-
-// Deregister removes a named Sink and closes it.
-func (d *Dispatcher) Deregister(name string) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	sink, ok := d.sinks[name]
-	if !ok {
-		return errors.New("sink not found: " + name)
-	}
-	err := sink.Close()
-	delete(d.sinks, name)
-	delete(d.errors, name)
-	return err
-}
-
-// List returns names and error counts of all registered sinks.
-func (d *Dispatcher) List() map[string]int {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	out := make(map[string]int, len(d.errors))
-	for k, v := range d.errors {
-		out[k] = v
-	}
-	return out
-}
-
-// Close closes all sinks.
-func (d *Dispatcher) Close() {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	for _, s := range d.sinks {
-		_ = s.Close()
-	}
-	d.sinks = make(map[string]Sink)
+	// Disabled pauses delivery without deleting the sink. The zero value
+	// (absent in older stored configs) means enabled.
+	Disabled bool `json:"disabled,omitempty"`
 }
 
 // ─── Webhook sink ───────────────────────────────────────────────────────────
 
-// WebhookSink POSTs each audit entry as JSON to a URL.
+// WebhookSink POSTs each audit entry as JSON to a URL. Transient failures
+// (network errors, 5xx, 408, 429) are retried with exponential backoff by the
+// Dispatcher; 4xx answers are not.
 type WebhookSink struct {
 	URL     string
 	Timeout time.Duration
+	// Attempts is the total number of delivery attempts per entry (>= 1).
+	Attempts int
+	// Backoff is the base delay between attempts; it quadruples each retry.
+	Backoff time.Duration
 	client  *http.Client
 }
 
@@ -122,36 +72,61 @@ func NewWebhookSink(url string, timeout time.Duration) *WebhookSink {
 		timeout = 5 * time.Second
 	}
 	return &WebhookSink{
-		URL:     url,
-		Timeout: timeout,
-		client:  &http.Client{Timeout: timeout},
+		URL:      url,
+		Timeout:  timeout,
+		Attempts: 3,
+		Backoff:  500 * time.Millisecond,
+		client:   &http.Client{Timeout: timeout},
 	}
 }
 
+// RetryPolicy implements retrier.
+func (w *WebhookSink) RetryPolicy() (int, time.Duration) { return w.Attempts, w.Backoff }
+
 func (w *WebhookSink) Send(e Entry) error {
+	_, err := w.SendBytes(e)
+	return err
+}
+
+// SendBytes implements byteSender.
+func (w *WebhookSink) SendBytes(e Entry) (int, error) {
 	data, err := json.Marshal(e)
 	if err != nil {
-		return err
+		return 0, permanentError{err}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), w.Timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, w.URL, bytes.NewReader(data))
 	if err != nil {
-		return err
+		return 0, permanentError{redactURLError(err)}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := w.client.Do(req)
 	if err != nil {
-		return err
+		return 0, redactURLError(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("webhook: HTTP %d", resp.StatusCode)
+		herr := fmt.Errorf("webhook: HTTP %d", resp.StatusCode)
+		if resp.StatusCode < 500 && resp.StatusCode != http.StatusRequestTimeout && resp.StatusCode != http.StatusTooManyRequests {
+			return 0, permanentError{herr}
+		}
+		return 0, herr
 	}
-	return nil
+	return len(data), nil
 }
 
 func (w *WebhookSink) Close() error { return nil }
+
+// redactURLError drops the request URL from *url.Error: webhook URLs often
+// carry credentials or tokens that must not surface in stats or the UI.
+func redactURLError(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		return fmt.Errorf("webhook %s: %w", ue.Op, ue.Err)
+	}
+	return err
+}
 
 // ─── File sink ───────────────────────────────────────────────────────────────
 
@@ -175,8 +150,14 @@ func NewFileSink(path string, maxSizeMB int64, maxBackups int) (*FileSink, error
 }
 
 func (f *FileSink) Send(e Entry) error {
-	f.rfl.Log(e)
-	return nil
+	_, err := f.rfl.Write(e)
+	return err
 }
+
+// SendBytes implements byteSender.
+func (f *FileSink) SendBytes(e Entry) (int, error) { return f.rfl.Write(e) }
+
+// Path returns the path of the active file.
+func (f *FileSink) Path() string { return f.rfl.Path() }
 
 func (f *FileSink) Close() error { return f.rfl.Close() }

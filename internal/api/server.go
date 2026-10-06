@@ -104,6 +104,13 @@ func (s *Server) Handler() http.Handler {
 	// Audit sink management
 	mux.HandleFunc("PUT /v1/sys/audit/webhook/{name}", s.requireToken(s.putAuditWebhook))
 	mux.HandleFunc("PUT /v1/sys/audit/file/{name}", s.requireToken(s.putAuditFile))
+	mux.HandleFunc("PUT /v1/sys/audit/syslog/{name}", s.requireToken(s.putAuditSyslog))
+	mux.HandleFunc("PUT /v1/sys/audit/state/{name}", s.requireToken(s.putAuditSinkState))
+	// Readable audit log: recent records, live tail, stats, hash-chain verification
+	mux.HandleFunc("GET /v1/sys/audit/events", s.requireToken(s.getAuditEvents))
+	mux.HandleFunc("GET /v1/sys/audit/events/stream", s.requireToken(s.getAuditEventsStream))
+	mux.HandleFunc("GET /v1/sys/audit/stats", s.requireToken(s.getAuditStats))
+	mux.HandleFunc("POST /v1/sys/audit/verify", s.requireToken(s.postAuditVerify))
 	mux.HandleFunc("DELETE /v1/sys/audit/{name}", s.requireToken(s.deleteAuditSink))
 	s.registerListCompat(mux, "/v1/sys/audit/", s.listAuditSinks)
 
@@ -111,6 +118,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sys/namespaces", s.requireToken(s.createNamespace))
 	mux.HandleFunc("GET /v1/sys/namespaces/{name}", s.requireToken(s.getNamespace))
 	mux.HandleFunc("DELETE /v1/sys/namespaces/{name}", s.requireToken(s.deleteNamespace))
+	mux.HandleFunc("PUT /v1/sys/namespaces/{name}", s.requireToken(s.updateNamespace))
+	mux.HandleFunc("GET /v1/sys/namespaces/{name}/stats", s.requireToken(s.namespaceStatsHandler))
+	mux.HandleFunc("GET /v1/sys/usage/secrets", s.requireToken(s.usageSecrets))
 	s.registerListCompat(mux, "/v1/sys/namespaces/", s.listNamespaces)
 
 	// Runtime configuration
@@ -151,6 +161,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sys/wrapping/unwrap", s.requireToken(s.unwrapPayload))
 	mux.HandleFunc("POST /v1/sys/wrapping/lookup", s.requireToken(s.lookupWrappingToken))
 	mux.HandleFunc("DELETE /v1/sys/wrapping/revoke", s.requireToken(s.revokeWrappingToken))
+	mux.HandleFunc("GET /v1/sys/wrapping/list", s.requireToken(s.listWrapped))
+	mux.HandleFunc("GET /v1/sys/wrapping/stats", s.requireToken(s.wrappingStats))
+	mux.HandleFunc("DELETE /v1/sys/wrapping/revoke-accessor/{accessor}", s.requireToken(s.revokeWrappedByAccessor))
 
 	mux.HandleFunc("GET /metrics", metrics.Handler())
 
@@ -289,6 +302,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v2/secret/destroy/{path...}", s.requireToken(s.v2Destroy))
 	mux.HandleFunc("GET /v2/secret/metadata/{path...}", s.requireToken(s.v2GetMeta))
 	mux.HandleFunc("PUT /v2/secret/metadata/{path...}", s.requireToken(s.v2UpdateMeta))
+	mux.HandleFunc("PATCH /v2/secret/metadata/{path...}", s.requireToken(s.v2PatchMeta))
 	mux.HandleFunc("DELETE /v2/secret/metadata/{path...}", s.requireToken(s.v2DeleteMeta))
 	mux.HandleFunc("LIST /v2/secret/metadata/{path...}", s.requireToken(s.v2ListMeta))
 
@@ -332,6 +346,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/sys/cluster", s.requireToken(s.getClusterStatus))
 	mux.HandleFunc("POST /v1/sys/cluster/join", s.requireToken(s.postClusterJoin))
 	mux.HandleFunc("DELETE /v1/sys/cluster/node/{id}", s.requireToken(s.deleteClusterNode))
+	mux.HandleFunc("POST /v1/sys/cluster/step-down", s.requireToken(s.postClusterStepDown))
+	mux.HandleFunc("GET /v1/sys/cluster/snapshot", s.requireToken(s.getClusterSnapshots))
+	mux.HandleFunc("POST /v1/sys/cluster/snapshot", s.requireToken(s.postClusterSnapshot))
+	mux.HandleFunc("GET /v1/sys/cluster/snapshot/{id}", s.requireToken(s.getClusterSnapshot))
 
 	h := s.engineGate(mux)
 	h = s.tokenLimiter.TokenMiddleware(h)
@@ -380,6 +398,7 @@ func (s *Server) requireToken(next http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 			ctx = context.WithValue(ctx, nsCtxKey, ns)
+			audit.SetNamespace(ctx, ns) // validated namespace goes into the audit record
 		}
 		next(w, r.WithContext(ctx))
 	}

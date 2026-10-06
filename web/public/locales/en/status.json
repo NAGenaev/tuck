@@ -101,7 +101,8 @@
     "noSealed": "no data: the vault is sealed",
     "noError": "no data: request failed",
     "total": "total entries: {{n}}",
-    "secrets": "KV secrets"
+    "secrets": "KV secrets",
+    "auditRate": "Audit events/min"
   },
   "ha": {
     "eyebrow": "High availability",

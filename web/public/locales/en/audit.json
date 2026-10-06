@@ -46,16 +46,23 @@
   },
   "status": {
     "ok": "Connected",
-    "fail": "Failing"
+    "fail": "Failing",
+    "paused": "Paused",
+    "inactive": "Inactive"
   },
   "meta": {
     "rotation": "rotation {{size}} MB × {{backups}}",
-    "timeout": "timeout {{sec}} s"
+    "timeout": "timeout {{sec}} s",
+    "facility": "facility {{facility}}"
   },
   "row": {
     "copy": "Copy target",
     "remove": "Delete sink \"{{name}}\"",
-    "errline": "{{count}} delivery errors since registration"
+    "errline": "{{count}} delivery errors since registration",
+    "sent": "records: {{n}}",
+    "lastSuccess": "last write {{when}}",
+    "pause": "Pause \"{{name}}\"",
+    "resume": "Resume \"{{name}}\""
   },
   "guard": {
     "title": "Never switches off silently",
@@ -107,7 +114,14 @@
     "errUrlRequired": "Enter the sink URL",
     "errUrlFormat": "Expected an address like https://host/path",
     "errTimeout": "From 1 to 60 seconds",
-    "warnHttp": "An http:// address sends the log unencrypted. A bank needs https://."
+    "warnHttp": "An http:// address sends the log unencrypted. A bank needs https://.",
+    "typeSyslog": "Syslog",
+    "network": "Protocol",
+    "addr": "Address",
+    "addrPlaceholder": "rsyslog.example.internal:6514",
+    "facility": "Facility",
+    "errAddrRequired": "Enter an address (host:port)",
+    "syslogUnsupported": "Syslog sinks are not available on this platform (Windows)."
   },
   "delete": {
     "title": "Delete sink?",
@@ -121,6 +135,59 @@
     "createFailed": "Could not save the sink",
     "deleted": "Sink deleted",
     "deletedMsg": "\"{{name}}\"",
-    "deleteFailed": "Could not delete the sink"
+    "deleteFailed": "Could not delete the sink",
+    "stateFailed": "Could not change the sink's state"
+  },
+  "time": {
+    "now": "just now",
+    "secAgo": "{{n}}s ago",
+    "minAgo": "{{n}}m ago",
+    "hourAgo": "{{n}}h ago",
+    "dayAgo": "{{n}}d ago"
+  },
+  "live": {
+    "today": "Records today",
+    "todaySub": "since 00:00 UTC · secret values are never written",
+    "rate": "Events per minute",
+    "rateUnit": "evt/min",
+    "ratePeak": "peak over 30 min: {{n}}",
+    "title": "Request log",
+    "paused": "Paused",
+    "live": "Live",
+    "connecting": "Connecting",
+    "offline": "Offline",
+    "pause": "Pause",
+    "resume": "Resume",
+    "export": "Export NDJSON",
+    "histLabel": "Events per minute",
+    "histSub": "over the last 30 minutes",
+    "chain": "Hash chain",
+    "chainOk": "Chain intact",
+    "chainBroken": "Break at record #{{n}}",
+    "chainHint": "Checks the current in-memory window",
+    "verify": "Verify",
+    "verifying": "Verifying…",
+    "pathPlaceholder": "path, e.g. secret/payments",
+    "operation": "Operation",
+    "allOps": "All operations",
+    "status": "Result",
+    "allStatus": "All statuses",
+    "errorStatus": "Errors (4xx/5xx)",
+    "namespacePlaceholder": "namespace",
+    "qPlaceholder": "actor, request id, IP…",
+    "range": {
+      "15m": "15m",
+      "1h": "1h",
+      "24h": "24h",
+      "all": "Whole window"
+    },
+    "gapNote": "Some records were overwritten in the buffer before they could be sent — use a file sink export for the full history.",
+    "gapDismiss": "Got it",
+    "shown": "showing {{n}} of {{cap}}",
+    "matched": "matching the filter: {{n}}",
+    "empty": "No records match the filter.",
+    "prevHash": "prev_hash",
+    "hash": "hash",
+    "copyRid": "Copy Request ID"
   }
 }

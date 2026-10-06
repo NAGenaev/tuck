@@ -104,6 +104,9 @@ type Core struct {
 	mountStore       *mount.Store
 	mountConfigStore *mount.ConfigStore
 
+	// usage caches the (bounded, read-only) usage counters for a few seconds.
+	usage usageCache
+
 	// optional — nil means k8s auth is disabled
 	k8sReviewer k8sauth.Reviewer
 	k8sRoles    *k8sauth.RoleStore
@@ -181,6 +184,7 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 	c.leaseManager = lease.NewWithEngines(c.dbManager)
 	c.mountStore = mount.New(b)
 	c.mountConfigStore = mount.NewConfigStore(b)
+	c.kv2.WithDefaults(c.kv2MountDefaults)
 	return c
 }
 
@@ -943,7 +947,7 @@ func secretKey(p string) string {
 // Root namespace returns the default store; named namespaces get a prefix-scoped view.
 func (c *Core) KVv2(ns string) *kvv2.Store {
 	if prefix := namespace.StoragePrefix(ns); prefix != "" {
-		return kvv2.New(c.barrier.View(prefix))
+		return kvv2.New(c.barrier.View(prefix)).WithDefaults(c.kv2MountDefaults)
 	}
 	return c.kv2
 }
@@ -1386,6 +1390,26 @@ func (c *Core) RevokeWrappingToken(ctx context.Context, token string) error {
 	return c.wrapping.Revoke(ctx, token)
 }
 
+// WrapPayloadWithMeta is WrapPayload that records who created the capsule.
+func (c *Core) WrapPayloadWithMeta(ctx context.Context, payload json.RawMessage, ttl time.Duration, meta wrapping.Meta) (string, time.Time, error) {
+	return c.wrapping.WrapWithMeta(ctx, payload, ttl, meta)
+}
+
+// ListWrapped returns metadata of live wrapped responses accepted by keep.
+func (c *Core) ListWrapped(ctx context.Context, keep func(*wrapping.Capsule) bool) ([]wrapping.Capsule, error) {
+	return c.wrapping.List(ctx, keep)
+}
+
+// RevokeWrappedByAccessor destroys a wrapped response by its accessor.
+func (c *Core) RevokeWrappedByAccessor(ctx context.Context, accessor string, allow func(*wrapping.Capsule) bool) error {
+	return c.wrapping.RevokeByAccessor(ctx, accessor, allow)
+}
+
+// WrappingStats returns the lifetime response-wrapping counters.
+func (c *Core) WrappingStats(ctx context.Context) (wrapping.Stats, error) {
+	return c.wrapping.Stats(ctx)
+}
+
 // --- Entity & Identity ---
 
 // attachEntityToToken auto-creates (or looks up) the entity alias for the
@@ -1499,6 +1523,13 @@ func (c *Core) Dispatcher() *audit.Dispatcher { return c.dispatcher }
 // SetDispatcher replaces the dispatcher (called after the server sets up the file logger).
 func (c *Core) SetDispatcher(d *audit.Dispatcher) { c.dispatcher = d }
 
+// auditSinkDisabled reports whether the stored config of sink name is paused;
+// re-registering a sink keeps an explicit pause.
+func (c *Core) auditSinkDisabled(ctx context.Context, name string) bool {
+	cfg, err := c.auditStore.Get(ctx, name)
+	return err == nil && cfg.Disabled
+}
+
 // RegisterAuditFile creates or replaces a file audit sink backed by a
 // rotating file logger. maxSizeMB ≤ 0 uses the 100 MiB default; maxBackups ≤ 0
 // uses the 7-file default.
@@ -1506,11 +1537,15 @@ func (c *Core) RegisterAuditFile(ctx context.Context, name, filePath string, max
 	if filePath == "" {
 		return fmt.Errorf("path is required")
 	}
+	if c.dispatcher.PathInUse(filePath, name) {
+		return fmt.Errorf("path is already used by the primary audit log or another file sink")
+	}
 	sink, err := audit.NewFileSink(filePath, maxSizeMB, maxBackups)
 	if err != nil {
 		return fmt.Errorf("open audit file: %w", err)
 	}
-	c.dispatcher.Register(name, sink)
+	disabled := c.auditSinkDisabled(ctx, name)
+	c.dispatcher.RegisterWith(name, "file", sink, disabled)
 	cfg := &audit.SinkConfig{
 		Name: name,
 		Type: "file",
@@ -1519,6 +1554,7 @@ func (c *Core) RegisterAuditFile(ctx context.Context, name, filePath string, max
 			"max_size_mb": fmt.Sprintf("%d", maxSizeMB),
 			"max_backups": fmt.Sprintf("%d", maxBackups),
 		},
+		Disabled: disabled,
 	}
 	return c.auditStore.Put(ctx, cfg)
 }
@@ -1530,7 +1566,8 @@ func (c *Core) RegisterAuditWebhook(ctx context.Context, name, url string, timeo
 	}
 	to := time.Duration(timeoutSec) * time.Second
 	sink := audit.NewWebhookSink(url, to)
-	c.dispatcher.Register(name, sink)
+	disabled := c.auditSinkDisabled(ctx, name)
+	c.dispatcher.RegisterWith(name, "webhook", sink, disabled)
 	cfg := &audit.SinkConfig{
 		Name: name,
 		Type: "webhook",
@@ -1538,9 +1575,47 @@ func (c *Core) RegisterAuditWebhook(ctx context.Context, name, url string, timeo
 			"url":         url,
 			"timeout_sec": fmt.Sprintf("%d", timeoutSec),
 		},
+		Disabled: disabled,
 	}
 	return c.auditStore.Put(ctx, cfg)
 }
+
+// RegisterAuditSyslog creates or replaces a syslog audit sink. It fails on
+// platforms without syslog support (see audit.SyslogSupported).
+func (c *Core) RegisterAuditSyslog(ctx context.Context, name, network, addr, facility string) error {
+	if !audit.SyslogSupported {
+		return fmt.Errorf("syslog sink is not supported on this platform")
+	}
+	opts := map[string]string{"network": network, "addr": addr, "facility": facility}
+	sink, err := audit.NewSyslogSinkFromOptions(opts)
+	if err != nil {
+		return err
+	}
+	disabled := c.auditSinkDisabled(ctx, name)
+	c.dispatcher.RegisterWith(name, "syslog", sink, disabled)
+	return c.auditStore.Put(ctx, &audit.SinkConfig{Name: name, Type: "syslog", Options: opts, Disabled: disabled})
+}
+
+// SetAuditSinkEnabled pauses (enabled=false) or resumes a sink and persists
+// the choice so it survives restarts. Records produced while a sink is paused
+// are not replayed to it.
+func (c *Core) SetAuditSinkEnabled(ctx context.Context, name string, enabled bool) error {
+	cfg, err := c.auditStore.Get(ctx, name)
+	if err != nil {
+		return err
+	}
+	cfg.Disabled = !enabled
+	if err := c.auditStore.Put(ctx, cfg); err != nil {
+		return err
+	}
+	// The sink may be absent from the dispatcher (failed to open at startup);
+	// the persisted flag still applies on the next load.
+	_ = c.dispatcher.SetPaused(name, !enabled)
+	return nil
+}
+
+// AuditSinkStats returns runtime statistics of the registered sinks by name.
+func (c *Core) AuditSinkStats() map[string]audit.SinkStats { return c.dispatcher.SinkStats() }
 
 // DeregisterAuditSink removes a named audit sink.
 func (c *Core) DeregisterAuditSink(ctx context.Context, name string) error {
@@ -1587,15 +1662,22 @@ func (c *Core) LoadAuditSinks(ctx context.Context) error {
 				fmt.Sscanf(s, "%d", &sec)
 				to = time.Duration(sec) * time.Second
 			}
-			c.dispatcher.Register(name, audit.NewWebhookSink(url, to))
+			c.dispatcher.RegisterWith(name, "webhook", audit.NewWebhookSink(url, to), cfg.Disabled)
 		case "file":
 			filePath := cfg.Options["path"]
 			var maxSizeMB int64
 			fmt.Sscanf(cfg.Options["max_size_mb"], "%d", &maxSizeMB)
 			var maxBackups int
 			fmt.Sscanf(cfg.Options["max_backups"], "%d", &maxBackups)
+			if c.dispatcher.PathInUse(filePath, name) {
+				continue
+			}
 			if sink, ferr := audit.NewFileSink(filePath, maxSizeMB, maxBackups); ferr == nil {
-				c.dispatcher.Register(name, sink)
+				c.dispatcher.RegisterWith(name, "file", sink, cfg.Disabled)
+			}
+		case "syslog":
+			if sink, serr := audit.NewSyslogSinkFromOptions(cfg.Options); serr == nil {
+				c.dispatcher.RegisterWith(name, "syslog", sink, cfg.Disabled)
 			}
 		}
 	}

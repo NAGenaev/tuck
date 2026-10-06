@@ -175,6 +175,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sys/audit/syslog/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Enable or update a syslog audit sink (not available on all platforms; see capabilities.syslog in the sink list) */
+        put: operations["putAuditSyslog"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sys/audit/state/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Pause or resume an audit sink */
+        put: operations["putAuditSinkState"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sys/audit/{name}": {
         parameters: {
             query?: never;
@@ -185,7 +219,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Disable an audit sink */
+        /** Remove an audit sink */
         delete: operations["deleteAudit"];
         options?: never;
         head?: never;
@@ -199,10 +233,78 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List audit sinks (LIST method) */
+        /** List audit sinks (LIST method) with runtime stats and platform capabilities */
         get: operations["listAuditSinks"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sys/audit/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read recent audit records (newest first) from the in-memory window; root-namespace token only */
+        get: operations["getAuditEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sys/audit/events/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Live tail of audit records as Server-Sent Events; root-namespace token only */
+        get: operations["getAuditEventsStream"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sys/audit/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Aggregate audit counters: records today, trailing-minute rate, per-minute histogram and per-operation counts */
+        get: operations["getAuditStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sys/audit/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify the tamper-evidence hash chain of the in-memory window and, optionally, a file sink */
+        post: operations["postAuditVerify"];
         delete?: never;
         options?: never;
         head?: never;
@@ -237,10 +339,30 @@ export interface paths {
         };
         /** Get a namespace */
         get: operations["getNamespace"];
-        put?: never;
+        /** Update namespace metadata (description, owner, labels) */
+        put: operations["putNamespace"];
         post?: never;
         /** Delete a namespace */
         delete: operations["deleteNamespace"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sys/namespaces/{name}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** Object counts of a namespace (secrets, tokens, policies, auth roles) */
+        get: operations["getNamespaceStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -255,6 +377,23 @@ export interface paths {
         };
         /** List namespaces (LIST method) */
         get: operations["listNamespaces"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sys/usage/secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Number of KV secrets in the caller's namespace */
+        get: operations["getUsageSecrets"];
         put?: never;
         post?: never;
         delete?: never;
@@ -383,6 +522,60 @@ export interface paths {
         };
         /** Get cluster status (Raft HA) */
         get: operations["getCluster"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sys/cluster/step-down": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Hand Raft leadership to another voter (leader only) */
+        post: operations["postClusterStepDown"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sys/cluster/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List snapshots stored on this node */
+        get: operations["listClusterSnapshots"];
+        put?: never;
+        /** Take a snapshot now and store it on this node */
+        post: operations["createClusterSnapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sys/cluster/snapshot/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Download a stored snapshot (encrypted, same format as /v1/sys/snapshot) */
+        get: operations["getClusterSnapshot"];
         put?: never;
         post?: never;
         delete?: never;
@@ -550,16 +743,20 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Get version metadata (KV v2) */
+        /**
+         * Get version metadata (KV v2)
+         * @description With ?list=true (or the LIST method) returns the keys under the prefix instead; add detailed=true for per-key metadata (current version, update time and author, flags; never values) and totals=true for subtree counts. Details and totals only cover secrets the token may read.
+         */
         get: operations["getKVv2Meta"];
-        /** Update metadata config (KV v2) */
+        /** Update metadata config; custom_metadata is replaced (KV v2) */
         put: operations["putKVv2Meta"];
         post?: never;
         /** Delete all versions and metadata (KV v2) */
         delete: operations["deleteKVv2Meta"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update metadata config; custom_metadata is merged, null deletes a key (KV v2) */
+        patch: operations["patchKVv2Meta"];
         trace?: never;
     };
     "/v1/policy/{name}": {
@@ -1902,6 +2099,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sys/wrapping/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List live wrapped responses (metadata only)
+         * @description Callers see the capsules they created; tokens with list capability on sys/wrapping/list (root) see all of them, narrowed to the request namespace. Never returns tokens or payloads.
+         */
+        get: operations["listWrapped"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sys/wrapping/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lifetime response-wrapping counters
+         * @description Requires read capability on sys/wrapping/stats.
+         */
+        get: operations["getWrappingStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sys/wrapping/revoke-accessor/{accessor}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accessor: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a wrapped response by accessor
+         * @description Allowed for the creator of the capsule or a token with delete capability on sys/wrapping/revoke-accessor. A capsule the caller may not touch is reported as 404.
+         */
+        delete: operations["revokeWrappedByAccessor"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/metrics": {
         parameters: {
             query?: never;
@@ -1943,10 +2202,128 @@ export interface components {
         Error: {
             error?: string;
         };
+        ClusterSnapshot: {
+            id: string;
+            /** Format: int64 */
+            index: number;
+            /** Format: int64 */
+            term: number;
+            /** Format: int64 */
+            size: number;
+            /** Format: date-time */
+            created_at?: string;
+            voters: number;
+        };
+        ClusterSnapshotResult: {
+            created: boolean;
+            reason?: string;
+            snapshot?: components["schemas"]["ClusterSnapshot"];
+        };
+        ClusterServerMetrics: {
+            /** @enum {string} */
+            source: "local" | "heartbeat";
+            /** Format: int64 */
+            term: number;
+            /** Format: int64 */
+            last_log_index: number;
+            /** Format: int64 */
+            lag_entries?: number;
+            /** Format: int64 */
+            last_contact_ms?: number;
+            heartbeat_rtt_ms?: number;
+            reachable?: boolean;
+            /** Format: int64 */
+            failures?: number;
+            /** Format: int64 */
+            commit_index?: number;
+            /** Format: int64 */
+            applied_index?: number;
+        };
+        ClusterServer: {
+            id: string;
+            address: string;
+            /** @enum {string} */
+            suffrage: "Voter" | "Nonvoter" | "Staging";
+            self?: boolean;
+            metrics?: components["schemas"]["ClusterServerMetrics"];
+        };
+        ClusterTLS: {
+            subject?: string;
+            issuer?: string;
+            serial?: string;
+            /** Format: date-time */
+            not_before?: string;
+            /** Format: date-time */
+            not_after?: string;
+            days_left?: number;
+            dns_names?: string[];
+            ip_addresses?: string[];
+            server_name?: string;
+            ca_certs: number;
+            error?: string;
+        };
+        ClusterSample: {
+            /**
+             * Format: int64
+             * @description Unix time, milliseconds
+             */
+            t: number;
+            /** Format: int64 */
+            term: number;
+            /** Format: int64 */
+            commit_index: number;
+            /** Format: int64 */
+            applied_index: number;
+            /** Format: int64 */
+            last_log_index: number;
+            is_leader: boolean;
+            /** @description Per-follower observations; present only while this node is the leader */
+            peers?: {
+                [key: string]: {
+                    rtt_ms?: number;
+                    /** Format: int64 */
+                    lag: number;
+                };
+            };
+        };
+        ClusterStatus: {
+            is_leader: boolean;
+            leader: string;
+            leader_addr: string;
+            state: string;
+            servers: components["schemas"]["ClusterServer"][];
+            node_id?: string;
+            advertise_addr?: string;
+            /** Format: int64 */
+            term?: number;
+            /** Format: int64 */
+            commit_index?: number;
+            /** Format: int64 */
+            applied_index?: number;
+            /** Format: int64 */
+            last_log_index?: number;
+            /** Format: int64 */
+            last_log_term?: number;
+            /** Format: int64 */
+            last_snapshot_index?: number;
+            /** Format: int64 */
+            last_snapshot_term?: number;
+            /** Format: int64 */
+            fsm_pending?: number;
+            /**
+             * Format: int64
+             * @description Age of the last contact with the leader; null on the leader
+             */
+            last_contact_ms?: number | null;
+            /** Format: int64 */
+            heartbeat_timeout_ms?: number;
+            tls?: components["schemas"]["ClusterTLS"];
+            history?: components["schemas"]["ClusterSample"][];
+        };
         SealStatus: {
             sealed?: boolean;
             /** @enum {string} */
-            type?: "dev" | "shamir" | "transit" | "gcpckms" | "awskms" | "azurekeyvault";
+            type?: "dev" | "shamir" | "transit";
             required_shards?: number;
             received_shards?: number;
         };
@@ -2006,13 +2383,87 @@ export interface components {
             /** Format: date-time */
             deleted_at?: string | null;
             destroyed?: boolean;
+            created_by?: components["schemas"]["KVAuthor"];
+        };
+        /** @description Who wrote a version. Never contains the token itself; absent for versions written before authorship was recorded. */
+        KVAuthor: {
+            display_name?: string;
+            accessor?: string;
+            /** @description Audit-log fingerprint of the token */
+            fingerprint?: string;
+            entity_id?: string;
         };
         KVMeta: {
             current_version?: number;
+            /** @description Lowest version still stored; versions below it were evicted by max_versions */
+            oldest_version?: number;
+            /** @description 0 = unlimited */
             max_versions?: number;
+            cas_required?: boolean;
+            custom_metadata?: {
+                [key: string]: string;
+            };
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
             versions?: {
                 [key: string]: components["schemas"]["VerMeta"];
             };
+        };
+        KVMetaResponse: {
+            path?: string;
+            metadata?: components["schemas"]["KVMeta"];
+            /** @description cas_required of the secret or of the mount */
+            cas_required_effective?: boolean;
+            mount_options?: {
+                max_versions?: number;
+                cas_required?: boolean;
+            };
+        };
+        /** @description Fields that are present are applied. custom_metadata replaces the map on PUT and is merged on PATCH (a null value deletes a key). Limits: 64 pairs, keys up to 128 bytes, values up to 512 bytes, max_versions 0..1000. */
+        KVMetaUpdate: {
+            max_versions?: number;
+            cas_required?: boolean;
+            custom_metadata?: {
+                [key: string]: string | null;
+            };
+        };
+        /** @description Metadata only, never values. For entries the token may not read (restricted) only name/folder/restricted are set. */
+        KVListEntry: {
+            name?: string;
+            folder?: boolean;
+            /** @description Folders: number of secrets below, recursively */
+            count?: number;
+            restricted?: boolean;
+            current_version?: number;
+            /** @description Stored versions */
+            versions?: number;
+            /** Format: date-time */
+            updated_at?: string;
+            updated_by?: string;
+            max_versions?: number;
+            cas_required?: boolean;
+            /** @description The current version is soft-deleted */
+            deleted?: boolean;
+            /** @description The current version is destroyed */
+            destroyed?: boolean;
+        };
+        KVTotals: {
+            secrets?: number;
+            folders?: number;
+            versions?: number;
+            /** @description Soft-deleted versions */
+            deleted?: number;
+            /** @description Destroyed versions */
+            destroyed?: number;
+            /** @description Secrets the token may list but not read; not included in the other counts */
+            hidden?: number;
+        };
+        KVList: {
+            keys?: string[];
+            entries?: components["schemas"]["KVListEntry"][];
+            totals?: components["schemas"]["KVTotals"];
         };
         TransitKey: {
             name?: string;
@@ -2061,6 +2512,65 @@ export interface components {
             path?: string;
             /** Format: date-time */
             created_at?: string;
+            /**
+             * Format: date-time
+             * @description Last metadata update; absent until the first PUT
+             */
+            updated_at?: string;
+            description?: string;
+            owner?: string;
+            labels?: {
+                [key: string]: string;
+            };
+        };
+        /** @description Editable, non-secret namespace metadata. PUT replaces all three fields. */
+        NamespaceMetadata: {
+            description?: string;
+            owner?: string;
+            /** @description Keys 1-64 bytes */
+            labels?: {
+                [key: string]: string;
+            };
+        };
+        /** @description Object counts of one namespace. A field is absent when the caller may not list the objects it counts (never zero in that case). */
+        NamespaceStats: {
+            /** @description KV v1 + KV v2 */
+            secrets?: number;
+            secrets_kv1?: number;
+            secrets_kv2?: number;
+            /** @description Live tokens bound to the namespace */
+            tokens?: number;
+            policies?: number;
+            /** @description AppRole + JWT + LDAP roles bound to the namespace (Kubernetes roles are not counted) */
+            auth_roles?: number;
+            /** @description A scan limit cut the token count short */
+            truncated?: boolean;
+        };
+        NamespaceView: components["schemas"]["Namespace"] & {
+            stats?: components["schemas"]["NamespaceStats"];
+        };
+        /** @description Usage counters of one mount, computed for the caller's namespace. Fields are absent when they do not apply or the caller may not list what they count. */
+        MountStats: {
+            /** @description false for a mount-table-only entry: nothing is stored under it, removing it deletes no data */
+            engine_backed?: boolean;
+            secrets?: number;
+            leases?: number;
+            tokens?: number;
+            secrets_kv1?: number;
+            secrets_kv2?: number;
+            /** @description KV v2 version records, including deleted and destroyed */
+            versions?: number;
+            deleted_versions?: number;
+            destroyed_versions?: number;
+            /** @description KV v2 secrets whose metadata the caller may not read; left out of the version figures */
+            hidden_secrets?: number;
+            /** Format: date-time */
+            last_write_at?: string;
+            /** @description More secrets than the scan limit; version figures are partial */
+            truncated?: boolean;
+            roles?: number;
+            connections?: number;
+            issued_certs?: number;
         };
         Mount: {
             type?: string;
@@ -2080,6 +2590,32 @@ export interface components {
             ttl?: number;
             /** Format: date-time */
             creation_time?: string;
+        };
+        /** @description Metadata of a live wrapped response. Never contains the wrapping token or the payload; the accessor cannot be used to unwrap. */
+        WrappedCapsule: {
+            accessor?: string;
+            /** Format: date-time */
+            creation_time?: string;
+            /** Format: date-time */
+            expires_at?: string;
+            /** @description seconds */
+            creation_ttl?: number;
+            /** @description payload size in bytes */
+            size?: number;
+            namespace?: string;
+            creator_accessor?: string;
+            creator_fingerprint?: string;
+            creator_name?: string;
+            creation_path?: string;
+        };
+        WrappingStats: {
+            wrapped?: number;
+            unwrapped?: number;
+            expired?: number;
+            revoked?: number;
+            active?: number;
+            /** Format: date-time */
+            since?: string;
         };
     };
     responses: never;
@@ -2365,6 +2901,89 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Path is already used by the primary audit log or another file sink */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putAuditSyslog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    network?: "" | "udp" | "tcp";
+                    addr?: string;
+                    facility?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Enabled */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid network, address or facility */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Syslog sinks are not supported on this platform */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putAuditSinkState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sink not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     deleteAudit: {
@@ -2378,8 +2997,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Disabled */
+            /** @description Removed */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sink not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2402,8 +3028,217 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["KeyList"];
+                    "application/json": {
+                        sinks?: Record<string, never>[];
+                        capabilities?: {
+                            syslog?: boolean;
+                            pause?: boolean;
+                        };
+                    };
                 };
+            };
+        };
+    };
+    getAuditEvents: {
+        parameters: {
+            query?: {
+                limit?: number;
+                after_seq?: number;
+                path?: string;
+                operation?: "" | "all" | "read" | "write" | "delete" | "list" | "login" | "other";
+                /** @description exact ("404"), class ("4xx") or "error" (>=400) */
+                status?: string;
+                namespace?: string;
+                /** @description free-text substring over path, request id, fingerprint, client IP and namespace */
+                q?: string;
+                /** @description RFC 3339, unix seconds, or a duration such as "15m" */
+                since?: string;
+                until?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Audit records */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        events?: Record<string, never>[];
+                        matched?: number;
+                        truncated?: boolean;
+                        window?: Record<string, never>;
+                        head_hash?: string;
+                        head_seq?: number;
+                    };
+                };
+            };
+            /** @description Invalid filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden (requires a root-namespace token) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getAuditEventsStream: {
+        parameters: {
+            query?: {
+                /** @description replay buffered records after this sequence number before streaming new ones */
+                since_seq?: number;
+                path?: string;
+                operation?: string;
+                status?: string;
+                namespace?: string;
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description text/event-stream of "hello", "audit" and "gap" events, plus heartbeats */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            /** @description Invalid filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden (requires a root-namespace token) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many concurrent live-tail connections */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getAuditStats: {
+        parameters: {
+            query?: {
+                minutes?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Audit stats */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        stats?: Record<string, never>;
+                        window?: Record<string, never>;
+                        head_hash?: string;
+                        head_seq?: number;
+                    };
+                };
+            };
+            /** @description Invalid minutes */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden (requires a root-namespace token) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postAuditVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    source?: "memory" | "file" | "all";
+                    /** @description a registered file sink name, or "primary" (default) for the main audit log */
+                    sink?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Verification result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok?: boolean;
+                        memory?: Record<string, never>;
+                        file?: Record<string, never>;
+                        file_source?: string;
+                        file_error?: string;
+                        head_hash?: string;
+                        head_seq?: number;
+                        verified_at?: string;
+                    };
+                };
+            };
+            /** @description Invalid body, or file-only verification without a primary log */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden (requires a root-namespace token) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Named sink not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -2418,7 +3253,7 @@ export interface operations {
             content: {
                 "application/json": {
                     name: string;
-                };
+                } & components["schemas"]["NamespaceMetadata"];
             };
         };
         responses: {
@@ -2430,6 +3265,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Namespace"];
                 };
+            };
+            /** @description Invalid name or metadata */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Already exists */
             409: {
@@ -2469,6 +3311,53 @@ export interface operations {
             };
         };
     };
+    putNamespace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NamespaceMetadata"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Namespace"];
+                };
+            };
+            /** @description Invalid metadata */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden (a namespace-bound token may only update its own namespace) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     deleteNamespace: {
         parameters: {
             query?: never;
@@ -2489,7 +3378,72 @@ export interface operations {
             };
         };
     };
+    getNamespaceStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Counts the caller may list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        name?: string;
+                        stats?: components["schemas"]["NamespaceStats"];
+                    };
+                };
+            };
+            /** @description Forbidden (a namespace-bound token may only read its own namespace) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     listNamespaces: {
+        parameters: {
+            query?: {
+                /** @description Also return object counts per namespace */
+                stats?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Namespace names, plus metadata (and counts with stats=true) of the namespaces the caller may see */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        keys?: string[];
+                        namespaces?: components["schemas"]["NamespaceView"][];
+                    };
+                };
+            };
+        };
+    };
+    getUsageSecrets: {
         parameters: {
             query?: never;
             header?: never;
@@ -2498,14 +3452,25 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Namespace names */
+            /** @description Counts */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["KeyList"];
+                    "application/json": {
+                        secrets?: number;
+                        secrets_kv1?: number;
+                        secrets_kv2?: number;
+                    };
                 };
+            };
+            /** @description Caller may not list secret/ */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -2615,19 +3580,29 @@ export interface operations {
     };
     getMounts: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Also return usage counters keyed by mount path */
+                stats?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Mount table */
+            /** @description Mount table (and, with stats=true, a stats map keyed by mount path) */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        mounts?: Record<string, never>[];
+                        stats?: {
+                            [key: string]: components["schemas"]["MountStats"];
+                        };
+                    };
+                };
             };
         };
     };
@@ -2677,7 +3652,10 @@ export interface operations {
     };
     getMountTune: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Also return usage counters of the mount */
+                stats?: boolean;
+            };
             header?: never;
             path: {
                 path: string;
@@ -2686,12 +3664,18 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Tune config */
+            /** @description Tune config (plus stats with stats=true) */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        stats?: components["schemas"]["MountStats"];
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
             };
         };
     };
@@ -2709,12 +3693,23 @@ export interface operations {
                 "application/json": {
                     default_lease_ttl?: string;
                     max_lease_ttl?: string;
+                    /** @description KV v2 only (secret/ mount): default max_versions of new secrets, 0 = built-in 10 */
+                    max_versions?: number;
+                    /** @description KV v2 only (secret/ mount): every write must carry cas */
+                    cas_required?: boolean;
                 };
             };
         };
         responses: {
             /** @description Updated */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid value, or a KV v2 option on a mount other than secret/ */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2731,8 +3726,190 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Cluster state */
+            /** @description Cluster state as seen by the answering node */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClusterStatus"];
+                };
+            };
+        };
+    };
+    postClusterStepDown: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description Node ID of the voter to promote; empty picks the most up-to-date follower */
+                    target_id?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Leadership transferred */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status?: string;
+                        target_id?: string;
+                    };
+                };
+            };
+            /** @description Invalid target (unknown, not a voter, or this node) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No other voter, or the transfer failed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Cluster mode not enabled */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not the leader (leader_addr is returned) or sealed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listClusterSnapshots: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stored snapshots, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        snapshots?: components["schemas"]["ClusterSnapshot"][];
+                    };
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Cluster mode not enabled */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createClusterSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Nothing changed since the latest snapshot; it is returned instead */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClusterSnapshotResult"];
+                };
+            };
+            /** @description Snapshot created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClusterSnapshotResult"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Cluster mode not enabled */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getClusterSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Binary snapshot */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown snapshot */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3046,7 +4223,11 @@ export interface operations {
     };
     getKVv2Meta: {
         parameters: {
-            query?: never;
+            query?: {
+                list?: boolean;
+                detailed?: boolean;
+                totals?: boolean;
+            };
             header?: never;
             path: {
                 path: string;
@@ -3055,13 +4236,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Metadata */
+            /** @description Metadata, or the key list with ?list=true */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["KVMeta"];
+                    "application/json": components["schemas"]["KVMetaResponse"] | components["schemas"]["KVList"];
                 };
             };
         };
@@ -3077,14 +4258,19 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    max_versions?: number;
-                };
+                "application/json": components["schemas"]["KVMetaUpdate"];
             };
         };
         responses: {
             /** @description Updated */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid max_versions or custom_metadata */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3105,6 +4291,37 @@ export interface operations {
         responses: {
             /** @description Deleted */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    patchKVv2Meta: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KVMetaUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid max_versions or custom_metadata */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5903,6 +7120,8 @@ export interface operations {
                     data?: Record<string, never>;
                     /** @example 5m */
                     ttl?: string;
+                    /** @description optional label shown in the wrapped-response list */
+                    creation_path?: string;
                 };
             };
         };
@@ -5992,6 +7211,84 @@ export interface operations {
         responses: {
             /** @description Revoked */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listWrapped: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Capsules */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        scope?: "own" | "all";
+                        capsules?: components["schemas"]["WrappedCapsule"][];
+                    };
+                };
+            };
+        };
+    };
+    getWrappingStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Counters */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WrappingStats"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    revokeWrappedByAccessor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accessor: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

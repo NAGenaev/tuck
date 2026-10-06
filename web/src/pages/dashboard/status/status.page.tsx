@@ -5,6 +5,7 @@ import { isAxiosError } from 'axios'
 import { CSSProperties, FormEvent, useEffect, useRef, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 
+import { getAuditStats } from '@shared/api/endpoints/audit'
 import { listLeases } from '@shared/api/endpoints/leases'
 import { rotate, seal, snapshot, unseal } from '@shared/api/endpoints/sys'
 import { listTokens } from '@shared/api/endpoints/token'
@@ -90,6 +91,17 @@ export function StatusPage() {
     })
     const secretsForbidden =
         secretsQuery.isError && isAxiosError(secretsQuery.error) && secretsQuery.error.response?.status === 403
+
+    // audit rate tile: needs a root-namespace token with a sys/audit/* read policy; hidden otherwise
+    const auditRateQuery = useQuery({
+        queryKey: ['audit', 'stats', 'rate'],
+        queryFn: () => getAuditStats(1),
+        enabled: unsealedKnown,
+        refetchInterval: ACTIVITY_POLL,
+        retry: false
+    })
+    const auditForbidden =
+        auditRateQuery.isError && isAxiosError(auditRateQuery.error) && auditRateQuery.error.response?.status === 403
 
     const deadFor = (isError: boolean): 'error' | 'sealed' | null => {
         if (view === 'sealed' || view === 'auto') return 'sealed'
@@ -543,6 +555,16 @@ export function StatusPage() {
                                 loading={view === 'loading' || secretsQuery.isLoading}
                                 stamp={secretsQuery.dataUpdatedAt}
                                 value={secretsQuery.data?.secrets}
+                            />
+                        )}
+                        {!auditForbidden && (
+                            <ActivityTile
+                                className={styles.w2}
+                                dead={deadFor(auditRateQuery.isError)}
+                                label={t('activity.auditRate')}
+                                loading={view === 'loading' || auditRateQuery.isLoading}
+                                stamp={auditRateQuery.dataUpdatedAt}
+                                value={auditRateQuery.data?.stats.last_minute}
                             />
                         )}
                     </div>

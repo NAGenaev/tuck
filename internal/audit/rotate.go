@@ -1,12 +1,16 @@
 package audit
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -26,6 +30,9 @@ type RotatingFileLogger struct {
 	maxBackups int
 	logger     *Logger
 	size       int64
+	total      atomic.Int64 // bytes written across all rotated files
+	lastHash   string       // hash/seq of the last record found on disk at open
+	lastSeq    uint64
 }
 
 // NewRotatingFileLogger creates a RotatingFileLogger.
@@ -43,26 +50,42 @@ func NewRotatingFileLogger(path string, maxSize int64, maxBackups int) (*Rotatin
 		return nil, err
 	}
 
-	return &RotatingFileLogger{
+	rl := &RotatingFileLogger{
 		path:       path,
 		maxSize:    maxSize,
 		maxBackups: maxBackups,
 		logger:     NewLogger(f),
 		size:       sz,
-	}, nil
+	}
+	rl.lastHash, rl.lastSeq = readTail(path)
+	return rl, nil
 }
 
+// LastHash returns the hash and sequence number of the last record that was
+// already in the file when it was opened ("" , 0 for a fresh file). The
+// Dispatcher uses it to continue the chain across restarts.
+func (rl *RotatingFileLogger) LastHash() (string, uint64) { return rl.lastHash, rl.lastSeq }
+
+// Path returns the path of the active log file.
+func (rl *RotatingFileLogger) Path() string { return rl.path }
+
+// BytesWritten returns the bytes written since open (across rotations).
+func (rl *RotatingFileLogger) BytesWritten() int64 { return rl.total.Load() }
+
 // Log writes one entry, rotating the file if it has reached MaxSize.
-func (rl *RotatingFileLogger) Log(e Entry) {
+func (rl *RotatingFileLogger) Log(e Entry) { _, _ = rl.Write(e) }
+
+// Write is Log that reports the bytes written and any write error.
+func (rl *RotatingFileLogger) Write(e Entry) (int, error) {
 	rl.mu.Lock()
+	defer rl.mu.Unlock()
 	if rl.size >= rl.maxSize {
 		_ = rl.rotateLocked()
 	}
-	l := rl.logger
-	rl.size += 512 // conservative estimate per JSON line
-	rl.mu.Unlock()
-
-	l.Log(e)
+	n, err := rl.logger.Write(e)
+	rl.size += int64(n)
+	rl.total.Add(int64(n))
+	return n, err
 }
 
 // rotateLocked must be called with rl.mu held.
@@ -121,4 +144,43 @@ func openAppend(path string) (*os.File, int64, error) {
 		return nil, 0, err
 	}
 	return f, info.Size(), nil
+}
+
+// readTail returns the hash and seq of the last complete JSON record of the
+// file at path, or ("", 0) when there is none / it cannot be parsed.
+func readTail(path string) (string, uint64) {
+	f, err := os.Open(path) // #nosec G304 — operator-configured audit log path
+	if err != nil {
+		return "", 0
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil || info.Size() == 0 {
+		return "", 0
+	}
+	const window = 64 << 10
+	off := info.Size() - window
+	if off < 0 {
+		off = 0
+	}
+	buf := make([]byte, info.Size()-off)
+	if _, err := f.ReadAt(buf, off); err != nil && err != io.EOF {
+		return "", 0
+	}
+	// Only complete lines count; a trailing partial line is ignored.
+	if i := bytes.LastIndexByte(buf, '\n'); i >= 0 {
+		buf = buf[:i]
+	} else {
+		return "", 0
+	}
+	if i := bytes.LastIndexByte(buf, '\n'); i >= 0 {
+		buf = buf[i+1:]
+	} else if off > 0 {
+		return "", 0 // the only line in the window is cut at its start
+	}
+	var e Entry
+	if json.Unmarshal(buf, &e) != nil || len(e.Hash) != 64 {
+		return "", 0
+	}
+	return e.Hash, e.Seq
 }

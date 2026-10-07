@@ -561,6 +561,49 @@
     gap: 4px;
 }
 
+/* ---------- tree (grouped) view ---------- */
+.chev {
+    width: 18px;
+    height: 18px;
+    display: grid;
+    place-items: center;
+    flex: none;
+    background: none;
+    border: 0;
+    color: var(--dim);
+    cursor: pointer;
+    padding: 0;
+    transition: color 0.15s;
+}
+
+.chev:hover {
+    color: var(--bone);
+}
+
+.groupRow {
+    background: var(--vault2);
+    color: var(--dim);
+}
+
+.groupRow:hover {
+    background: var(--vault2);
+}
+
+.groupLabel {
+    font: 700 12px var(--mono);
+    letter-spacing: 0.02em;
+    color: var(--mute);
+}
+
+.groupCount {
+    font: 500 10px var(--label);
+    letter-spacing: 0.1em;
+    color: var(--dim);
+    border: 1px solid var(--line2);
+    padding: 1px 6px;
+    flex: none;
+}
+
 /* ---------- state panels ---------- */
 .panel {
     border: 1px solid var(--line2);
@@ -759,6 +802,12 @@
     margin: 6px 0 0;
     font: 500 12px var(--mono);
     color: var(--alarm);
+}
+
+.nameHint {
+    margin: 6px 0 0;
+    font: 500 11px / 1.4 var(--mono);
+    color: var(--dim);
 }
 
 .prev {

@@ -19,13 +19,27 @@ import (
 var ErrNotFound = errors.New("namespace not found")
 
 // ErrInvalidName is returned when a namespace name contains illegal characters.
-var ErrInvalidName = errors.New("namespace name must match [a-z0-9][a-z0-9-]* and not be 'root'")
+//
+// A name is either a single segment or several segments joined by a single
+// "/" (e.g. "team-a/project-x"), each matching [a-z0-9][a-z0-9-]*. The "/" is
+// purely an organizational naming convention for grouping in UIs and tooling:
+// the full string (segments and slashes together) is always one atomic,
+// fully-isolated namespace with its own independent secrets, policies and
+// tokens. There is no parent/child relationship, inheritance or cascading
+// delete between namespaces that happen to share a prefix segment.
+var ErrInvalidName = errors.New("namespace name must be [a-z0-9][a-z0-9-]* segments joined by single '/', no segment 'root', at most " + fmt.Sprint(MaxNameSegments) + " segments and " + fmt.Sprint(MaxNameLength) + " bytes total")
 
-var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+var segmentRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
 const (
 	storagePrefix = "sys/namespaces/"
 	RootNamespace = "root"
+
+	// MaxNameSegments bounds the number of "/"-separated segments in a
+	// namespace name (organizational nesting depth, not storage nesting).
+	MaxNameSegments = 4
+	// MaxNameLength bounds the total byte length of a namespace name.
+	MaxNameLength = 128
 )
 
 // Namespace is a named isolation domain for secrets and policies.
@@ -116,21 +130,47 @@ func (ns *Namespace) Apply(m Metadata) {
 	}
 }
 
-// ValidateName returns ErrInvalidName if name is not a valid namespace identifier.
+// ValidateName returns ErrInvalidName if name is not a valid namespace
+// identifier. "/" may be used to group names by organizational convention
+// (e.g. "team-a/project-x"); the full name including any slashes remains a
+// single, flat, fully-isolated namespace — see ErrInvalidName for details.
 func ValidateName(name string) error {
-	if name == RootNamespace || !nameRe.MatchString(name) {
+	if len(name) > MaxNameLength {
 		return ErrInvalidName
+	}
+	segments := strings.Split(name, "/")
+	if len(segments) > MaxNameSegments {
+		return ErrInvalidName
+	}
+	for _, seg := range segments {
+		if seg == RootNamespace || !segmentRe.MatchString(seg) {
+			return ErrInvalidName
+		}
 	}
 	return nil
 }
 
 // StoragePrefix returns the barrier key prefix for the given namespace.
 // Root namespace has no prefix (empty string).
+//
+// A namespace name may itself contain "/" (organizational grouping, see
+// ValidateName); naively concatenating it as "ns/"+ns+"/" would make the
+// boundary between the namespace segment and the following engine-key
+// segment ambiguous — e.g. namespace "team-a" storing a KV v2 secret at
+// path "secret/meta/x" and namespace "team-a/secret" storing its own
+// metadata for secret "x" would both resolve to the barrier key
+// "ns/team-a/secret/meta/x". Since a valid namespace segment can only
+// contain "[a-z0-9-]" (never "~"), replacing "/" with "~" here is
+// injective and keeps the encoded name free of "/": the first "/" after
+// the "ns/" literal is then always the unambiguous end of the namespace
+// segment, no matter what follows. Existing slash-free namespace names
+// encode to themselves, so this is backward compatible with data already
+// on disk.
 func StoragePrefix(ns string) string {
 	if ns == "" || ns == RootNamespace {
 		return ""
 	}
-	return "ns/" + ns + "/"
+	return "ns/" + strings.ReplaceAll(ns, "/", "~") + "/"
 }
 
 // barrierer is the storage interface required by the namespace store.

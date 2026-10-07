@@ -33,8 +33,15 @@ import { Eyebrow, Pill } from '@shared/ui/tuck/tuck'
 
 import styles from './namespaces.module.css'
 
-// Mirrors internal/namespace: ^[a-z0-9][a-z0-9-]*$ and not "root".
-const NAME_RE = /^[a-z0-9][a-z0-9-]*$/
+// Mirrors internal/namespace: each "/"-separated segment matches
+// [a-z0-9][a-z0-9-]*, no segment is "root", at most MAX_NAME_SEGMENTS
+// segments and MAX_NAME_LENGTH bytes total. The "/" is an organizational
+// naming convention only (e.g. "team-a/project-x" for grouping in this UI) —
+// the full string is still one flat, fully-isolated namespace; there is no
+// parent/child relationship, inheritance or cascading delete.
+const SEGMENT_RE = /^[a-z0-9][a-z0-9-]*$/
+const MAX_NAME_SEGMENTS = 4
+const MAX_NAME_LENGTH = 128
 const VIEW_KEY = 'tuck.ns.view'
 // Mirrors namespace.Max* on the server.
 const MAX_DESC = 512
@@ -42,13 +49,72 @@ const MAX_OWNER = 128
 const MAX_LABELS = 32
 const LABEL_KEY_RE = /^[A-Za-z0-9][A-Za-z0-9_./-]{0,63}$/
 
-type View = 'cards' | 'list'
+type View = 'cards' | 'list' | 'tree'
+
+type NameErrorKind = '' | 'root' | 'chars' | 'segments' | 'length'
+
+/** Client-side mirror of namespace.ValidateName (best-effort; the server is authoritative). */
+function nameErrorKind(trimmed: string): NameErrorKind {
+    if (!trimmed) return ''
+    if (trimmed.length > MAX_NAME_LENGTH) return 'length'
+    const segments = trimmed.split('/')
+    if (segments.length > MAX_NAME_SEGMENTS) return 'segments'
+    for (const seg of segments) {
+        if (seg === 'root') return 'root'
+        if (!SEGMENT_RE.test(seg)) return 'chars'
+    }
+    return ''
+}
+
+/** One node of the purely-visual grouping tree built from "/"-separated name segments. */
+interface TreeNode {
+    key: string
+    label: string
+    /** set only when a namespace actually exists at this exact full path */
+    ns?: NamespaceView
+    children: TreeNode[]
+}
+
+function buildTree(items: NamespaceView[]): TreeNode[] {
+    const roots: TreeNode[] = []
+    const byKey = new Map<string, TreeNode>()
+    for (const item of items) {
+        const segs = item.name.split('/')
+        let path = ''
+        let siblings = roots
+        for (let i = 0; i < segs.length; i++) {
+            path = path ? `${path}/${segs[i]}` : segs[i]
+            let node = byKey.get(path)
+            if (!node) {
+                node = { key: path, label: segs[i], children: [] }
+                byKey.set(path, node)
+                siblings.push(node)
+            }
+            if (i === segs.length - 1) node.ns = item
+            siblings = node.children
+        }
+    }
+    const sortRec = (nodes: TreeNode[]) => {
+        nodes.sort((a, b) => a.label.localeCompare(b.label))
+        nodes.forEach((n) => sortRec(n.children))
+    }
+    sortRec(roots)
+    return roots
+}
+
+/** Count of real namespaces (not synthetic group headers) at or under a node. */
+function countReal(node: TreeNode): number {
+    let n = node.ns ? 1 : 0
+    for (const c of node.children) n += countReal(c)
+    return n
+}
 
 const cx = (...p: Array<false | null | string | undefined>) => p.filter(Boolean).join(' ')
 
 function readView(): View {
     try {
-        return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'cards'
+        const v = localStorage.getItem(VIEW_KEY)
+        return v === 'list' || v === 'tree' ? v : 'cards'
     } catch {
         return 'cards'
     }
@@ -213,6 +279,14 @@ export function NamespacesPage() {
     const [toDelete, setToDelete] = useState<null | string>(null)
     const [dying, setDying] = useState<null | string>(null)
     const [fresh, setFresh] = useState<null | string>(null)
+    const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
+    const toggleGroup = (key: string) =>
+        setCollapsed((prev) => {
+            const next = new Set(prev)
+            if (next.has(key)) next.delete(key)
+            else next.add(key)
+            return next
+        })
 
     const current = getNamespace() ?? ''
 
@@ -264,10 +338,13 @@ export function NamespacesPage() {
 
     // --- create ---
     const trimmed = name.trim()
+    const errKind = nameErrorKind(trimmed)
     let nameErr = ''
     if (trimmed) {
-        if (trimmed === 'root') nameErr = t('createModal.errRoot')
-        else if (!NAME_RE.test(trimmed)) nameErr = t('createModal.errChars')
+        if (errKind === 'root') nameErr = t('createModal.errRoot')
+        else if (errKind === 'chars') nameErr = t('createModal.errChars')
+        else if (errKind === 'segments') nameErr = t('createModal.errSegments', { max: MAX_NAME_SEGMENTS })
+        else if (errKind === 'length') nameErr = t('createModal.errLength', { max: MAX_NAME_LENGTH })
         else if (all.includes(trimmed)) nameErr = t('createModal.errExists', { name: trimmed })
     }
     const shownErr = nameErr || serverErr
@@ -431,6 +508,86 @@ export function NamespacesPage() {
             </button>
         </>
     )
+
+    // Purely-visual grouping by "/"-separated name segments (e.g. "team-a" as
+    // a synthetic group header containing "team-a/project-x"); every leaf is
+    // still its own complete, atomic, fully-isolated namespace — see the
+    // module doc comment on nameErrorKind for details.
+    const renderTreeRows = (nodes: TreeNode[], depth: number): ReactNode[] => {
+        const out: ReactNode[] = []
+        for (const node of nodes) {
+            const hasChildren = node.children.length > 0
+            const isCollapsed = collapsed.has(node.key)
+            const chev = hasChildren && (
+                <button
+                    aria-label={isCollapsed ? t('tree.expand') : t('tree.collapse')}
+                    className={styles.chev}
+                    onClick={() => toggleGroup(node.key)}
+                    type="button"
+                >
+                    <Icon name={isCollapsed ? 'right' : 'down'} size={11} />
+                </button>
+            )
+            if (node.ns) {
+                const item = node.ns
+                const ns = item.name
+                out.push(
+                    <div
+                        className={cx(
+                            styles.row,
+                            styles.rowWide,
+                            ns === current && styles.sel,
+                            dying === ns && styles.dying,
+                            fresh === ns && styles.fresh
+                        )}
+                        data-ns={ns}
+                        key={node.key}
+                    >
+                        <span className={styles.nm} style={{ paddingLeft: depth * 18 }}>
+                            {chev || <i className={styles.dot} />}
+                            <span className={styles.path} title={ns}>
+                                <b>{node.label}</b>
+                            </span>
+                        </span>
+                        <span className={styles.cOwner} title={item.description || undefined}>
+                            {item.owner || '—'}
+                        </span>
+                        {STAT_KEYS.map((k) => (
+                            <span className={cx(styles.cNum, styles.cStat)} key={k}>
+                                {item.stats?.[k] ?? '—'}
+                            </span>
+                        ))}
+                        <span>
+                            {ns === current && (
+                                <Pill dot tone="ok">
+                                    {t('card.current')}
+                                </Pill>
+                            )}
+                        </span>
+                        <span className={styles.rowActs}>{actions(ns)}</span>
+                    </div>
+                )
+            } else {
+                out.push(
+                    <div className={cx(styles.row, styles.rowWide, styles.groupRow)} key={node.key}>
+                        <span className={styles.nm} style={{ paddingLeft: depth * 18 }}>
+                            {chev}
+                            <span className={styles.groupLabel}>{node.label}</span>
+                            <span className={styles.groupCount}>{t('tree.count', { count: countReal(node) })}</span>
+                        </span>
+                        <span className={styles.cOwner} />
+                        {STAT_KEYS.map((k) => (
+                            <span className={cx(styles.cNum, styles.cStat)} key={`${node.key}:${k}`} />
+                        ))}
+                        <span />
+                        <span />
+                    </div>
+                )
+            }
+            if (hasChildren && !isCollapsed) out.push(...renderTreeRows(node.children, depth + 1))
+        }
+        return out
+    }
 
     let body: ReactNode
     if (isLoading) {
@@ -598,6 +755,21 @@ export function NamespacesPage() {
                                 </article>
                             )
                         })}
+                    </div>
+                ) : view === 'tree' ? (
+                    <div className={styles.list}>
+                        <div className={cx(styles.row, styles.rowWide, styles.head)}>
+                            <span>{t('list.name')}</span>
+                            <span className={styles.cOwner}>{t('list.owner')}</span>
+                            {STAT_KEYS.map((k) => (
+                                <span className={cx(styles.cNum, styles.cStat)} key={k}>
+                                    {t(`counts.${k}`)}
+                                </span>
+                            ))}
+                            <span />
+                            <span />
+                        </div>
+                        {renderTreeRows(buildTree(listItems), 0)}
                     </div>
                 ) : (
                     <div className={styles.list}>
@@ -805,6 +977,13 @@ export function NamespacesPage() {
                         >
                             {t('view.list')}
                         </button>
+                        <button
+                            className={view === 'tree' ? styles.on : undefined}
+                            onClick={() => changeView('tree')}
+                            type="button"
+                        >
+                            {t('view.tree')}
+                        </button>
                     </div>
                 </div>
             )}
@@ -854,8 +1033,10 @@ export function NamespacesPage() {
                             }}
                             placeholder={t('createModal.placeholder')}
                             spellCheck={false}
+                            title={t('createModal.nameHint')}
                             value={name}
                         />
+                        <p className={styles.nameHint}>{t('createModal.nameHint')}</p>
                         {shownErr && <p className={styles.err}>{shownErr}</p>}
                     </div>
                     <div className={styles.prev}>

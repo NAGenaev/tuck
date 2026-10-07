@@ -85,36 +85,45 @@ func (s *Server) namespaceStats(ctx context.Context, ns string) (nsStats, error)
 	return out, nil
 }
 
-// GET /v1/sys/namespaces/{name}/stats
-func (s *Server) namespaceStatsHandler(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+// namespaceStatsHandler serves the stats sub-resource of namespace name
+// (formerly its own route, "GET /v1/sys/namespaces/{name}/stats"; folded into
+// getNamespace because {name...} now captures the whole remainder of the
+// path — see the comment there). It reports whether it wrote a response: it
+// returns false, writing nothing, only when the caller is authorized to read
+// sys/namespaces/<name> but that namespace does not exist, so the caller can
+// fall back to treating the original "<name>/stats" path as a literal
+// namespace name instead (the one edge case this cannot fully disambiguate is
+// a namespace whose last segment is itself literally "stats"; stats-for-name
+// always takes priority when both would apply and the caller is authorized
+// for the stats path).
+func (s *Server) namespaceStatsHandler(w http.ResponseWriter, r *http.Request, name string) bool {
 	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "sys/namespaces/"+name, policy.CapRead); err != nil {
 		writeErr(w, err)
-		return
+		return true
 	}
 	ok, err := s.mayViewNamespace(r.Context(), name)
 	if err != nil {
 		writeErr(w, err)
-		return
+		return true
 	}
 	if !ok {
 		writeErr(w, core.ErrUnauthorized)
-		return
+		return true
 	}
 	if _, err := s.core.GetNamespace(r.Context(), name); err != nil {
 		if errors.Is(err, namespace.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "namespace not found"})
-			return
+			return false
 		}
 		writeErr(w, err)
-		return
+		return true
 	}
 	st, err := s.namespaceStats(r.Context(), name)
 	if err != nil {
 		writeErr(w, err)
-		return
+		return true
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"name": name, "stats": st})
+	return true
 }
 
 // namespaceView is one namespace in the detailed list.
@@ -154,7 +163,7 @@ func (s *Server) namespaceDetails(ctx context.Context, names []string, withStats
 	return out, nil
 }
 
-// PUT /v1/sys/namespaces/{name}
+// PUT /v1/sys/namespaces/{name...}
 // Body: {"description":"...","owner":"...","labels":{"k":"v"}}
 // Replaces the namespace metadata; the name and creation time never change.
 func (s *Server) updateNamespace(w http.ResponseWriter, r *http.Request) {

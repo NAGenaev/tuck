@@ -114,14 +114,35 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/sys/audit/{name}", s.requireToken(s.deleteAuditSink))
 	s.registerListCompat(mux, "/v1/sys/audit/", s.listAuditSinks)
 
-	// Namespace management
+	// Namespace management. Names may contain "/" as an organizational naming
+	// convention (e.g. "team-a/project-x"); the full name including slashes is
+	// still one flat, atomic, fully-isolated namespace, so {name...} must
+	// capture the whole remainder of the path, not just one segment. A GET
+	// wildcard on this prefix cannot coexist with the usual GET+?list=true
+	// list-compat shim registered via registerListCompat (both would match the
+	// exact same request set and ServeMux panics on the conflict), so the
+	// list-compat GET is registered directly here against the exact empty-path
+	// pattern "{$}" instead of the bare prefix: "{$}" matches only
+	// "/v1/sys/namespaces/" itself (any query string, e.g. ?list=true, still
+	// applies — query is not part of path matching), which is a strict subset
+	// of what "{name...}" matches, so the two coexist without ambiguity. The
+	// "/stats" suffix (formerly its own route) is now dispatched from inside
+	// getNamespace since {name...} would otherwise swallow it as part of name.
 	mux.HandleFunc("POST /v1/sys/namespaces", s.requireToken(s.createNamespace))
-	mux.HandleFunc("GET /v1/sys/namespaces/{name}", s.requireToken(s.getNamespace))
-	mux.HandleFunc("DELETE /v1/sys/namespaces/{name}", s.requireToken(s.deleteNamespace))
-	mux.HandleFunc("PUT /v1/sys/namespaces/{name}", s.requireToken(s.updateNamespace))
-	mux.HandleFunc("GET /v1/sys/namespaces/{name}/stats", s.requireToken(s.namespaceStatsHandler))
+	mux.HandleFunc("GET /v1/sys/namespaces/{name...}", s.requireToken(s.getNamespace))
+	mux.HandleFunc("DELETE /v1/sys/namespaces/{name...}", s.requireToken(s.deleteNamespace))
+	mux.HandleFunc("PUT /v1/sys/namespaces/{name...}", s.requireToken(s.updateNamespace))
 	mux.HandleFunc("GET /v1/sys/usage/secrets", s.requireToken(s.usageSecrets))
-	s.registerListCompat(mux, "/v1/sys/namespaces/", s.listNamespaces)
+	mux.HandleFunc("LIST /v1/sys/namespaces/", s.requireToken(s.listNamespaces))
+	mux.HandleFunc("GET /v1/sys/namespaces/{$}", s.requireToken(func(w http.ResponseWriter, r *http.Request) {
+		if !wantsList(r) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "collection listing requires ?list=true",
+			})
+			return
+		}
+		s.listNamespaces(w, r)
+	}))
 
 	// Runtime configuration
 	mux.HandleFunc("GET /v1/sys/config", s.requireToken(s.getSysConfig))
@@ -345,6 +366,7 @@ func (s *Server) Handler() http.Handler {
 	// Cluster management (Raft HA mode only)
 	mux.HandleFunc("GET /v1/sys/cluster", s.requireToken(s.getClusterStatus))
 	mux.HandleFunc("POST /v1/sys/cluster/join", s.requireToken(s.postClusterJoin))
+	mux.HandleFunc("POST /v1/sys/cluster/join-token", s.requireToken(s.postClusterJoinToken))
 	mux.HandleFunc("DELETE /v1/sys/cluster/node/{id}", s.requireToken(s.deleteClusterNode))
 	mux.HandleFunc("POST /v1/sys/cluster/step-down", s.requireToken(s.postClusterStepDown))
 	mux.HandleFunc("GET /v1/sys/cluster/snapshot", s.requireToken(s.getClusterSnapshots))

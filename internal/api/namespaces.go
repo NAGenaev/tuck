@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/NAGenaev/tuck/internal/namespace"
 	"github.com/NAGenaev/tuck/internal/policy"
@@ -39,9 +40,22 @@ func (s *Server) createNamespace(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, ns)
 }
 
-// GET /v1/sys/namespaces/{name}
+// GET /v1/sys/namespaces/{name...}
+// The name itself may contain "/" (organizational naming convention only —
+// see namespace.ValidateName); {name...} therefore captures the whole
+// remainder of the path, so the former separate "GET .../{name}/stats" route
+// would be ambiguous with it and is folded in here instead: a name ending in
+// "/stats" is first tried as the stats sub-resource of the namespace named by
+// the rest of the path, falling back to a plain get of the literal name (in
+// the unlikely case a namespace segment is itself literally called "stats")
+// only when that namespace does not exist.
 func (s *Server) getNamespace(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if rest, ok := strings.CutSuffix(name, "/stats"); ok {
+		if handled := s.namespaceStatsHandler(w, r, rest); handled {
+			return
+		}
+	}
 	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "sys/namespaces/"+name, policy.CapRead); err != nil {
 		writeErr(w, err)
 		return
@@ -58,7 +72,10 @@ func (s *Server) getNamespace(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, ns)
 }
 
-// DELETE /v1/sys/namespaces/{name}
+// DELETE /v1/sys/namespaces/{name...}
+// Deletes exactly the one flat namespace entry named by the full path
+// (slashes and all); it never cascades to any other namespace, including
+// ones that merely share a "/"-separated prefix segment.
 func (s *Server) deleteNamespace(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "sys/namespaces/"+name, policy.CapDelete); err != nil {

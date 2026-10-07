@@ -29,7 +29,13 @@
   },
   "view": {
     "cards": "Cards",
-    "list": "List"
+    "list": "List",
+    "tree": "Groups"
+  },
+  "tree": {
+    "expand": "Expand group",
+    "collapse": "Collapse group",
+    "count": "{{count}}"
   },
   "section": {
     "all": "All enclosures",
@@ -82,12 +88,15 @@
     "title": "New namespace",
     "hint": "Namespaces isolate secrets, policies and auth methods per tenant.",
     "name": "Name",
-    "placeholder": "team-a",
+    "placeholder": "team-a/project-x",
+    "nameHint": "\"/\" is organizational grouping in this UI, not nested isolation: access and policies are never inherited between \"team-a\" and \"team-a/project-x\".",
     "preview": "Will create:",
     "submit": "Create",
     "cancel": "Cancel",
-    "errChars": "Lowercase latin letters, digits and hyphens only; the name must not start with a hyphen.",
-    "errRoot": "The name \"root\" is reserved.",
+    "errChars": "Each segment (between \"/\") is lowercase latin letters, digits and hyphens, no empty segments; a segment must not start with a hyphen or be \"root\".",
+    "errRoot": "The segment \"root\" is reserved.",
+    "errSegments": "At most {{max}} \"/\"-separated segments.",
+    "errLength": "The name must be at most {{max}} characters.",
     "errExists": "Namespace \"{{name}}\" already exists."
   },
   "deleteModal": {

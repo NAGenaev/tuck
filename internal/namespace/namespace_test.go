@@ -3,6 +3,7 @@ package namespace_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/NAGenaev/tuck/internal/namespace"
@@ -15,13 +16,30 @@ func newStore(t *testing.T) *namespace.Store {
 }
 
 func TestValidateName(t *testing.T) {
-	valid := []string{"dev", "prod", "team-a", "ns1", "a1b2"}
+	valid := []string{
+		"dev", "prod", "team-a", "ns1", "a1b2",
+		"team-a/project-x",       // "/" is an organizational naming convention
+		"a/b/c/d",                // at MaxNameSegments
+		"team-a/root-project",    // "root" as a substring of a segment is fine
+		"x/y",
+	}
 	for _, n := range valid {
 		if err := namespace.ValidateName(n); err != nil {
 			t.Errorf("expected %q to be valid: %v", n, err)
 		}
 	}
-	invalid := []string{"root", "", "Root", "DEV", "ns/foo", "ns_foo", "-bad"}
+	invalid := []string{
+		"root", "", "Root", "DEV", "ns_foo", "-bad",
+		"/team-a",        // leading slash
+		"team-a/",        // trailing slash
+		"team-a//b",      // double slash (empty segment)
+		"team-a/root",    // segment equal to "root"
+		"root/team-a",    // first segment equal to "root"
+		"a/b/c/d/e",      // exceeds MaxNameSegments
+		"team-A/x",       // uppercase not allowed in a segment
+		"team-a/-bad",    // segment can't start with '-'
+		strings.Repeat("a", namespace.MaxNameLength+1), // exceeds MaxNameLength
+	}
 	for _, n := range invalid {
 		if err := namespace.ValidateName(n); err == nil {
 			t.Errorf("expected %q to be invalid", n)
@@ -35,12 +53,25 @@ func TestStoragePrefix(t *testing.T) {
 		{"root", ""},
 		{"dev", "ns/dev/"},
 		{"prod", "ns/prod/"},
+		{"team-a/secret", "ns/team-a~secret/"},
 	}
 	for _, tc := range cases {
 		got := namespace.StoragePrefix(tc.ns)
 		if got != tc.want {
 			t.Errorf("StoragePrefix(%q) = %q, want %q", tc.ns, got, tc.want)
 		}
+	}
+}
+
+// TestStoragePrefixNoAliasing guards against the exact collision a slash in
+// a namespace name could otherwise cause: namespace "team-a" storing a KV v2
+// secret at "secret/meta/x" must never land on the same barrier key as
+// namespace "team-a/secret" storing its own metadata for secret "x".
+func TestStoragePrefixNoAliasing(t *testing.T) {
+	a := namespace.StoragePrefix("team-a") + "secret/meta/x"
+	b := namespace.StoragePrefix("team-a/secret") + "meta/x"
+	if a == b {
+		t.Fatalf("namespace %q and %q alias to the same barrier key %q", "team-a", "team-a/secret", a)
 	}
 }
 

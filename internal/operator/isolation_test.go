@@ -59,7 +59,7 @@ func TestReconcile_InvalidSpecs(t *testing.T) {
 
 type failingTuck struct{ failPath string }
 
-func (f failingTuck) GetSecret(_ context.Context, p string) ([]byte, error) {
+func (f failingTuck) GetSecret(_ context.Context, p, _ string) ([]byte, error) {
 	if p == f.failPath {
 		return nil, errors.New("boom")
 	}

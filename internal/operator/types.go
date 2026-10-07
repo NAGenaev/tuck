@@ -21,9 +21,13 @@ type TuckSecretSpec struct {
 	// Data maps additional Secret keys to Tuck paths, so a single TuckSecret
 	// can populate several keys of one K8s Secret. It may be combined with
 	// tuckPath/secretKey.
-	Data            map[string]string `json:"data,omitempty"`
-	TuckServer      string            `json:"tuckServer,omitempty"`
-	RefreshInterval string            `json:"refreshInterval,omitempty"`
+	Data       map[string]string `json:"data,omitempty"`
+	TuckServer string            `json:"tuckServer,omitempty"`
+	// KVVersion selects which secret engine tuckPath/data resolve against:
+	// "1" (default, backward compatible) for the unversioned KV engine, or
+	// "2" for the versioned KV v2 engine (Tuck's default secret/ mount).
+	KVVersion       string `json:"kvVersion,omitempty"`
+	RefreshInterval string `json:"refreshInterval,omitempty"`
 	// DeletionPolicy controls what happens to the K8s Secret when the TuckSecret
 	// is deleted. "Retain" (default) leaves the K8s Secret in place. "Delete"
 	// removes it together with the TuckSecret.

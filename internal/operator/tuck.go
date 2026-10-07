@@ -44,13 +44,17 @@ func (c *TuckClient) WithCluster(name string) *TuckClient {
 	return c
 }
 
-func (c *TuckClient) GetSecret(ctx context.Context, path string) ([]byte, error) {
+func (c *TuckClient) GetSecret(ctx context.Context, path, kvVersion string) ([]byte, error) {
 	token, err := c.ensureToken(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	url := c.serverURL + "/v1/secret/" + strings.TrimLeft(path, "/")
+	prefix := "/v1/secret/"
+	if kvVersion == "2" {
+		prefix = "/v2/secret/"
+	}
+	url := c.serverURL + prefix + strings.TrimLeft(path, "/")
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build secret request: %w", err)

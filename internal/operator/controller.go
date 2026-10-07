@@ -33,7 +33,7 @@ type KubeClientIface interface {
 
 // TuckClientIface is the subset of TuckClient used by the controller.
 type TuckClientIface interface {
-	GetSecret(ctx context.Context, path string) ([]byte, error)
+	GetSecret(ctx context.Context, path, kvVersion string) ([]byte, error)
 }
 
 // Controller reconciles TuckSecret resources into K8s Secrets.
@@ -238,8 +238,12 @@ func (ctrl *Controller) reconcile(ctx context.Context, ts TuckSecret) (err error
 	}
 	sort.Strings(keys)
 	data := make(map[string][]byte, len(keys))
+	kvVersion := spec.KVVersion
+	if kvVersion == "" {
+		kvVersion = "1"
+	}
 	for _, k := range keys {
-		value, err := ctrl.tuck.GetSecret(ctx, paths[k])
+		value, err := ctrl.tuck.GetSecret(ctx, paths[k], kvVersion)
 		if err != nil {
 			return fmt.Errorf("fetch tuck secret %q for key %q: %w", paths[k], k, err)
 		}

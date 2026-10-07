@@ -68,15 +68,17 @@ func (m *mockKube) RemoveFinalizer(_ context.Context, _ *TuckSecret, _ string) e
 // ---- Mock TuckClient ----
 
 type mockTuck struct {
-	mu      sync.Mutex
-	secrets map[string][]byte
-	fetched []string
+	mu         sync.Mutex
+	secrets    map[string][]byte
+	fetched    []string
+	kvVersions []string
 }
 
-func (m *mockTuck) GetSecret(_ context.Context, path string) ([]byte, error) {
+func (m *mockTuck) GetSecret(_ context.Context, path, kvVersion string) ([]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.fetched = append(m.fetched, path)
+	m.kvVersions = append(m.kvVersions, kvVersion)
 	v, ok := m.secrets[path]
 	if !ok {
 		return nil, nil
@@ -127,6 +129,35 @@ func TestReconcile_BasicSync(t *testing.T) {
 	}
 	if s.Metadata.Labels["managed-by"] != "tuck-operator" {
 		t.Errorf("expected managed-by label, got %v", s.Metadata.Labels)
+	}
+}
+
+func TestReconcile_KVVersionDefaultsToV1(t *testing.T) {
+	ts := newTS("prod", "db-pass", "db/password", "db-creds", "password")
+	kube := &mockKube{}
+	tuck := &mockTuck{secrets: map[string][]byte{"db/password": []byte("s3cr3t")}}
+
+	ctrl := New(kube, tuck, "prod")
+	if err := ctrl.reconcile(context.Background(), ts); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+	if len(tuck.kvVersions) != 1 || tuck.kvVersions[0] != "1" {
+		t.Fatalf("expected kvVersion \"1\" (default), got %v", tuck.kvVersions)
+	}
+}
+
+func TestReconcile_KVVersionV2Passthrough(t *testing.T) {
+	ts := newTS("prod", "db-pass", "db", "db-creds", "password")
+	ts.Spec.KVVersion = "2"
+	kube := &mockKube{}
+	tuck := &mockTuck{secrets: map[string][]byte{"db": []byte(`{"dsn":"..."}`)}}
+
+	ctrl := New(kube, tuck, "prod")
+	if err := ctrl.reconcile(context.Background(), ts); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+	if len(tuck.kvVersions) != 1 || tuck.kvVersions[0] != "2" {
+		t.Fatalf("expected kvVersion \"2\" to pass through, got %v", tuck.kvVersions)
 	}
 }
 

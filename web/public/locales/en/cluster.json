@@ -197,7 +197,18 @@
     "s3": "Keep an odd number of voters: 3 or 5.",
     "cmdComment": "# new node; <placeholders> are yours to fill",
     "cmdLeader": "# leader raft address: {{addr}}; --cluster-join takes its HTTP API URL",
-    "placeholders": "Values in angle brackets cannot be known by the server: node ID, certificate paths and, when you are on a follower, the leader API URL."
+    "placeholders": "Values in angle brackets cannot be known by the server: node ID, certificate paths and, when you are on a follower, the leader API URL.",
+    "genToken": "Generate join token",
+    "tokenTitle": "Join token (shown once)",
+    "tokenDismiss": "Dismiss",
+    "tokenExpires": "Expires in {{time}}",
+    "tokenExpiredTitle": "Token expired",
+    "tokenExpiredMsg": "The join token expired and no longer works. Generate a new one.",
+    "tokenUsesLeft_one": "{{count}} use left",
+    "tokenUsesLeft_other": "{{count}} uses left",
+    "tokenForbidden": "This token has no sys/cluster/join-token access — only root/sudo tokens can do this.",
+    "tokenFailed": "Could not create a join token",
+    "tokenFailedHint": "Make sure this node is the leader, then try again."
   },
   "log": {
     "eyebrow": "Observed",

@@ -99,6 +99,32 @@ export async function joinCluster(nodeId: string, raftAddr: string): Promise<voi
     await instance.post('/v1/sys/cluster/join', { node_id: nodeId, raft_addr: raftAddr })
 }
 
+export interface ClusterJoinToken {
+    accessor: string
+    advertise_addr?: string
+    expires_at: string
+    leader_addr: string
+    node_id?: string
+    num_uses: number
+    policy: string
+    token: string
+    ttl_seconds: number
+}
+
+/**
+ * Root/sudo only. Mints a short-lived, few-use token scoped to the built-in
+ * cluster-join policy (sys/cluster read+write only), so a new node can be joined
+ * without handing out the root token. Shown once — the server never returns the
+ * raw value again. Omit either field for the server defaults (600s / 1 use).
+ */
+export async function createClusterJoinToken(opts?: { numUses?: number; ttlSeconds?: number }): Promise<ClusterJoinToken> {
+    const { data } = await instance.post<ClusterJoinToken>('/v1/sys/cluster/join-token', {
+        num_uses: opts?.numUses,
+        ttl_seconds: opts?.ttlSeconds
+    })
+    return data
+}
+
 export async function removeClusterNode(id: string): Promise<void> {
     await instance.delete(`/v1/sys/cluster/node/${id}`)
 }

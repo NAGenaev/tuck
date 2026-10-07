@@ -211,7 +211,20 @@
     "s3": "Держите нечётное число voters: 3 или 5.",
     "cmdComment": "# новый узел; <значения в скобках> заполняете вы",
     "cmdLeader": "# raft-адрес лидера: {{addr}}; для --cluster-join нужен его HTTP API URL",
-    "placeholders": "Значения в угловых скобках серверу неизвестны: ID узла, пути к сертификатам и, если вы на follower, API URL лидера."
+    "placeholders": "Значения в угловых скобках серверу неизвестны: ID узла, пути к сертификатам и, если вы на follower, API URL лидера.",
+    "genToken": "Сгенерировать join-токен",
+    "tokenTitle": "Join-токен (показывается один раз)",
+    "tokenDismiss": "Скрыть",
+    "tokenExpires": "Истекает через {{time}}",
+    "tokenExpiredTitle": "Токен истёк",
+    "tokenExpiredMsg": "Join-токен истёк и больше не действует. Сгенерируйте новый.",
+    "tokenUsesLeft_one": "Осталось использование: {{count}}",
+    "tokenUsesLeft_few": "Осталось использования: {{count}}",
+    "tokenUsesLeft_many": "Осталось использований: {{count}}",
+    "tokenUsesLeft_other": "Осталось использования: {{count}}",
+    "tokenForbidden": "У токена нет прав на sys/cluster/join-token — действие доступно только root/sudo-токенам.",
+    "tokenFailed": "Не удалось создать join-токен",
+    "tokenFailedHint": "Проверьте, что этот узел — лидер, и повторите попытку."
   },
   "log": {
     "eyebrow": "Наблюдаемое",

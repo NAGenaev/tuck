@@ -333,6 +333,7 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
+                /** @description Namespace name. May contain "/" as an organizational naming convention (e.g. "team-a/project-x"); the full string including slashes is still one flat, fully-isolated namespace with no parent/child relationship. */
                 name: string;
             };
             cookie?: never;
@@ -354,6 +355,7 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
+                /** @description Namespace name; may contain "/" (see /v1/sys/namespaces/{name}). */
                 name: string;
             };
             cookie?: never;
@@ -595,6 +597,23 @@ export interface paths {
         put?: never;
         /** Join a Raft cluster as a follower */
         post: operations["joinCluster"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sys/cluster/join-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mint a short-lived, narrowly-scoped token for joining a new node (leader, root/sudo only) */
+        post: operations["postClusterJoinToken"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2576,7 +2595,13 @@ export interface components {
             type?: string;
             path?: string;
             description?: string;
-            config?: Record<string, never>;
+            /** @description Optional KV v2 tuning options, accepted only when creating the secret/ mount (the only mount wired to the KV v2 engine); same validation as POST .../mounts-tune. Omit for every other mount. */
+            config?: {
+                /** @description KV v2 only (secret/ mount): default max_versions of new secrets, 0 = built-in 10 */
+                max_versions?: number;
+                /** @description KV v2 only (secret/ mount): every write must carry cas */
+                cas_required?: boolean;
+            };
         };
         Lease: {
             id?: string;
@@ -3287,6 +3312,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Namespace name. May contain "/" as an organizational naming convention (e.g. "team-a/project-x"); the full string including slashes is still one flat, fully-isolated namespace with no parent/child relationship. */
                 name: string;
             };
             cookie?: never;
@@ -3316,6 +3342,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Namespace name. May contain "/" as an organizational naming convention (e.g. "team-a/project-x"); the full string including slashes is still one flat, fully-isolated namespace with no parent/child relationship. */
                 name: string;
             };
             cookie?: never;
@@ -3363,6 +3390,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Namespace name. May contain "/" as an organizational naming convention (e.g. "team-a/project-x"); the full string including slashes is still one flat, fully-isolated namespace with no parent/child relationship. */
                 name: string;
             };
             cookie?: never;
@@ -3383,6 +3411,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Namespace name; may contain "/" (see /v1/sys/namespaces/{name}). */
                 name: string;
             };
             cookie?: never;
@@ -3621,8 +3650,24 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Mounted */
-            204: {
+            /** @description Mounted (already tuned, if config was given) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Mount"];
+                };
+            };
+            /** @description Missing type, or a KV v2 config option on a mount other than secret/, or out of range */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A mount already exists at this path */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3934,6 +3979,74 @@ export interface operations {
         responses: {
             /** @description Joined */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postClusterJoinToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description default 600, capped at 3600 */
+                    ttl_seconds?: number;
+                    /** @description default 1, capped at 10 */
+                    num_uses?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Token minted (shown once) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        token?: string;
+                        accessor?: string;
+                        policy?: string;
+                        /** Format: date-time */
+                        expires_at?: string;
+                        ttl_seconds?: number;
+                        num_uses?: number;
+                        leader_addr?: string;
+                        node_id?: string;
+                        advertise_addr?: string;
+                    };
+                };
+            };
+            /** @description Invalid ttl_seconds/num_uses */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden (requires sys/cluster/join-token write) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Cluster mode not enabled */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not the leader (leader_addr is returned), or sealed */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

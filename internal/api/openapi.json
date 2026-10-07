@@ -427,7 +427,14 @@
           "type": { "type": "string" },
           "path": { "type": "string" },
           "description": { "type": "string" },
-          "config": { "type": "object" }
+          "config": {
+            "type": "object",
+            "description": "Optional KV v2 tuning options, accepted only when creating the secret/ mount (the only mount wired to the KV v2 engine); same validation as POST .../mounts-tune. Omit for every other mount.",
+            "properties": {
+              "max_versions": { "type": "integer", "minimum": 0, "maximum": 1000, "description": "KV v2 only (secret/ mount): default max_versions of new secrets, 0 = built-in 10" },
+              "cas_required": { "type": "boolean", "description": "KV v2 only (secret/ mount): every write must carry cas" }
+            }
+          }
         }
       },
       "Lease": {
@@ -725,7 +732,7 @@
       }
     },
     "/v1/sys/namespaces/{name}": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Namespace name. May contain \"/\" as an organizational naming convention (e.g. \"team-a/project-x\"); the full string including slashes is still one flat, fully-isolated namespace with no parent/child relationship.", "allowReserved": true }],
       "get": {
         "tags": ["namespaces"],
         "summary": "Get a namespace",
@@ -755,7 +762,7 @@
       }
     },
     "/v1/sys/namespaces/{name}/stats": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Namespace name; may contain \"/\" (see /v1/sys/namespaces/{name}).", "allowReserved": true }],
       "get": {
         "tags": ["namespaces"],
         "summary": "Object counts of a namespace (secrets, tokens, policies, auth roles)",
@@ -841,7 +848,11 @@
         "summary": "Mount a secrets engine",
         "operationId": "postMount",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Mount" } } } },
-        "responses": { "204": { "description": "Mounted" } }
+        "responses": {
+          "201": { "description": "Mounted (already tuned, if config was given)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Mount" } } } },
+          "400": { "description": "Missing type, or a KV v2 config option on a mount other than secret/, or out of range" },
+          "409": { "description": "A mount already exists at this path" }
+        }
       },
       "delete": {
         "tags": ["sys"],
@@ -934,6 +945,21 @@
         "operationId": "joinCluster",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "leader_api_addr": { "type": "string" } } } } } },
         "responses": { "200": { "description": "Joined" } }
+      }
+    },
+    "/v1/sys/cluster/join-token": {
+      "post": {
+        "tags": ["sys"],
+        "summary": "Mint a short-lived, narrowly-scoped token for joining a new node (leader, root/sudo only)",
+        "operationId": "postClusterJoinToken",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "ttl_seconds": { "type": "integer", "minimum": 0, "maximum": 3600, "description": "default 600, capped at 3600" }, "num_uses": { "type": "integer", "minimum": 0, "maximum": 10, "description": "default 1, capped at 10" } } } } } },
+        "responses": {
+          "201": { "description": "Token minted (shown once)", "content": { "application/json": { "schema": { "type": "object", "properties": { "token": { "type": "string" }, "accessor": { "type": "string" }, "policy": { "type": "string" }, "expires_at": { "type": "string", "format": "date-time" }, "ttl_seconds": { "type": "integer" }, "num_uses": { "type": "integer" }, "leader_addr": { "type": "string" }, "node_id": { "type": "string" }, "advertise_addr": { "type": "string" } } } } } },
+          "400": { "description": "Invalid ttl_seconds/num_uses" },
+          "403": { "description": "Forbidden (requires sys/cluster/join-token write)" },
+          "501": { "description": "Cluster mode not enabled" },
+          "503": { "description": "Not the leader (leader_addr is returned), or sealed" }
+        }
       }
     },
     "/v1/sys/cluster/node/{id}": {

@@ -418,6 +418,7 @@ func (c *Core) EnforceAccess(ctx context.Context, tokenID, logicalPath string, c
 //
 // Resolution order (first match wins):
 //  1. "root" → RootPolicy (built-in, cannot be overridden).
+//  1a. "cluster-join" → ClusterJoinPolicy (built-in, cannot be overridden).
 //  2. ns policy store (namespace-local definition).
 //  3. root namespace policy store (inherited, if ns is non-root and the policy
 //     exists in the root namespace and is marked Inheritable).
@@ -430,6 +431,10 @@ func (c *Core) resolvePolicies(ctx context.Context, ns string, names []string) (
 	for _, name := range names {
 		if name == token.RootPolicyName {
 			out = append(out, policy.RootPolicy)
+			continue
+		}
+		if name == token.ClusterJoinPolicyName {
+			out = append(out, policy.ClusterJoinPolicy)
 			continue
 		}
 		p, err := nsStore.Get(ctx, name)

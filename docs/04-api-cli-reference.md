@@ -43,10 +43,10 @@ flowchart LR
 | GET/DELETE | `/v1/sys/leases/{id...}` | token | Просмотр / отзыв lease |
 | LIST | `/v1/sys/leases/` | token | Список leases |
 | GET | `/v1/sys/mounts` | token | Таблица монтирования (`?stats=true` добавляет карту счётчиков по пути) |
-| POST/DELETE | `/v1/sys/mounts/{path...}` | token | Создать / удалить mount |
+| POST/DELETE | `/v1/sys/mounts/{path...}` | token | Создать / удалить mount; `POST` принимает необязательный `config: {max_versions, cas_required}` — те же правила, что у `mounts-tune`, только для `secret/`, атомарно (невалидный `config` или занятый путь — ничего не создаётся) |
 | GET/POST | `/v1/sys/mounts-tune/{path...}` | token | Тюнинг mount (`?stats=true` добавляет счётчики использования) |
-| POST/PUT/DELETE/LIST | `/v1/sys/namespaces[/{name}]` | token | Управление неймспейсами; `POST`/`PUT` принимают `description`/`owner`/`labels`, `LIST ?stats=true` добавляет счётчики по каждому namespace |
-| GET | `/v1/sys/namespaces/{name}/stats` | token | Счётчики одного namespace (секреты, токены, политики, роли аутентификации); поле скрывается, если нет capability `list` |
+| POST/PUT/DELETE/LIST | `/v1/sys/namespaces[/{name...}]` | token | Управление неймспейсами; `POST`/`PUT` принимают `description`/`owner`/`labels`, `LIST ?stats=true` добавляет счётчики по каждому namespace. Имя может содержать `/` как организационное соглашение (`team-a/project-x`) — это по-прежнему одно плоское, полностью изолированное имя без наследования политик, каскадного удаления или ACL-связи между сегментами |
+| GET | `/v1/sys/namespaces/{name...}/stats` | token | Счётчики одного namespace (секреты, токены, политики, роли аутентификации); поле скрывается, если нет capability `list` |
 | GET | `/v1/sys/usage/secrets` | token | Число секретов (KV v1+v2), видимых вызывающему в его namespace |
 | PUT/DELETE/LIST | `/v1/sys/audit/{webhook,file,syslog,state}/...` | token | Audit sinks (webhook/file/syslog, пауза/резюме, статистика в LIST); `syslog` — за `capabilities.syslog`, недоступен на Windows |
 | GET | `/v1/sys/audit/events[/stream]` | root-namespace token | Журнал аудита: недавние записи с фильтрами, или живой хвост по SSE |
@@ -54,6 +54,7 @@ flowchart LR
 | POST | `/v1/sys/audit/verify` | root-namespace token | Проверка цепочки хешей (память и/или файловый синк) |
 | GET | `/v1/sys/cluster` | token | Статус Raft-кластера |
 | POST | `/v1/sys/cluster/join` | token | Добавить Raft-voter |
+| POST | `/v1/sys/cluster/join-token` | token (root/sudo, leader) | Выпустить недолговечный токен политики `cluster-join` (`sys/cluster` read+write) для подключения нового узла без root-токена |
 | DELETE | `/v1/sys/cluster/node/{id}` | token | Удалить Raft-voter |
 | POST | `/v1/sys/cluster/step-down` | token (leader) | Передать лидерство (опционально `target_id`) |
 | GET/POST | `/v1/sys/cluster/snapshot` | token | Список / создание снапшота на диске узла |

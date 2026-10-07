@@ -1130,6 +1130,47 @@
     margin-bottom: -8px;
 }
 
+/* ---------- join token reveal ---------- */
+.joinTokenBox {
+    display: grid;
+    gap: 10px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
+}
+
+.joinTokenHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.joinTokenMeta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    font: 400 12px var(--mono);
+    color: var(--mute);
+}
+
+.iconBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: var(--mute);
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.iconBtn:hover {
+    color: var(--bone);
+    background: rgba(255, 255, 255, 0.06);
+}
+
 .json {
     margin: 0;
     padding: 12px 14px;

@@ -11,6 +11,12 @@ import (
 const (
 	RootPolicyName       = "root"
 	RootTokenDisplayName = "Root Token"
+
+	// ClusterJoinPolicyName is the built-in, narrowly-scoped policy reserved for
+	// tokens minted by POST /v1/sys/cluster/join-token (see policy.ClusterJoinPolicy).
+	// Like RootPolicyName it is resolved by name and is never persisted to a
+	// policy store.
+	ClusterJoinPolicyName = "cluster-join"
 )
 
 // Token is a bearer credential that carries a set of policy names.

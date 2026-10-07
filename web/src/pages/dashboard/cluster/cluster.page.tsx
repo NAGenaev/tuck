@@ -5,8 +5,10 @@ import { CSSProperties, ReactNode, useEffect, useMemo, useRef, useState } from '
 import { Trans, useTranslation } from 'react-i18next'
 
 import {
+    ClusterJoinToken,
     ClusterSnapshot,
     ClusterStatus,
+    createClusterJoinToken,
     createClusterSnapshot,
     getClusterStatus,
     listClusterSnapshots,
@@ -18,6 +20,7 @@ import {
     CopyButton,
     CountUp,
     Icon,
+    Reveal,
     SkeletonLine,
     StateBlock,
     toast
@@ -205,6 +208,37 @@ export function ClusterPage() {
         const el = logRef.current
         if (el) el.scrollTop = el.scrollHeight
     }, [log.length])
+
+    // --- join token (root/sudo only; minted once, shown once) ---
+    const [joinToken, setJoinToken] = useState<ClusterJoinToken | null>(null)
+    const [joinTokenErr, setJoinTokenErr] = useState<null | string>(null)
+    const [joinTokenNow, setJoinTokenNow] = useState(() => Date.now())
+    useEffect(() => {
+        if (!joinToken) return
+        const id = window.setInterval(() => setJoinTokenNow(Date.now()), 1000)
+        return () => window.clearInterval(id)
+    }, [joinToken])
+    const joinTokenLeftMs = joinToken ? Date.parse(joinToken.expires_at) - joinTokenNow : 0
+    useEffect(() => {
+        if (joinToken && joinTokenLeftMs <= 0) {
+            toast.warning(t('add.tokenExpiredTitle'), t('add.tokenExpiredMsg'))
+            setJoinToken(null)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [joinTokenLeftMs <= 0])
+
+    const joinTokenMutation = useMutation({
+        mutationFn: () => createClusterJoinToken(),
+        onError: (err) => {
+            const msg = httpStatus(err) === 403 ? t('add.tokenForbidden') : (serverMessage(err) ?? t('add.tokenFailedHint'))
+            setJoinTokenErr(msg)
+            toast.error(t('add.tokenFailed'), msg)
+        },
+        onSuccess: (data) => {
+            setJoinTokenErr(null)
+            setJoinToken(data)
+        }
+    })
 
     // drop selection / drawer for nodes that no longer exist
     useEffect(() => {
@@ -788,7 +822,20 @@ export function ClusterPage() {
                     </Plate>
 
                     <Plate className={cx(styles.panel, styles.rv)} style={d(10)}>
-                        <h2 className={styles.sec}>{t('add.title')}</h2>
+                        <div className={styles.secHead}>
+                            <h2 className={styles.sec}>{t('add.title')}</h2>
+                            <Button
+                                disabled={!status.is_leader}
+                                leftSection={<Icon name="key" size={14} />}
+                                loading={joinTokenMutation.isPending}
+                                onClick={() => joinTokenMutation.mutate()}
+                                size="compact-sm"
+                                title={status.is_leader ? undefined : t('add.cmdLeader', { addr: status.leader_addr || '—' })}
+                                variant="default"
+                            >
+                                {t('add.genToken')}
+                            </Button>
+                        </div>
                         <p className={styles.sub}>{t('add.sub')}</p>
                         <ol className={styles.steps}>
                             <li>
@@ -801,8 +848,39 @@ export function ClusterPage() {
                                 <Trans components={rich} i18nKey="add.s3" ns="cluster" />
                             </li>
                         </ol>
+                        {joinTokenErr && <p className={styles.err}>{joinTokenErr}</p>}
+                        {joinToken && (
+                            <Plate className={styles.joinTokenBox} variant="brass">
+                                <div className={styles.joinTokenHead}>
+                                    <Pill tone="brass">{t('add.tokenTitle')}</Pill>
+                                    <button
+                                        aria-label={t('add.tokenDismiss')}
+                                        className={styles.iconBtn}
+                                        onClick={() => setJoinToken(null)}
+                                        title={t('add.tokenDismiss')}
+                                        type="button"
+                                    >
+                                        <Icon name="x" size={14} />
+                                    </button>
+                                </div>
+                                <Reveal autoMask={30} value={joinToken.token} />
+                                <div className={styles.joinTokenMeta}>
+                                    <span className={cx(joinTokenLeftMs < 60_000 && styles.badTxt)}>
+                                        {joinTokenLeftMs > 0
+                                            ? t('add.tokenExpires', { time: fmtAge(joinTokenLeftMs) })
+                                            : t('add.tokenExpiredTitle')}
+                                    </span>
+                                    {joinToken.num_uses > 1 && <span>{t('add.tokenUsesLeft', { count: joinToken.num_uses })}</span>}
+                                </div>
+                            </Plate>
+                        )}
                         <TermBlock
-                            lines={joinLines(status, t('add.cmdComment'), t('add.cmdLeader', { addr: status.leader_addr || '—' }))}
+                            lines={joinLines(
+                                status,
+                                t('add.cmdComment'),
+                                t('add.cmdLeader', { addr: status.leader_addr || '—' }),
+                                joinToken?.token
+                            )}
                         />
                         <p className={styles.joinHint}>{t('add.placeholders')}</p>
                     </Plate>
@@ -1026,17 +1104,24 @@ const SINGLE_CMD = [
 /**
  * Join command from values this node really knows (bind port, TLS server name). Node ID and file
  * paths belong to the operator and stay as <placeholders>. The API URL is filled in only when this
- * node is the leader, i.e. when it is the address the browser is already talking to.
+ * node is the leader, i.e. when it is the address the browser is already talking to. When a join
+ * token was just minted, it is prepended as a real `TUCK_TOKEN=` assignment — the one real secret
+ * value in an otherwise all-placeholder command.
  */
-function joinLines(status: ClusterStatus, comment: string, leaderNote: string): Line[] {
+function joinLines(status: ClusterStatus, comment: string, leaderNote: string, token?: string): Line[] {
     const port = status.advertise_addr?.match(/:(\d{2,5})$/)?.[1] ?? '8201'
     const tls = status.tls && !status.tls.error ? status.tls : undefined
     const lines: Line[] = [{ c: comment }]
     if (!status.is_leader) lines.push({ c: leaderNote })
-    lines.push(
-        { p: '$', w: 'tuck', r: ' --cluster --cluster-node-id ', s: '<new-node-id>', after: ' \\' },
-        { r: '    --cluster-bind-addr ', s: `0.0.0.0:${port}`, after: ' \\' }
-    )
+    if (token) {
+        lines.push(
+            { p: '$', w: 'TUCK_TOKEN=', s: token, after: ' \\' },
+            { r: 'tuck --cluster --cluster-node-id ', s: '<new-node-id>', after: ' \\' }
+        )
+    } else {
+        lines.push({ p: '$', w: 'tuck', r: ' --cluster --cluster-node-id ', s: '<new-node-id>', after: ' \\' })
+    }
+    lines.push({ r: '    --cluster-bind-addr ', s: `0.0.0.0:${port}`, after: ' \\' })
     if (tls) {
         lines.push(
             { r: '    --cluster-tls-cert ', s: '<node.pem>', after: ' \\' },

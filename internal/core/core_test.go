@@ -342,6 +342,39 @@ func TestEnforceAccess_RootAlwaysAllowed(t *testing.T) {
 	}
 }
 
+// TestEnforceAccess_ClusterJoinPolicy exercises the built-in cluster-join
+// policy minted by POST /v1/sys/cluster/join-token: it must resolve by name
+// like "root" does (no PutPolicy call here), grant exactly sys/cluster
+// read+write, and refuse everything else — including the granular
+// "sys/cluster/join-token" path the mint endpoint itself requires, so a join
+// token can never mint another join token.
+func TestEnforceAccess_ClusterJoinPolicy(t *testing.T) {
+	c, _ := newTestCore(t)
+	ctx := context.Background()
+
+	tok, err := c.CreateToken(ctx, "join", []string{token.ClusterJoinPolicyName}, time.Hour)
+	if err != nil {
+		t.Fatalf("CreateToken: %v", err)
+	}
+
+	for _, cap := range []policy.Capability{policy.CapRead, policy.CapWrite} {
+		if err := c.EnforceAccess(ctx, tok.ID, "sys/cluster", cap); err != nil {
+			t.Errorf("cluster-join denied %v on sys/cluster: %v", cap, err)
+		}
+	}
+	for _, cap := range []policy.Capability{policy.CapDelete, policy.CapList} {
+		if err := c.EnforceAccess(ctx, tok.ID, "sys/cluster", cap); err == nil {
+			t.Errorf("cluster-join granted %v on sys/cluster: expected denied", cap)
+		}
+	}
+	if err := c.EnforceAccess(ctx, tok.ID, "sys/cluster/join-token", policy.CapWrite); err == nil {
+		t.Error("cluster-join token granted sys/cluster/join-token: expected denied (no self-escalation)")
+	}
+	if err := c.EnforceAccess(ctx, tok.ID, "secret/anything", policy.CapRead); err == nil {
+		t.Error("cluster-join token granted an unrelated path: expected denied")
+	}
+}
+
 func TestEnforceAccess_PolicyAllowsAndDenies(t *testing.T) {
 	c, root := newTestCore(t)
 	ctx := context.Background()

@@ -67,6 +67,21 @@ var RootPolicy = Policy{
 	},
 }
 
+// ClusterJoinPolicy is the built-in policy attached to short-lived tokens
+// minted by POST /v1/sys/cluster/join-token, so an operator can bring up a new
+// Raft node without being handed the root token or a hand-crafted policy. It
+// grants only enough to read cluster status and join as a voter — not to
+// remove nodes, transfer leadership, snapshot, or mint further join tokens
+// (those use distinct "sys/cluster/..." paths this policy does not list).
+// Like RootPolicy, it is resolved by name (token.ClusterJoinPolicyName) and is
+// never persisted to a policy store.
+var ClusterJoinPolicy = Policy{
+	Name: "cluster-join",
+	Rules: []Rule{
+		{Path: "sys/cluster", Capabilities: CapRead | CapWrite},
+	},
+}
+
 // Allowed returns true if cap is permitted on path by the given policies.
 // Deny rules take precedence: if any matching rule carries CapDeny the request
 // is rejected regardless of any allow rules elsewhere.

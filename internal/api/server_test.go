@@ -853,3 +853,100 @@ func TestMountTableCRUD(t *testing.T) {
 		t.Fatalf("delete builtin status = %d, want 400", resp.StatusCode)
 	}
 }
+
+// TestMountCreateWithKV2Config covers POST /v1/sys/mounts/{path} accepting an
+// optional "config" block (max_versions/cas_required) so the KV v2 mount can
+// be created already tuned, in one call, instead of needing a follow-up
+// POST /v1/sys/mounts-tune/{path}. These options only ever apply to the
+// "secret/" mount (the only one wired to the KV v2 engine); see
+// internal/core/kv2_options.go.
+func TestMountCreateWithKV2Config(t *testing.T) {
+	ts, _, tok := newTestServer(t)
+
+	get := func(url string) (int, []byte) {
+		resp, err := http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+url, "", tok))
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		return resp.StatusCode, raw
+	}
+	post := func(url, body string) (int, []byte) {
+		resp, err := http.DefaultClient.Do(authedReq(t, http.MethodPost, ts.URL+url, body, tok))
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		return resp.StatusCode, raw
+	}
+
+	// Baseline: "secret/" is already a builtin mount (registered at every
+	// unseal, before any client can call create), so its tune config starts
+	// at the zero value.
+	code, raw := get("/v1/sys/mounts-tune/secret")
+	if code != http.StatusOK {
+		t.Fatalf("baseline GET tune status = %d, body = %s", code, raw)
+	}
+	var baseline map[string]any
+	_ = json.Unmarshal(raw, &baseline)
+
+	// create-with-config on a path that already exists ("secret/"): must stay
+	// a plain 409, and the config in the request body must NOT be applied —
+	// creation is all-or-nothing, never partially.
+	code, raw = post("/v1/sys/mounts/secret", `{"type":"kv","config":{"max_versions":7,"cas_required":true}}`)
+	if code != http.StatusConflict {
+		t.Fatalf("create-with-config on existing mount status = %d, body = %s, want 409", code, raw)
+	}
+	code, raw = get("/v1/sys/mounts-tune/secret")
+	if code != http.StatusOK {
+		t.Fatalf("GET tune after failed create status = %d, body = %s", code, raw)
+	}
+	var after map[string]any
+	_ = json.Unmarshal(raw, &after)
+	if after["max_versions"] != baseline["max_versions"] || after["cas_required"] != baseline["cas_required"] {
+		t.Fatalf("config was applied despite 409: before = %v, after = %v", baseline, after)
+	}
+
+	// create-with-invalid-config: config is rejected for any mount path other
+	// than "secret/" (the only KV v2 mount), and nothing must be created.
+	code, raw = post("/v1/sys/mounts/not-kv2", `{"type":"kv","config":{"cas_required":true}}`)
+	if code != http.StatusBadRequest {
+		t.Fatalf("create-with-config on non-secret path status = %d, body = %s, want 400", code, raw)
+	}
+	if code, _ := get("/v1/sys/mounts-tune/not-kv2"); code != http.StatusNotFound {
+		// mounts-tune 404s only if the mount itself is missing from the mount table.
+		t.Fatalf("mount table GET after rejected create status = %d, want 404 (not created)", code)
+	}
+
+	// create-with-invalid-config: out-of-range max_versions is rejected even
+	// though the path matches the KV v2 mount — validation runs before the
+	// (otherwise-conflicting) create, so this also proves ordering is
+	// atomic: an invalid request is refused outright, not partially merged.
+	code, raw = post("/v1/sys/mounts/secret", `{"type":"kv","config":{"max_versions":5000}}`)
+	if code != http.StatusBadRequest {
+		t.Fatalf("create with out-of-range max_versions status = %d, body = %s, want 400", code, raw)
+	}
+
+	// create-without-config: unchanged behaviour — defaults apply, no config
+	// block is required for ordinary mounts.
+	code, raw = post("/v1/sys/mounts/plain-kv", `{"type":"kv","description":"no config"}`)
+	if code != http.StatusCreated {
+		t.Fatalf("create-without-config status = %d, body = %s, want 201", code, raw)
+	}
+	var entry map[string]any
+	_ = json.Unmarshal(raw, &entry)
+	if entry["type"] != "kv" {
+		t.Errorf("mount type = %v, want kv", entry["type"])
+	}
+	code, raw = get("/v1/sys/mounts-tune/plain-kv")
+	if code != http.StatusOK {
+		t.Fatalf("GET tune for plain-kv status = %d, body = %s", code, raw)
+	}
+	var plainCfg map[string]any
+	_ = json.Unmarshal(raw, &plainCfg)
+	if plainCfg["max_versions"] != nil && plainCfg["max_versions"] != float64(0) {
+		t.Errorf("plain-kv max_versions = %v, want unset/0", plainCfg["max_versions"])
+	}
+}

@@ -1,0 +1,30 @@
+# Optional, separately-applied RBAC for spec.restartTargets.
+#
+# Grants the operator permission to patch the pod template of Deployments,
+# StatefulSets and DaemonSets -- enough to trigger a rolling restart, not to
+# read or change anything else about them. Apply this ONLY if you also run
+# the operator with --enable-restart-targets; the base deploy/operator/
+# deployment.yaml does not include it, on purpose: "sync a Secret value" and
+# "restart arbitrary workloads cluster-wide" are different trust levels and
+# should get separate review.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tuck-operator-restart
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tuck-operator-restart
+subjects:
+  - kind: ServiceAccount
+    name: tuck-operator
+    namespace: tuck
+roleRef:
+  kind: ClusterRole
+  name: tuck-operator-restart
+  apiGroup: rbac.authorization.k8s.io

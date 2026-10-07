@@ -22,13 +22,15 @@ const (
 type KubeClientIface interface {
 	List(ctx context.Context, namespace string) (*TuckSecretList, error)
 	Watch(ctx context.Context, namespace, resourceVersion string) (<-chan WatchEvent, error)
-	ApplySecret(ctx context.Context, secret *KubeSecret) error
+	ApplySecret(ctx context.Context, secret *KubeSecret) (changed bool, err error)
 	DeleteSecret(ctx context.Context, namespace, name string) error
 	UpdateStatus(ctx context.Context, ts *TuckSecret) error
 	AddFinalizer(ctx context.Context, ts *TuckSecret, finalizer string) error
 	RemoveFinalizer(ctx context.Context, ts *TuckSecret, finalizer string) error
 	// NamespaceAnnotations returns the annotations of a Namespace object.
 	NamespaceAnnotations(ctx context.Context, namespace string) (map[string]string, error)
+	// RestartWorkload bumps the restart annotation on a Deployment/StatefulSet/DaemonSet.
+	RestartWorkload(ctx context.Context, namespace string, target RestartTarget, at string) error
 }
 
 // TuckClientIface is the subset of TuckClient used by the controller.
@@ -48,6 +50,11 @@ type Controller struct {
 	// namespaces, so without this any team able to create a TuckSecret could
 	// read every path that token can read.
 	enforceNamespacePaths bool
+
+	// restartTargetsEnabled gates acting on spec.restartTargets at all. Off
+	// by default: it needs RBAC (patch on Deployments/StatefulSets/
+	// DaemonSets) well beyond "sync Secret values", granted separately.
+	restartTargetsEnabled bool
 
 	mu      sync.Mutex
 	tracked map[string]trackedResource
@@ -70,6 +77,10 @@ func New(kube KubeClientIface, tuck TuckClientIface, namespace string) *Controll
 
 // EnforceNamespacePaths turns on per-namespace Tuck path isolation. It must be
 // called before Run.
+func (ctrl *Controller) EnableRestartTargets(enabled bool) {
+	ctrl.restartTargetsEnabled = enabled
+}
+
 func (ctrl *Controller) EnforceNamespacePaths(enabled bool) {
 	ctrl.enforceNamespacePaths = enabled
 }
@@ -261,12 +272,26 @@ func (ctrl *Controller) reconcile(ctx context.Context, ts TuckSecret) (err error
 		Data: data,
 	}
 
-	if err := ctrl.kube.ApplySecret(ctx, secret); err != nil {
+	changed, err := ctrl.kube.ApplySecret(ctx, secret)
+	if err != nil {
 		return fmt.Errorf("apply k8s secret %s/%s: %w",
 			ts.Metadata.Namespace, spec.SecretName, err)
 	}
 
-	slog.Info("operator: synced TuckSecret", "namespace", ts.Metadata.Namespace, "name", ts.Metadata.Name, "secret", spec.SecretName, "keys", keys)
+	slog.Info("operator: synced TuckSecret", "namespace", ts.Metadata.Namespace, "name", ts.Metadata.Name, "secret", spec.SecretName, "keys", keys, "changed", changed)
+
+	if changed && ctrl.restartTargetsEnabled {
+		at := time.Now().UTC().Format(time.RFC3339)
+		for _, target := range spec.RestartTargets {
+			if err := ctrl.kube.RestartWorkload(ctx, ts.Metadata.Namespace, target, at); err != nil {
+				// Best-effort: one bad target (typo'd name, missing RBAC)
+				// must not block the Secret sync that already succeeded.
+				slog.Error("operator: restart target", "namespace", ts.Metadata.Namespace, "tucksecret", ts.Metadata.Name, "kind", target.Kind, "name", target.Name, "err", err)
+				continue
+			}
+			slog.Info("operator: restarted workload", "namespace", ts.Metadata.Namespace, "tucksecret", ts.Metadata.Name, "kind", target.Kind, "name", target.Name)
+		}
+	}
 
 	ctrl.mu.Lock()
 	key := resourceKey(ts)

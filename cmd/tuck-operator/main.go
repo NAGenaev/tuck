@@ -44,6 +44,8 @@ func main() {
 
 	enforcePaths := flag.Bool("enforce-namespace-paths", false,
 		"restrict each TuckSecret to Tuck paths under \"<namespace>/\" plus prefixes listed in the Namespace annotation tuck.io/allowed-paths")
+	enableRestartTargets := flag.Bool("enable-restart-targets", false,
+		"act on spec.restartTargets: bump the restart annotation on named Deployments/StatefulSets/DaemonSets when a synced secret value actually changes. Needs separately-granted RBAC (patch on those workload kinds) beyond the base operator role")
 	flag.Parse()
 
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
@@ -63,11 +65,12 @@ func main() {
 	tuckClient := operator.NewTuckClient(*tuckAddr, *saTokenFile).WithCluster(*tuckCluster)
 	ctrl := operator.New(kubeClient, tuckClient, *namespace)
 	ctrl.EnforceNamespacePaths(*enforcePaths)
+	ctrl.EnableRestartTargets(*enableRestartTargets)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	slog.Info("operator: starting", "tuck", *tuckAddr, "k8s", *k8sAPI, "namespace", *namespace, "leaderElect", *leaderElect, "enforceNamespacePaths", *enforcePaths)
+	slog.Info("operator: starting", "tuck", *tuckAddr, "k8s", *k8sAPI, "namespace", *namespace, "leaderElect", *leaderElect, "enforceNamespacePaths", *enforcePaths, "enableRestartTargets", *enableRestartTargets)
 
 	startHealthServer(ctx, *healthAddr)
 

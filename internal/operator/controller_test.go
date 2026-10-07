@@ -2,6 +2,7 @@ package operator
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -19,6 +20,12 @@ type mockKube struct {
 
 	nsAnnotations map[string]map[string]string
 	nsErr         error
+
+	// applyChanged controls what ApplySecret reports for "changed", default
+	// true (unset) so existing tests that don't care keep passing.
+	applyUnchanged bool
+	restarted      []RestartTarget
+	restartErr     error
 }
 
 func (m *mockKube) NamespaceAnnotations(_ context.Context, ns string) (map[string]string, error) {
@@ -45,10 +52,20 @@ func (m *mockKube) Watch(_ context.Context, _, _ string) (<-chan WatchEvent, err
 	return ch, nil
 }
 
-func (m *mockKube) ApplySecret(_ context.Context, s *KubeSecret) error {
+func (m *mockKube) ApplySecret(_ context.Context, s *KubeSecret) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.applied = append(m.applied, s)
+	return !m.applyUnchanged, nil
+}
+
+func (m *mockKube) RestartWorkload(_ context.Context, _ string, target RestartTarget, _ string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.restartErr != nil {
+		return m.restartErr
+	}
+	m.restarted = append(m.restarted, target)
 	return nil
 }
 
@@ -158,6 +175,71 @@ func TestReconcile_KVVersionV2Passthrough(t *testing.T) {
 	}
 	if len(tuck.kvVersions) != 1 || tuck.kvVersions[0] != "2" {
 		t.Fatalf("expected kvVersion \"2\" to pass through, got %v", tuck.kvVersions)
+	}
+}
+
+func TestReconcile_RestartTargets_TriggersOnChange(t *testing.T) {
+	ts := newTS("prod", "db-pass", "db/password", "db-creds", "password")
+	ts.Spec.RestartTargets = []RestartTarget{{Kind: "Deployment", Name: "api"}, {Kind: "StatefulSet", Name: "worker"}}
+	kube := &mockKube{} // applyUnchanged=false (zero value) => ApplySecret reports changed=true
+	tuck := &mockTuck{secrets: map[string][]byte{"db/password": []byte("s3cr3t")}}
+
+	ctrl := New(kube, tuck, "prod")
+	ctrl.EnableRestartTargets(true)
+	if err := ctrl.reconcile(context.Background(), ts); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+	if len(kube.restarted) != 2 {
+		t.Fatalf("expected 2 restart targets bumped, got %v", kube.restarted)
+	}
+}
+
+func TestReconcile_RestartTargets_SkippedWhenValueUnchanged(t *testing.T) {
+	ts := newTS("prod", "db-pass", "db/password", "db-creds", "password")
+	ts.Spec.RestartTargets = []RestartTarget{{Kind: "Deployment", Name: "api"}}
+	kube := &mockKube{applyUnchanged: true} // a periodic refresh that found the same value
+	tuck := &mockTuck{secrets: map[string][]byte{"db/password": []byte("s3cr3t")}}
+
+	ctrl := New(kube, tuck, "prod")
+	ctrl.EnableRestartTargets(true)
+	if err := ctrl.reconcile(context.Background(), ts); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+	if len(kube.restarted) != 0 {
+		t.Fatalf("expected no restarts for an unchanged value, got %v", kube.restarted)
+	}
+}
+
+func TestReconcile_RestartTargets_DisabledByDefault(t *testing.T) {
+	ts := newTS("prod", "db-pass", "db/password", "db-creds", "password")
+	ts.Spec.RestartTargets = []RestartTarget{{Kind: "Deployment", Name: "api"}}
+	kube := &mockKube{}
+	tuck := &mockTuck{secrets: map[string][]byte{"db/password": []byte("s3cr3t")}}
+
+	ctrl := New(kube, tuck, "prod") // EnableRestartTargets never called
+	if err := ctrl.reconcile(context.Background(), ts); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+	if len(kube.restarted) != 0 {
+		t.Fatalf("expected restarts to stay off by default, got %v", kube.restarted)
+	}
+}
+
+func TestReconcile_RestartTargets_BestEffortOnError(t *testing.T) {
+	ts := newTS("prod", "db-pass", "db/password", "db-creds", "password")
+	ts.Spec.RestartTargets = []RestartTarget{{Kind: "Deployment", Name: "api"}}
+	kube := &mockKube{restartErr: errors.New("forbidden")}
+	tuck := &mockTuck{secrets: map[string][]byte{"db/password": []byte("s3cr3t")}}
+
+	ctrl := New(kube, tuck, "prod")
+	ctrl.EnableRestartTargets(true)
+	// A restart-patch failure must not fail the reconcile -- the Secret sync
+	// already succeeded and is the thing status.Synced reports on.
+	if err := ctrl.reconcile(context.Background(), ts); err != nil {
+		t.Fatalf("reconcile should succeed despite a restart error, got: %v", err)
+	}
+	if len(kube.applied) != 1 {
+		t.Fatalf("expected the secret to still be applied, got %d", len(kube.applied))
 	}
 }
 

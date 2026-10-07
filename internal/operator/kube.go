@@ -139,58 +139,132 @@ func (c *KubeClient) Watch(ctx context.Context, namespace, resourceVersion strin
 }
 
 // ApplySecret creates or updates a K8s Secret using GET then POST or PUT.
-func (c *KubeClient) ApplySecret(ctx context.Context, secret *KubeSecret) error {
+// changed reports whether any key this TuckSecret manages (i.e. a key
+// present in secret.Data as passed in) now has a different value than what
+// was already live -- a periodic refresh that re-fetches the same value
+// from Tuck is not a change. changed is always true for a newly-created
+// Secret.
+func (c *KubeClient) ApplySecret(ctx context.Context, secret *KubeSecret) (changed bool, err error) {
 	ns := secret.Metadata.Namespace
 	name := secret.Metadata.Name
 	getURL := fmt.Sprintf("%s/api/v1/namespaces/%s/secrets/%s", c.apiURL, ns, name)
 
 	getReq, err := c.newReq(ctx, http.MethodGet, getURL, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	getResp, err := c.httpClient.Do(getReq)
 	if err != nil {
-		return fmt.Errorf("get secret %s/%s: %w", ns, name, err)
+		return false, fmt.Errorf("get secret %s/%s: %w", ns, name, err)
 	}
 	defer func() { _ = getResp.Body.Close() }()
 
 	body, err := json.Marshal(secret)
 	if err != nil {
-		return fmt.Errorf("marshal secret: %w", err)
+		return false, fmt.Errorf("marshal secret: %w", err)
 	}
 
 	var method, applyURL string
 	if getResp.StatusCode == http.StatusNotFound {
+		changed = true
 		method = http.MethodPost
 		applyURL = fmt.Sprintf("%s/api/v1/namespaces/%s/secrets", c.apiURL, ns)
 	} else if getResp.StatusCode >= 200 && getResp.StatusCode < 300 {
 		// Carry over the resourceVersion so the PUT satisfies optimistic concurrency.
 		var existing KubeSecret
 		if err := json.NewDecoder(getResp.Body).Decode(&existing); err != nil {
-			return fmt.Errorf("decode existing secret: %w", err)
+			return false, fmt.Errorf("decode existing secret: %w", err)
 		}
+		changed = managedDataChanged(secret.Data, existing.Data)
 		mergeSecret(secret, &existing)
 		body, err = json.Marshal(secret)
 		if err != nil {
-			return fmt.Errorf("marshal secret: %w", err)
+			return false, fmt.Errorf("marshal secret: %w", err)
 		}
 		method = http.MethodPut
 		applyURL = getURL
 	} else {
-		return fmt.Errorf("get secret %s/%s: unexpected status %d", ns, name, getResp.StatusCode)
+		return false, fmt.Errorf("get secret %s/%s: unexpected status %d", ns, name, getResp.StatusCode)
 	}
 
 	applyReq, err := c.newReq(ctx, method, applyURL, body)
 	if err != nil {
-		return err
+		return false, err
 	}
 	applyResp, err := c.httpClient.Do(applyReq)
 	if err != nil {
-		return fmt.Errorf("apply secret %s/%s: %w", ns, name, err)
+		return false, fmt.Errorf("apply secret %s/%s: %w", ns, name, err)
 	}
 	defer func() { _ = applyResp.Body.Close() }()
 	if applyResp.StatusCode < 200 || applyResp.StatusCode >= 300 {
-		return fmt.Errorf("apply secret %s/%s: unexpected status %d", ns, name, applyResp.StatusCode)
+		return false, fmt.Errorf("apply secret %s/%s: unexpected status %d", ns, name, applyResp.StatusCode)
+	}
+	return changed, nil
+}
+
+// managedDataChanged reports whether any key of desired has a different
+// value in existing, or is absent from existing. Keys in existing but not
+// in desired (foreign keys another TuckSecret owns) never count.
+func managedDataChanged(desired, existing map[string][]byte) bool {
+	for k, v := range desired {
+		ev, ok := existing[k]
+		if !ok || !bytes.Equal(v, ev) {
+			return true
+		}
+	}
+	return false
+}
+
+// workloadAPIPath maps a RestartTarget kind to its apps/v1 REST path
+// segment. Returns "" for an unsupported kind.
+func workloadAPIPath(kind string) string {
+	switch kind {
+	case "Deployment":
+		return "deployments"
+	case "StatefulSet":
+		return "statefulsets"
+	case "DaemonSet":
+		return "daemonsets"
+	default:
+		return ""
+	}
+}
+
+// RestartWorkload bumps the pod template's restart annotation on the named
+// Deployment/StatefulSet/DaemonSet -- the same strategic-merge patch
+// "kubectl rollout restart" sends. The owning controller then does a normal
+// rolling update; this never touches a Pod directly.
+func (c *KubeClient) RestartWorkload(ctx context.Context, namespace string, target RestartTarget, at string) error {
+	path := workloadAPIPath(target.Kind)
+	if path == "" {
+		return fmt.Errorf("unsupported restart target kind %q (want Deployment, StatefulSet or DaemonSet)", target.Kind)
+	}
+	url := fmt.Sprintf("%s/apis/apps/v1/namespaces/%s/%s/%s", c.apiURL, namespace, path, target.Name)
+	patch := map[string]any{
+		"spec": map[string]any{
+			"template": map[string]any{
+				"metadata": map[string]any{
+					"annotations": map[string]string{"tuck.io/restartedAt": at},
+				},
+			},
+		},
+	}
+	body, err := json.Marshal(patch)
+	if err != nil {
+		return fmt.Errorf("marshal restart patch: %w", err)
+	}
+	req, err := c.newReq(ctx, http.MethodPatch, url, body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/strategic-merge-patch+json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("restart %s %s/%s: %w", target.Kind, namespace, target.Name, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("restart %s %s/%s: unexpected status %d", target.Kind, namespace, target.Name, resp.StatusCode)
 	}
 	return nil
 }

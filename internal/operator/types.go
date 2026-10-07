@@ -32,6 +32,25 @@ type TuckSecretSpec struct {
 	// is deleted. "Retain" (default) leaves the K8s Secret in place. "Delete"
 	// removes it together with the TuckSecret.
 	DeletionPolicy string `json:"deletionPolicy,omitempty"`
+	// RestartTargets lists workloads whose pod template gets a restart
+	// annotation bump (the same mechanism "kubectl rollout restart" uses)
+	// whenever this TuckSecret's synced value actually changes -- a periodic
+	// refresh that finds the same value triggers nothing. Opt-in: the
+	// operator only acts on this when started with --enable-restart-targets,
+	// which requires its own, separately-granted RBAC (patch on the target
+	// workload kind), since it is a materially bigger capability than
+	// syncing Secret values.
+	RestartTargets []RestartTarget `json:"restartTargets,omitempty"`
+}
+
+// RestartTarget names one workload to bump on secret rotation.
+// Kind is "Deployment", "StatefulSet", or "DaemonSet" -- the three
+// workload kinds whose pod template is reconciled into fresh Pods by
+// their own controller, which is what makes a template-annotation bump
+// equivalent to "kubectl rollout restart".
+type RestartTarget struct {
+	Kind string `json:"kind"`
+	Name string `json:"name"`
 }
 
 // StatusConditionType identifies a condition on a TuckSecret.

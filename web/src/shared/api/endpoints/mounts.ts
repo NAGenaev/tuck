@@ -16,7 +16,17 @@ export interface MountConfig {
     allowed_response_headers?: string[]
     passthrough_request_headers?: string[]
     description?: string
+    /** KV v2 only (secret/ mount): default max_versions of new secrets, 0 = built-in 10. */
+    max_versions?: number
+    /** KV v2 only (secret/ mount): every write must carry a cas parameter. */
+    cas_required?: boolean
     updated_at?: string
+}
+
+/** KV v2 tuning options, accepted only for the secret/ mount. */
+export interface KV2MountConfig {
+    max_versions?: number
+    cas_required?: boolean
 }
 
 /**
@@ -52,8 +62,13 @@ export async function listMounts(): Promise<MountEntry[]> {
     return data.mounts ?? []
 }
 
-export async function createMount(path: string, type: string, description?: string): Promise<MountEntry> {
-    const { data } = await instance.post<MountEntry>(`/v1/sys/mounts/${path}`, { type, description })
+export async function createMount(
+    path: string,
+    type: string,
+    description?: string,
+    config?: KV2MountConfig
+): Promise<MountEntry> {
+    const { data } = await instance.post<MountEntry>(`/v1/sys/mounts/${path}`, { config, description, type })
     return data
 }
 
@@ -68,7 +83,13 @@ export async function getMountConfig(path: string): Promise<MountConfig> {
 
 export async function putMountConfig(
     path: string,
-    body: { default_lease_ttl?: string; force_no_cache?: boolean; max_lease_ttl?: string }
+    body: {
+        cas_required?: boolean
+        default_lease_ttl?: string
+        force_no_cache?: boolean
+        max_lease_ttl?: string
+        max_versions?: number
+    }
 ): Promise<void> {
     await instance.post(`/v1/sys/mounts-tune/${path}`, body)
 }

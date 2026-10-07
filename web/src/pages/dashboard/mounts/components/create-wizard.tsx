@@ -14,6 +14,13 @@ import { TypeIcon } from './type-icon'
 
 const CUSTOM = 'custom'
 const DESC_MAX = 120
+// KV v2 options are only honoured on this mount (internal/core.KV2MountPath) — the
+// only path whose routes are wired to the KV v2 engine in this codebase. In
+// practice "secret/" is a builtin registered before any client can call
+// create, so the path-taken check below always blocks it — these fields
+// exist for completeness / if that ever changes, not for day-to-day use.
+const KV2_MOUNT_PATH = 'secret'
+const MAX_VERSIONS_LIMIT = 1000
 
 function cardKind(id: string, auth?: boolean): string | undefined {
     if (id === CUSTOM) return styles.custom
@@ -41,6 +48,8 @@ export function CreateWizard({
     const [customType, setCustomType] = useState('')
     const [path, setPath] = useState('')
     const [desc, setDesc] = useState('')
+    const [maxVersions, setMaxVersions] = useState(0)
+    const [casRequired, setCasRequired] = useState(false)
     const [serverErr, setServerErr] = useState('')
 
     useEffect(() => {
@@ -50,6 +59,8 @@ export function CreateWizard({
         setCustomType('')
         setPath('')
         setDesc('')
+        setMaxVersions(0)
+        setCasRequired(false)
         setServerErr('')
     }, [opened])
 
@@ -57,6 +68,14 @@ export function CreateWizard({
     const norm = normPath(path)
     const full = withSlash(norm || '…')
     const suggest = CATALOG.find((c) => c.id === typeId)?.suggest ?? 'my-mount'
+    // Only "kv" at the exact "secret/" path maps to the real KV v2 engine (see
+    // internal/core/kv2_options.go) — showing the fields anywhere else would
+    // be misleading since the server would reject them.
+    const isKV2 = typeId === 'kv' && norm === KV2_MOUNT_PATH
+    const maxVersionsErr =
+        isKV2 && (maxVersions < 0 || maxVersions > MAX_VERSIONS_LIMIT)
+            ? t('wizard.errMaxVersions', { limit: MAX_VERSIONS_LIMIT })
+            : ''
 
     let pathErr = ''
     if (!norm) pathErr = t('wizard.pathErrEmpty', { example: suggest })
@@ -69,10 +88,16 @@ export function CreateWizard({
     const typeErr = typeId === CUSTOM && customType.trim() && !TYPE_RE.test(customType.trim())
     const typeOk = !!typeId && (typeId !== CUSTOM || (!!customType.trim() && !typeErr))
 
-    const canNext = step === 0 ? typeOk : step === 1 ? !pathErr : true
+    const canNext = step === 0 ? typeOk : step === 1 ? !pathErr && !maxVersionsErr : true
 
     const mutation = useMutation({
-        mutationFn: () => createMount(norm, type, desc.trim() || undefined),
+        mutationFn: () =>
+            createMount(
+                norm,
+                type,
+                desc.trim() || undefined,
+                isKV2 ? { cas_required: casRequired, max_versions: maxVersions } : undefined
+            ),
         onSuccess: async () => {
             const created = withSlash(norm)
             toast.success(t('toast.mounted'), t('toast.mountedMsg', { path: created }))
@@ -247,6 +272,45 @@ export function CreateWizard({
                             />
                             <div className={styles.hint}>{t('wizard.descHint')}</div>
                         </div>
+                        {isKV2 && (
+                            <>
+                                <div className={styles.fld}>
+                                    <label className={styles.lab} htmlFor="mw-max-versions">
+                                        {t('wizard.maxVersions')}
+                                    </label>
+                                    <input
+                                        className={cx(styles.inp, !!maxVersionsErr && styles.bad)}
+                                        id="mw-max-versions"
+                                        inputMode="numeric"
+                                        max={MAX_VERSIONS_LIMIT}
+                                        min={0}
+                                        onChange={(e) => setMaxVersions(e.currentTarget.valueAsNumber || 0)}
+                                        type="number"
+                                        value={maxVersions}
+                                    />
+                                    {maxVersionsErr ? (
+                                        <div className={styles.err}>{maxVersionsErr}</div>
+                                    ) : (
+                                        <div className={styles.hint}>{t('wizard.maxVersionsHint')}</div>
+                                    )}
+                                </div>
+                                <div className={styles.fld}>
+                                    <button
+                                        aria-checked={casRequired}
+                                        className={styles.tog}
+                                        onClick={() => setCasRequired((v) => !v)}
+                                        role="switch"
+                                        type="button"
+                                    >
+                                        <span className={styles.sw} />
+                                        <span>
+                                            <b>{t('wizard.casRequired')}</b>
+                                            <small>{t('wizard.casRequiredDesc')}</small>
+                                        </span>
+                                    </button>
+                                </div>
+                            </>
+                        )}
                     </>
                 )}
 
@@ -271,6 +335,14 @@ export function CreateWizard({
                                 <small>{t('wizard.slip.desc')}</small>
                                 <b>{desc.trim() || '—'}</b>
                             </div>
+                            {isKV2 && (
+                                <div className={styles.rw}>
+                                    <small>{t('wizard.slip.config')}</small>
+                                    <b>
+                                        max_versions={maxVersions}, cas_required={String(casRequired)}
+                                    </b>
+                                </div>
+                            )}
                         </div>
                         <div className={styles.term}>
                             <div className={styles.termTop}>
@@ -281,7 +353,11 @@ export function CreateWizard({
                                 <span className="p">POST</span> <span className="w">/v1/sys/mounts/{full}</span>
                                 {'\n'}
                                 <span className="k">
-                                    {JSON.stringify(desc.trim() ? { type, description: desc.trim() } : { type })}
+                                    {JSON.stringify({
+                                        ...(desc.trim() ? { description: desc.trim() } : {}),
+                                        type,
+                                        ...(isKV2 ? { config: { cas_required: casRequired, max_versions: maxVersions } } : {})
+                                    })}
                                 </span>
                             </pre>
                         </div>

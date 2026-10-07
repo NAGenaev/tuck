@@ -179,10 +179,16 @@
     "description": "Описание",
     "descPlaceholder": "Для чего этот движок — увидят все администраторы",
     "descHint": "Необязательно · до 120 символов",
+    "maxVersions": "max_versions",
+    "maxVersionsHint": "Сколько версий секрета хранить, 0 — встроенное значение по умолчанию (10)",
+    "errMaxVersions": "Должно быть от 0 до {{limit}}",
+    "casRequired": "cas_required",
+    "casRequiredDesc": "Каждая запись должна передавать параметр cas",
     "slip": {
       "type": "Тип",
       "path": "Путь",
-      "desc": "Описание"
+      "desc": "Описание",
+      "config": "Настройки KV v2"
     },
     "request": "запрос",
     "back": "← Назад",
@@ -202,6 +208,11 @@
     "ttlHint": "0 — без переопределения: действуют настройки системы.",
     "noCache": "Не кэшировать ответы",
     "noCacheDesc": "force_no_cache · для данных, которые нельзя держать в памяти",
+    "maxVersions": "max_versions",
+    "maxVersionsHint": "Сколько версий секрета хранить, 0 — встроенное значение по умолчанию (10)",
+    "errMaxVersions": "Должно быть от 0 до {{limit}}",
+    "casRequired": "cas_required",
+    "casRequiredDesc": "Каждая запись должна передавать параметр cas",
     "errOrder": "Максимальный TTL не может быть меньше TTL по умолчанию",
     "cancel": "Отмена",
     "save": "Сохранить настройки"

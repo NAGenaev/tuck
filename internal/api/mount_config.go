@@ -90,15 +90,9 @@ func (s *Server) putMountConfig(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 		return
 	}
-	if wire.MaxVersions != nil || wire.CASRequired != nil {
-		if strings.Trim(mountPath, "/") != strings.Trim(core.KV2MountPath, "/") {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "max_versions and cas_required are KV v2 options and can only be set on the secret/ mount"})
-			return
-		}
-		if wire.MaxVersions != nil && (*wire.MaxVersions < 0 || *wire.MaxVersions > kvv2.MaxVersionsLimit) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "max_versions must be between 0 and " + strconv.Itoa(kvv2.MaxVersionsLimit)})
-			return
-		}
+	if errMsg := validateKV2Options(mountPath, wire.MaxVersions, wire.CASRequired); errMsg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
+		return
 	}
 
 	// Load existing config so we can merge.
@@ -134,12 +128,7 @@ func (s *Server) putMountConfig(w http.ResponseWriter, r *http.Request) {
 	if wire.Description != "" {
 		cfg.Description = wire.Description
 	}
-	if wire.MaxVersions != nil {
-		cfg.MaxVersions = *wire.MaxVersions
-	}
-	if wire.CASRequired != nil {
-		cfg.CASRequired = *wire.CASRequired
-	}
+	cfg = applyKV2Options(cfg, wire.MaxVersions, wire.CASRequired)
 
 	if cfg.MaxLeaseTTL > 0 && cfg.DefaultLeaseTTL > cfg.MaxLeaseTTL {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "default_lease_ttl cannot exceed max_lease_ttl"})
@@ -151,4 +140,35 @@ func (s *Server) putMountConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// validateKV2Options checks the KV v2 mount-tuning options shared by the tune
+// and create-mount endpoints. It returns a non-empty error message if
+// maxVersions/casRequired are set but the target path is not the KV v2 mount
+// (core.KV2MountPath, i.e. "secret/" — the only path whose routes are wired to
+// the KV v2 engine in this codebase), or if maxVersions is out of range.
+// Returns "" when there is nothing to reject (including when both are nil).
+func validateKV2Options(mountPath string, maxVersions *int, casRequired *bool) string {
+	if maxVersions == nil && casRequired == nil {
+		return ""
+	}
+	if strings.Trim(mountPath, "/") != strings.Trim(core.KV2MountPath, "/") {
+		return "max_versions and cas_required are KV v2 options and can only be set on the secret/ mount"
+	}
+	if maxVersions != nil && (*maxVersions < 0 || *maxVersions > kvv2.MaxVersionsLimit) {
+		return "max_versions must be between 0 and " + strconv.Itoa(kvv2.MaxVersionsLimit)
+	}
+	return ""
+}
+
+// applyKV2Options overlays the given overrides (nil = unchanged) onto cfg and
+// returns the result. It never fails; callers must validate first.
+func applyKV2Options(cfg mount.Config, maxVersions *int, casRequired *bool) mount.Config {
+	if maxVersions != nil {
+		cfg.MaxVersions = *maxVersions
+	}
+	if casRequired != nil {
+		cfg.CASRequired = *casRequired
+	}
+	return cfg
 }

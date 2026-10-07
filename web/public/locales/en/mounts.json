@@ -179,10 +179,16 @@
     "description": "Description",
     "descPlaceholder": "What this engine is for, visible to every admin",
     "descHint": "Optional · up to 120 characters",
+    "maxVersions": "max_versions",
+    "maxVersionsHint": "How many secret versions to keep, 0 means the built-in default (10)",
+    "errMaxVersions": "Must be between 0 and {{limit}}",
+    "casRequired": "cas_required",
+    "casRequiredDesc": "Every write must carry a cas parameter",
     "slip": {
       "type": "Type",
       "path": "Path",
-      "desc": "Description"
+      "desc": "Description",
+      "config": "KV v2 config"
     },
     "request": "request",
     "back": "← Back",
@@ -202,6 +208,11 @@
     "ttlHint": "0 means no override: system defaults apply.",
     "noCache": "Do not cache responses",
     "noCacheDesc": "force_no_cache · for data that must not be held in memory",
+    "maxVersions": "max_versions",
+    "maxVersionsHint": "How many secret versions to keep, 0 means the built-in default (10)",
+    "errMaxVersions": "Must be between 0 and {{limit}}",
+    "casRequired": "cas_required",
+    "casRequiredDesc": "Every write must carry a cas parameter",
     "errOrder": "Max TTL cannot be lower than the default TTL",
     "cancel": "Cancel",
     "save": "Save tuning"

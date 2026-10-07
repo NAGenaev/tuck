@@ -41,7 +41,12 @@ func (s *Server) listMounts(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /v1/sys/mounts/{path...}
-// Body: {"type":"kv","description":"my KV store"}
+// Body: {"type":"kv","description":"my KV store","config":{"max_versions":5,"cas_required":true}}
+// The optional "config" block is only accepted for the KV v2 mount
+// (core.KV2MountPath, "secret/" today — see validateKV2Options); it lets a
+// caller create the mount already tuned instead of needing a follow-up
+// POST /v1/sys/mounts-tune/{path...} call. Applied atomically: on any error
+// (bad config, path collision, ...) nothing is created or persisted.
 func (s *Server) createMount(w http.ResponseWriter, r *http.Request) {
 	mountPath := r.PathValue("path")
 	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "sys/mounts", policy.CapWrite); err != nil {
@@ -56,6 +61,10 @@ func (s *Server) createMount(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Type        string `json:"type"`
 		Description string `json:"description"`
+		Config      *struct {
+			MaxVersions *int  `json:"max_versions"`
+			CASRequired *bool `json:"cas_required"`
+		} `json:"config"`
 	}
 	if !decodeJSON(w, body, &req) {
 		return
@@ -63,6 +72,15 @@ func (s *Server) createMount(w http.ResponseWriter, r *http.Request) {
 	if req.Type == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type required"})
 		return
+	}
+	var maxVersions *int
+	var casRequired *bool
+	if req.Config != nil {
+		maxVersions, casRequired = req.Config.MaxVersions, req.Config.CASRequired
+		if errMsg := validateKV2Options(mountPath, maxVersions, casRequired); errMsg != "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
+			return
+		}
 	}
 	entry, err := s.core.MountStore().Register(r.Context(), mountPath, req.Type, req.Description)
 	if err != nil {
@@ -72,6 +90,20 @@ func (s *Server) createMount(w http.ResponseWriter, r *http.Request) {
 		}
 		writeErr(w, err)
 		return
+	}
+	if maxVersions != nil || casRequired != nil {
+		cfg, err := s.core.MountConfigStore().Get(r.Context(), mountPath)
+		if err == nil {
+			cfg = applyKV2Options(cfg, maxVersions, casRequired)
+			err = s.core.MountConfigStore().Put(r.Context(), mountPath, cfg)
+		}
+		if err != nil {
+			// Keep creation atomic: do not leave a mount behind whose
+			// requested config could not be persisted.
+			_ = s.core.MountStore().Delete(r.Context(), mountPath)
+			writeErr(w, err)
+			return
+		}
 	}
 	writeJSON(w, http.StatusCreated, entry)
 }

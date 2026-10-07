@@ -5,13 +5,17 @@ import { useRef, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 
 import { getMountConfig, type MountEntry, putMountConfig } from '@shared/api/endpoints/mounts'
-import { CopyButton, Drawer, Icon, SkeletonLine, toast, TtlField } from '@shared/ui/kit'
+import { CopyButton, cx, Drawer, Icon, SkeletonLine, toast, TtlField } from '@shared/ui/kit'
 
 import { fmtTtl, nsToSec, serverMessage } from '../lib'
 import styles from '../mounts.module.css'
 
 const TTL_MAX = 31_536_000
 const TTL_PRESETS = [3600, 86_400, 604_800, 2_592_000, TTL_MAX]
+// KV v2 options are only honoured on this mount (internal/core.KV2MountPath) — the
+// only path whose routes are wired to the KV v2 engine in this codebase.
+const KV2_MOUNT_PATH = 'secret/'
+const MAX_VERSIONS_LIMIT = 1000
 
 const mask = (a: string) => {
     const i = a.lastIndexOf('_')
@@ -62,8 +66,10 @@ function TuneBody({ mount, onClose, open }: { mount: MountEntry; onClose: () => 
         <TuneForm
             failed={isError}
             initial={{
+                casRequired: !!data?.cas_required,
                 def: nsToSec(data?.default_lease_ttl),
                 max: nsToSec(data?.max_lease_ttl),
+                maxVersions: data?.max_versions ?? 0,
                 noCache: !!data?.force_no_cache
             }}
             mount={mount}
@@ -79,7 +85,7 @@ function TuneForm({
     onClose
 }: {
     failed: boolean
-    initial: { def: number; max: number; noCache: boolean }
+    initial: { casRequired: boolean; def: number; max: number; maxVersions: number; noCache: boolean }
     mount: MountEntry
     onClose: () => void
 }) {
@@ -88,16 +94,24 @@ function TuneForm({
     const [def, setDef] = useState(initial.def)
     const [max, setMax] = useState(initial.max)
     const [noCache, setNoCache] = useState(initial.noCache)
+    const isKV2 = mount.path === KV2_MOUNT_PATH
+    const [maxVersions, setMaxVersions] = useState(initial.maxVersions)
+    const [casRequired, setCasRequired] = useState(initial.casRequired)
     const [reveal, setReveal] = useState(false)
     const [serverErr, setServerErr] = useState('')
 
     const orderErr = max > 0 && def > max ? t('tune.errOrder') : ''
+    const maxVersionsErr =
+        isKV2 && (maxVersions < 0 || maxVersions > MAX_VERSIONS_LIMIT)
+            ? t('tune.errMaxVersions', { limit: MAX_VERSIONS_LIMIT })
+            : ''
 
     const mutation = useMutation({
         mutationFn: () => {
             // the server resets force_no_cache to false when it is omitted, so it is always sent.
             // Built as a variable: the shared body type does not list force_no_cache yet.
             const body = { default_lease_ttl: `${def}s`, force_no_cache: noCache, max_lease_ttl: `${max}s` }
+            if (isKV2) Object.assign(body, { cas_required: casRequired, max_versions: maxVersions })
             return putMountConfig(mount.path, body)
         },
         onError: (err) => {
@@ -116,7 +130,7 @@ function TuneForm({
     })
 
     const submit = () => {
-        if (orderErr || mutation.isPending) return
+        if (orderErr || maxVersionsErr || mutation.isPending) return
         setServerErr('')
         mutation.mutate()
     }
@@ -199,13 +213,51 @@ function TuneForm({
                 </button>
             </div>
 
-            {(orderErr || serverErr) && <div className={styles.err}>{orderErr || serverErr}</div>}
+            {isKV2 && (
+                <>
+                    <div className={styles.fld}>
+                        <label className={styles.lab} htmlFor="tune-max-versions">
+                            {t('tune.maxVersions')}
+                        </label>
+                        <input
+                            className={cx(styles.inp, !!maxVersionsErr && styles.bad)}
+                            id="tune-max-versions"
+                            inputMode="numeric"
+                            max={MAX_VERSIONS_LIMIT}
+                            min={0}
+                            onChange={(e) => setMaxVersions(e.currentTarget.valueAsNumber || 0)}
+                            type="number"
+                            value={maxVersions}
+                        />
+                        <div className={styles.hint}>{t('tune.maxVersionsHint')}</div>
+                    </div>
+                    <div className={styles.fld}>
+                        <button
+                            aria-checked={casRequired}
+                            className={styles.tog}
+                            onClick={() => setCasRequired((v) => !v)}
+                            role="switch"
+                            type="button"
+                        >
+                            <span className={styles.sw} />
+                            <span>
+                                <b>{t('tune.casRequired')}</b>
+                                <small>{t('tune.casRequiredDesc')}</small>
+                            </span>
+                        </button>
+                    </div>
+                </>
+            )}
+
+            {(orderErr || maxVersionsErr || serverErr) && (
+                <div className={styles.err}>{orderErr || maxVersionsErr || serverErr}</div>
+            )}
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
                 <Button disabled={mutation.isPending} onClick={onClose} variant="default">
                     {t('tune.cancel')}
                 </Button>
-                <Button disabled={!!orderErr} loading={mutation.isPending} type="submit">
+                <Button disabled={!!orderErr || !!maxVersionsErr} loading={mutation.isPending} type="submit">
                     {t('tune.save')}
                 </Button>
             </div>

@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+
+	"github.com/NAGenaev/tuck/internal/audit"
+	"github.com/NAGenaev/tuck/internal/sysconfig"
 )
 
 // TestSysconfigRoundtrip verifies that PUT /v1/sys/config persists values and
@@ -200,5 +203,36 @@ func TestRateLimitTokenIsolation(t *testing.T) {
 	_ = r2.Body.Close()
 	if r2.StatusCode == http.StatusTooManyRequests {
 		t.Errorf("rootTok request was rate-limited despite using a different token bucket")
+	}
+}
+
+// A runtime config that leaves a field at 0 keeps the server default, and a
+// negative value switches the limit off; the stored config can both raise and
+// lower the flag defaults.
+func TestRateConfigDefaultsAndOverrides(t *testing.T) {
+	srv := NewWithAudit(nil, audit.Nop())
+	srv.SetRateDefaults(sysconfig.Config{IPRateLimitRPS: 100, IPRateLimitBurst: 200, TokenRateLimitRPS: 50, TokenRateLimitBurst: 100})
+	if !srv.ipLimiter.Enabled() || !srv.tokenLimiter.Enabled() {
+		t.Fatal("the flag defaults must be active")
+	}
+	// An empty stored config changes nothing (before: it silently disabled both).
+	srv.ApplyRateConfig(sysconfig.Config{})
+	if !srv.ipLimiter.Enabled() || !srv.tokenLimiter.Enabled() {
+		t.Error("an empty stored config disabled the limiters")
+	}
+	// Raise the IP limit far above the default: 1000 immediate requests pass.
+	srv.ApplyRateConfig(sysconfig.Config{IPRateLimitRPS: 1e6, IPRateLimitBurst: 1e6})
+	for i := 0; i < 1000; i++ {
+		if !srv.ipLimiter.Allow("10.0.0.1") {
+			t.Fatalf("request %d blocked after raising the limit", i)
+		}
+	}
+	// Negative disables just that limit.
+	srv.ApplyRateConfig(sysconfig.Config{TokenRateLimitRPS: -1})
+	if srv.tokenLimiter.Enabled() {
+		t.Error("a negative value must disable the token limit")
+	}
+	if !srv.ipLimiter.Enabled() {
+		t.Error("the IP limit fell back to the default and must stay on")
 	}
 }

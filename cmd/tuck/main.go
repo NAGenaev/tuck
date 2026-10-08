@@ -26,7 +26,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/operator"
 	"github.com/NAGenaev/tuck/internal/physical"
 	physraft "github.com/NAGenaev/tuck/internal/physical/raft"
-	"github.com/NAGenaev/tuck/internal/ratelimit"
+	"github.com/NAGenaev/tuck/internal/sysconfig"
 	"github.com/NAGenaev/tuck/internal/seal"
 	"github.com/NAGenaev/tuck/internal/telemetry"
 	"github.com/NAGenaev/tuck/internal/tlsutil"
@@ -464,6 +464,12 @@ func main() {
 
 	// --- API server + rate limiters ---
 	apiSrv := api.New(c)
+	// The --rate-* flags are the defaults; the runtime config (PUT /v1/sys/config,
+	// persisted in the barrier) overrides them without a restart.
+	apiSrv.SetRateDefaults(sysconfig.Config{
+		IPRateLimitRPS: *ipRateRPS, IPRateLimitBurst: *ipRateBurst,
+		TokenRateLimitRPS: *tokRateRPS, TokenRateLimitBurst: *tokRateBurst,
+	})
 	if reloadClusters != nil {
 		apiSrv.SetClusterReloader(reloadClusters)
 		hup := make(chan os.Signal, 1)
@@ -518,14 +524,6 @@ func main() {
 	}
 	apiSrv.StartLimiterCleanup(ctx)
 	handler := apiSrv.Handler()
-	if *ipRateRPS > 0 {
-		ipLimiter := ratelimit.New(*ipRateRPS, *ipRateBurst)
-		handler = ipLimiter.Middleware(handler)
-	}
-	if *tokRateRPS > 0 {
-		tokLimiter := ratelimit.New(*tokRateRPS, *tokRateBurst)
-		handler = tokLimiter.TokenMiddleware(handler)
-	}
 
 	// --- HTTP server with production timeouts ---
 	srv := &http.Server{

@@ -42,6 +42,8 @@ type Server struct {
 	// tuckSecrets backs the read-only TuckSecret listing; nil when the server
 	// has no Kubernetes API access.
 	tuckSecrets TuckSecretSource
+	// rateDefaults are the limits used where the stored runtime config is silent.
+	rateDefaults sysconfig.Config
 	// reloadClusters re-reads the trusted-cluster list from the config file; nil
 	// when the server was started without one.
 	reloadClusters func() (added, removed []string, err error)
@@ -70,10 +72,38 @@ func NewWithAudit(c *core.Core, l audit.Loggable) *Server {
 	}
 }
 
+// SetRateDefaults sets the limits that apply wherever the stored runtime config
+// says nothing (the --rate-* flags) and applies them right away.
+func (s *Server) SetRateDefaults(d sysconfig.Config) {
+	s.rateDefaults = d
+	s.ApplyRateConfig(sysconfig.Config{})
+}
+
 // ApplyRateConfig updates the in-memory rate limiters from a sysconfig snapshot.
+// A field left at 0 keeps the server default (the --rate-* flag); a negative
+// value disables that limit.
 func (s *Server) ApplyRateConfig(cfg sysconfig.Config) {
-	s.ipLimiter.Reconfigure(cfg.IPRateLimitRPS, cfg.IPRateLimitBurst)
-	s.tokenLimiter.Reconfigure(cfg.TokenRateLimitRPS, cfg.TokenRateLimitBurst)
+	rps := func(v, def float64) float64 {
+		switch {
+		case v < 0:
+			return 0
+		case v == 0:
+			return def
+		}
+		return v
+	}
+	burst := func(v, def int) int {
+		switch {
+		case v < 0:
+			return 0
+		case v == 0:
+			return def
+		}
+		return v
+	}
+	d := s.rateDefaults
+	s.ipLimiter.Reconfigure(rps(cfg.IPRateLimitRPS, d.IPRateLimitRPS), burst(cfg.IPRateLimitBurst, d.IPRateLimitBurst))
+	s.tokenLimiter.Reconfigure(rps(cfg.TokenRateLimitRPS, d.TokenRateLimitRPS), burst(cfg.TokenRateLimitBurst, d.TokenRateLimitBurst))
 }
 
 // StartLimiterCleanup periodically removes stale rate-limit buckets.

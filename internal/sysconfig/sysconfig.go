@@ -12,16 +12,17 @@ import (
 const configKey = "sys/config"
 
 // Config holds all live-tunable server settings. Zero values mean "use the
-// server default"; callers should check for zero before applying.
+// server default" (for the rate limits, the --rate-* flags); a negative rate
+// or burst disables that limit.
 type Config struct {
-	// IPRateLimitRPS is the per-IP request rate (requests/second). 0 = disabled.
+	// IPRateLimitRPS is the per-IP request rate (requests/second). 0 = server default, <0 = disabled.
 	IPRateLimitRPS float64 `json:"ip_rate_limit_rps,omitempty"`
-	// IPRateLimitBurst is the per-IP burst size. 0 = disabled.
+	// IPRateLimitBurst is the per-IP burst size. 0 = server default, <0 = disabled.
 	IPRateLimitBurst int `json:"ip_rate_limit_burst,omitempty"`
 
-	// TokenRateLimitRPS is the per-token request rate (requests/second). 0 = disabled.
+	// TokenRateLimitRPS is the per-token request rate (requests/second). 0 = server default, <0 = disabled.
 	TokenRateLimitRPS float64 `json:"token_rate_limit_rps,omitempty"`
-	// TokenRateLimitBurst is the per-token burst size. 0 = disabled.
+	// TokenRateLimitBurst is the per-token burst size. 0 = server default, <0 = disabled.
 	TokenRateLimitBurst int `json:"token_rate_limit_burst,omitempty"`
 
 	// MaxBodyBytes is the maximum accepted request body size. 0 = 1 MiB default.

@@ -1573,7 +1573,7 @@
         "tags": ["auth-jwt"],
         "summary": "Set JWT provider config",
         "operationId": "putJWTConfig",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "jwks_uri": { "type": "string" }, "issuer": { "type": "string" }, "bound_issuer": { "type": "string" }, "audience": { "type": "string" }, "default_ttl": { "type": "string" }, "oidc_authorization_url": { "type": "string" }, "oidc_token_url": { "type": "string" }, "oidc_client_id": { "type": "string" }, "oidc_client_secret": { "type": "string", "description": "Omit to keep the stored secret; empty string clears it." }, "oidc_redirect_uri": { "type": "string" }, "oidc_scopes": { "type": "string" } } } } } },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "jwks_uri": { "type": "string" }, "issuer": { "type": "string" }, "bound_issuer": { "type": "string" }, "audience": { "type": "string" }, "default_ttl": { "type": "string" }, "oidc_authorization_url": { "type": "string" }, "oidc_token_url": { "type": "string" }, "oidc_client_id": { "type": "string" }, "oidc_client_secret": { "type": "string", "description": "Omit to keep the stored secret; empty string clears it." }, "oidc_redirect_uri": { "type": "string" }, "oidc_scopes": { "type": "string" }, "ca_cert": { "type": "string", "description": "PEM bundle of the CA(s) that sign the identity provider certificates (JWKS and token endpoint); empty = system trust store. Omit to keep the stored one; empty string clears it." } } } } } },
         "responses": { "204": { "description": "Saved" } }
       }
     },

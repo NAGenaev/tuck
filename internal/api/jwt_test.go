@@ -5,6 +5,8 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -383,5 +385,106 @@ func TestJWTBoundAudiences(t *testing.T) {
 	status, _ = jwtLogin(t, ts, badJWT)
 	if status != http.StatusForbidden {
 		t.Errorf("wrong aud: %d, want 403", status)
+	}
+}
+
+// An identity provider with a certificate from the bank's own CA: the JWKS is
+// fetched over TLS and trusted only with ca_cert set. Saving without the field
+// keeps it, and garbage is refused.
+func TestJWTProviderWithPrivateCA(t *testing.T) {
+	ts, _, root := newTestServer(t)
+	env := newJWKSServer(t) // plain-HTTP JWKS server that holds the signing key
+
+	// The same keys behind HTTPS with a certificate nobody trusts by default.
+	jwksBody, _ := io.ReadAll(func() io.Reader {
+		r, err := http.Get(env.jwksURL) //nolint:noctx
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = r.Body.Close() })
+		return r.Body
+	}())
+	idp := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(jwksBody)
+	}))
+	defer idp.Close()
+	caPEM := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: idp.Certificate().Raw}))
+
+	const issuer = "https://issuer.example.com"
+	put := func(extra map[string]any) (int, []byte) {
+		m := map[string]any{"jwks_uri": idp.URL, "issuer": issuer, "default_ttl": "1h"}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return doJSON(t, ts, http.MethodPut, "/v1/auth/jwt/config", mustJSON(m), root)
+	}
+	createTestPolicy(t, ts, root, "p", `[{"path":"secret/x/*","capabilities":["read"]}]`)
+	putJWTRole(t, ts, root, "r", "svc", []string{"p"}, "1h")
+	login := func() int {
+		s, _ := jwtLogin(t, ts, env.sign(t, gojwt.MapClaims{"iss": issuer, "sub": "svc", "exp": time.Now().Add(time.Hour).Unix()}))
+		return s
+	}
+
+	if s, b := put(map[string]any{"ca_cert": "not a certificate"}); s != http.StatusBadRequest {
+		t.Fatalf("garbage ca_cert: %d %s, want 400", s, b)
+	}
+	if s, b := put(nil); s != http.StatusOK {
+		t.Fatalf("config without ca_cert: %d %s", s, b)
+	}
+	if s := login(); s == http.StatusOK {
+		t.Fatal("an IdP signed by an unknown CA was trusted")
+	}
+	if s, b := put(map[string]any{"ca_cert": caPEM}); s != http.StatusOK {
+		t.Fatalf("config with ca_cert: %d %s", s, b)
+	}
+	if s := login(); s != http.StatusOK {
+		t.Fatalf("login with the IdP's CA configured: %d", s)
+	}
+	// A client that does not send ca_cert (the UI form) must not wipe it.
+	if s, b := put(map[string]any{"audience": ""}); s != http.StatusOK {
+		t.Fatalf("re-save: %d %s", s, b)
+	}
+	if s := login(); s != http.StatusOK {
+		t.Error("re-saving the config without ca_cert dropped the CA")
+	}
+	// "" clears it explicitly.
+	if s, _ := put(map[string]any{"ca_cert": ""}); s != http.StatusOK {
+		t.Fatal("clearing ca_cert failed")
+	}
+	if s := login(); s == http.StatusOK {
+		t.Error("the CA was still trusted after being cleared")
+	}
+}
+
+// The Tuck token of a JWT login is named after the readable claim, not an
+// opaque subject, so the audit trail says who it was.
+func TestJWTTokenNamedAfterPreferredUsername(t *testing.T) {
+	ts, c, root := newTestServer(t)
+	env := newJWKSServer(t)
+	const issuer = "https://issuer.example.com"
+	configureJWT(t, ts, root, env.jwksURL, issuer)
+	putJWTRole(t, ts, root, "r", "9f1c-uuid", []string{"default"}, "1h")
+	for claims, want := range map[string]string{
+		"preferred_username": "jwt:anna.sso",
+		"email":              "jwt:anna@bank.local",
+		"":                   "jwt:9f1c-uuid",
+	} {
+		m := gojwt.MapClaims{"iss": issuer, "sub": "9f1c-uuid", "exp": time.Now().Add(time.Hour).Unix()}
+		switch claims {
+		case "preferred_username":
+			m["preferred_username"] = "anna.sso"
+			m["email"] = "ignored@bank.local"
+		case "email":
+			m["email"] = "anna@bank.local"
+		}
+		s, b := jwtLogin(t, ts, env.sign(t, m))
+		if s != http.StatusOK {
+			t.Fatalf("login: %d %s", s, b)
+		}
+		tok, err := c.LookupToken(t.Context(), jsonField(t, b, "token"))
+		if err != nil || tok.DisplayName != want {
+			t.Errorf("claims %q: display name %q, %v; want %q", claims, tok.DisplayName, err, want)
+		}
 	}
 }

@@ -200,7 +200,11 @@ func (p *Provider) ExchangeCode(ctx context.Context, code, verifier string) (str
 	if p.cfg.OIDCClientSecret != "" {
 		req.SetBasicAuth(url.QueryEscape(p.cfg.OIDCClientID), url.QueryEscape(p.cfg.OIDCClientSecret))
 	}
-	resp, err := oidcHTTPClient.Do(req)
+	client := p.oidcClient
+	if client == nil {
+		client = oidcHTTPClient
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", ErrIdPUnavailable
 	}

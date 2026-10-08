@@ -18,6 +18,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **JWT/OIDC: `ca_cert`.** Провайдер на сертификате внутреннего УЦ (типично для банка) теперь можно подключить: PEM-цепочка в конфигурации JWT используется для загрузки JWKS и для token endpoint, и только ей доверяется. Раньше сервер полагался на системное хранилище контейнера. Проверено на реальном Keycloak с CA банка: code + PKCE, claim `groups`, роль по группе, одноразовость `state`.
+- Токен Tuck при входе через JWT/SSO называется по `preferred_username` (иначе `email`, иначе `sub`), например `jwt:anna.sso`, а не по UUID провайдера.
 - **Кластеры Kubernetes без рестарта.** `kubernetes.clusters` перечитывается по SIGHUP или `tuckcli auth kubernetes reload-clusters` (`POST /v1/auth/kubernetes/clusters/reload`): новый кластер доступен сразу, убранный перестаёт принимать вход, некорректный конфиг оставляет текущий набор.
 - **Обновление политик подключённых команд.** `tuckcli team sync [имя] [--dry-run]` (`POST /v1/sys/teams/sync`) приводит `team-admin/developer/reader` существующих команд к текущим шаблонам. Также `tuckcli team onboard` для мастера из CLI.
 - **Восстановление Raft-кластера из снимка.** `tuckcli snapshot save|restore` и `POST /v1/sys/cluster/restore?confirm=true`: данные всего кластера заменяются одной реплицируемой операцией, затем все узлы запечатываются и распечатываются долями кластера-источника. Раньше документация описывала только замену файла bbolt, для Raft процедуры не было.

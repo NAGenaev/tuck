@@ -3,9 +3,13 @@ package jwt
 import (
 	"context"
 	"crypto/subtle"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -27,6 +31,11 @@ type Config struct {
 	Issuer string `json:"issuer,omitempty"`
 	// Audience is the expected "aud" claim. Empty means any audience is accepted.
 	Audience string `json:"audience,omitempty"`
+	// CACert is a PEM bundle of the certificate authorities that sign the
+	// identity provider's certificates (typically the bank's internal CA). It
+	// is used for the JWKS fetch and for the OIDC token endpoint; when set,
+	// only these CAs are trusted. Empty = the system trust store.
+	CACert string `json:"ca_cert,omitempty"`
 	// DefaultTTL is the TTL applied to issued Tuck tokens when the role does not
 	// specify one. Defaults to 1 hour.
 	DefaultTTL time.Duration `json:"default_ttl,omitempty"`
@@ -73,6 +82,9 @@ type Role struct {
 // LoginResult is returned by Provider.Login on success.
 type LoginResult struct {
 	Subject       string
+	// Name is a human-readable label for the login (preferred_username, else
+	// email, else the subject). It names the Tuck token and appears in audit.
+	Name          string
 	Policies      []string
 	TTL           time.Duration
 	TuckNamespace string
@@ -81,17 +93,57 @@ type LoginResult struct {
 
 // Provider validates JWTs and resolves the matching Role.
 type Provider struct {
-	cfg  Config
-	jwks *JWKS
+	cfg        Config
+	jwks       *JWKS
+	oidcClient *http.Client
+}
+
+// ValidateCA checks that ca_cert, if set, holds at least one PEM certificate.
+func (c *Config) ValidateCA() error {
+	if c.CACert == "" {
+		return nil
+	}
+	if !x509.NewCertPool().AppendCertsFromPEM([]byte(c.CACert)) {
+		return errors.New("ca_cert contains no valid PEM certificate")
+	}
+	return nil
+}
+
+// transport returns the HTTP transport for talking to the identity provider,
+// trusting only ca_cert when it is set.
+func (c *Config) transport() http.RoundTripper {
+	if c.CACert == "" {
+		return http.DefaultTransport
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM([]byte(c.CACert)) {
+		return failingTransport{} // refused at save time; never fall back to system roots silently
+	}
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+	return tr
+}
+
+type failingTransport struct{}
+
+func (failingTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("jwt: ca_cert is not a valid PEM bundle")
 }
 
 // NewProvider creates a Provider from cfg.
 func NewProvider(cfg Config) *Provider {
 	var jwks *JWKS
+	rt := cfg.transport()
 	if cfg.JWKSURI != "" {
-		jwks = NewJWKS(cfg.JWKSURI, 10*time.Minute, nil)
+		jwks = NewJWKS(cfg.JWKSURI, 10*time.Minute, &http.Client{Timeout: 10 * time.Second, Transport: rt})
 	}
-	return &Provider{cfg: cfg, jwks: jwks}
+	return &Provider{cfg: cfg, jwks: jwks, oidcClient: &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: rt,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}}
 }
 
 // Login validates token, matches it against roles, and returns the login result.
@@ -134,11 +186,26 @@ func (p *Provider) resolve(claims jwt.MapClaims, roles []*Role) (*LoginResult, e
 	}
 	return &LoginResult{
 		Subject:       sub,
+		Name:          displayName(claims, sub),
 		Policies:      role.Policies,
 		TTL:           ttl,
 		TuckNamespace: role.TuckNamespace,
 		Groups:        extractGroups(claims),
 	}, nil
+}
+
+// displayName picks a readable label for the person or workload behind a JWT.
+// IdP subjects are often opaque UUIDs, which are useless in an audit trail.
+func displayName(claims jwt.MapClaims, sub string) string {
+	for _, k := range []string{"preferred_username", "email"} {
+		if v, ok := claims[k].(string); ok {
+			v = strings.TrimSpace(v)
+			if v != "" && len(v) <= 128 && !strings.ContainsFunc(v, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+				return v
+			}
+		}
+	}
+	return sub
 }
 
 func (p *Provider) validate(ctx context.Context, tokenStr string) (jwt.MapClaims, error) {

@@ -1288,7 +1288,11 @@ func (c *Core) issueJWTLogin(ctx context.Context, result *jwt.LoginResult) (*tok
 	if err := c.checkLoginNamespace(ctx, result.TuckNamespace); err != nil {
 		return nil, err
 	}
-	tok, err := c.CreateToken(ctx, "jwt:"+result.Subject, result.Policies, result.TTL, loginTokenOpts(result.TuckNamespace)...)
+	label := result.Name
+	if label == "" {
+		label = result.Subject
+	}
+	tok, err := c.CreateToken(ctx, "jwt:"+label, result.Policies, result.TTL, loginTokenOpts(result.TuckNamespace)...)
 	if err != nil {
 		return nil, err
 	}

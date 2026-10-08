@@ -81,6 +81,8 @@ func (s *Server) putJWTConfig(w http.ResponseWriter, r *http.Request) {
 		OIDCClientSecret *string `json:"oidc_client_secret"`
 		OIDCRedirectURI  string  `json:"oidc_redirect_uri"`
 		OIDCScopes       string  `json:"oidc_scopes"`
+		// CA of the identity provider; nil keeps the stored one, "" clears it.
+		CACert *string `json:"ca_cert"`
 	}
 	if err := json.Unmarshal(body, &wire); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -104,6 +106,11 @@ func (s *Server) putJWTConfig(w http.ResponseWriter, r *http.Request) {
 	if wire.OIDCClientSecret != nil {
 		cfg.OIDCClientSecret = *wire.OIDCClientSecret
 	}
+	if wire.CACert != nil {
+		cfg.CACert = *wire.CACert
+	} else if prev, err := s.core.GetJWTConfig(r.Context()); err == nil {
+		cfg.CACert = prev.CACert // a client that does not know the field must not wipe it
+	}
 	if wire.DefaultTTL != "" {
 		d, err := time.ParseDuration(wire.DefaultTTL)
 		if err != nil {
@@ -113,6 +120,10 @@ func (s *Server) putJWTConfig(w http.ResponseWriter, r *http.Request) {
 		cfg.DefaultTTL = d
 	}
 
+	if err := cfg.ValidateCA(); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	if err := cfg.ValidateOIDC(); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return

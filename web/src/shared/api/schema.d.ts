@@ -5136,6 +5136,8 @@ export interface operations {
                     oidc_client_secret?: string;
                     oidc_redirect_uri?: string;
                     oidc_scopes?: string;
+                    /** @description PEM bundle of the CA(s) that sign the identity provider certificates (JWKS and token endpoint); empty = system trust store. Omit to keep the stored one; empty string clears it. */
+                    ca_cert?: string;
                 };
             };
         };

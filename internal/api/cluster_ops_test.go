@@ -252,6 +252,7 @@ func (f *fakeRaft) CreateSnapshot() (physraft.SnapshotInfo, error) {
 func (f *fakeRaft) OpenSnapshot(string) (physraft.SnapshotInfo, io.ReadCloser, error) {
 	return physraft.SnapshotInfo{}, nil, physraft.ErrSnapshotNotFound
 }
+func (f *fakeRaft) Restore(io.Reader, int64) (int, error) { return 0, nil }
 
 func TestClusterStepDownErrorMapping(t *testing.T) {
 	fb := &fakeRaft{Backend: physical.NewInMem(), leader: true} // a follower cannot initialize the store

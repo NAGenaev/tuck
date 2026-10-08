@@ -55,6 +55,12 @@ export const useDesktopMenuSections = (): MenuItem[] => {
             ]
         },
         {
+            id: 'kubernetes',
+            header: t('nav.kubernetes'),
+            icon: 'boxes',
+            section: [{ id: 'tucksecrets', name: t('nav.tucksecrets'), href: ROUTES.DASHBOARD.TUCKSECRETS, icon: 'boxes' }]
+        },
+        {
             id: 'engines',
             header: t('nav.engines'),
             icon: 'plug',

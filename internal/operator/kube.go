@@ -87,7 +87,7 @@ func (c *KubeClient) List(ctx context.Context, namespace string) (*TuckSecretLis
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("list TuckSecrets: unexpected status %d", resp.StatusCode)
+		return nil, fmt.Errorf("list TuckSecrets: unexpected status %d: %w", resp.StatusCode, &StatusError{Code: resp.StatusCode})
 	}
 	var list TuckSecretList
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
@@ -317,6 +317,41 @@ func (c *KubeClient) NamespaceAnnotations(ctx context.Context, namespace string)
 		return nil, fmt.Errorf("decode namespace %s: %w", namespace, err)
 	}
 	return ns.Metadata.Annotations, nil
+}
+
+// StatusError carries the HTTP status of a failed Kubernetes API call.
+type StatusError struct{ Code int }
+
+func (e *StatusError) Error() string { return fmt.Sprintf("kubernetes API status %d", e.Code) }
+
+// ListNamespaceAnnotations returns the annotations of every Namespace, keyed by
+// Namespace name, in a single request.
+func (c *KubeClient) ListNamespaceAnnotations(ctx context.Context) (map[string]map[string]string, error) {
+	req, err := c.newReq(ctx, http.MethodGet, c.apiURL+"/api/v1/namespaces", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("list namespaces: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("list namespaces: unexpected status %d: %w", resp.StatusCode, &StatusError{Code: resp.StatusCode})
+	}
+	var list struct {
+		Items []struct {
+			Metadata ObjectMeta `json:"metadata"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+		return nil, fmt.Errorf("decode namespace list: %w", err)
+	}
+	out := make(map[string]map[string]string, len(list.Items))
+	for _, it := range list.Items {
+		out[it.Metadata.Name] = it.Metadata.Annotations
+	}
+	return out, nil
 }
 
 // UpdateStatus updates the status subresource of a TuckSecret.

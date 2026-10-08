@@ -3,6 +3,7 @@ package operator
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -144,5 +145,40 @@ func TestHelmCRDMatchesDeployCRD(t *testing.T) {
 	got := norm("../../deploy/helm/tuck/templates/crd/tucksecret.yaml")
 	if want != got {
 		t.Fatal("deploy/helm/tuck/templates/crd/tucksecret.yaml drifted from deploy/crd/tucksecret.yaml")
+	}
+}
+
+func TestListNamespaceAnnotations(t *testing.T) {
+	code := http.StatusOK
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/namespaces" || r.Header.Get("Authorization") != "Bearer fake-jwt" {
+			t.Errorf("unexpected request %s auth=%q", r.URL.Path, r.Header.Get("Authorization"))
+		}
+		w.WriteHeader(code)
+		_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"app-a","annotations":{"tuck.io/tuck-namespace":"team-a"}}},{"metadata":{"name":"plain"}}]}`))
+	}))
+	defer srv.Close()
+	tokenFile, err := os.CreateTemp(t.TempDir(), "sa-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = tokenFile.WriteString("fake-jwt")
+	_ = tokenFile.Close()
+	c, err := NewKubeClient(srv.URL, tokenFile.Name(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.ListNamespaceAnnotations(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["app-a"][AnnotationTuckNamespace] != "team-a" || len(got) != 2 {
+		t.Errorf("annotations = %v", got)
+	}
+	code = http.StatusForbidden
+	_, err = c.ListNamespaceAnnotations(context.Background())
+	var se *StatusError
+	if !errors.As(err, &se) || se.Code != 403 {
+		t.Errorf("want StatusError 403, got %v", err)
 	}
 }

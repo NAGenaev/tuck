@@ -22,6 +22,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/core"
 	"github.com/NAGenaev/tuck/internal/haregister"
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
+	"github.com/NAGenaev/tuck/internal/operator"
 	"github.com/NAGenaev/tuck/internal/physical"
 	physraft "github.com/NAGenaev/tuck/internal/physical/raft"
 	"github.com/NAGenaev/tuck/internal/ratelimit"
@@ -409,6 +410,15 @@ func main() {
 
 	// --- API server + rate limiters ---
 	apiSrv := api.New(c)
+	if *k8sAPI != "" {
+		if _, statErr := os.Stat(*k8sTokenFile); statErr == nil {
+			if kc, kcErr := operator.NewKubeClient(*k8sAPI, *k8sTokenFile, *k8sCaFile); kcErr == nil {
+				apiSrv.SetTuckSecretSource(kc)
+			} else {
+				log.Printf("tuck: TuckSecret view disabled: %v", kcErr)
+			}
+		}
+	}
 	// Restore barrier-persisted rate-limit config when the barrier is already
 	// open (dev seal, auto-unseal). Shamir-sealed servers restore in postUnseal.
 	if !errors.Is(startErr, core.ErrNeedsUnseal) && !sealRetry {

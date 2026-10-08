@@ -39,6 +39,9 @@ type Server struct {
 	// oidcLimiter bounds the unauthenticated OIDC start/finish endpoints per
 	// source address; it is always on, independent of the sysconfig limiters.
 	oidcLimiter *ratelimit.Limiter
+	// tuckSecrets backs the read-only TuckSecret listing; nil when the server
+	// has no Kubernetes API access.
+	tuckSecrets TuckSecretSource
 }
 
 // New returns an HTTP server wired to the core's audit Dispatcher.
@@ -221,6 +224,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/auth/kubernetes/role/{namespace}/{sa}", s.requireToken(s.getK8sRole))
 	mux.HandleFunc("DELETE /v1/auth/kubernetes/role/{namespace}/{sa}", s.requireToken(s.deleteK8sRole))
 	mux.HandleFunc("GET /v1/auth/kubernetes/clusters", s.requireToken(s.listK8sClusters))
+	mux.HandleFunc("GET /v1/sys/k8s/tucksecrets", s.requireToken(s.listTuckSecrets))
 	mux.HandleFunc("PUT /v1/auth/kubernetes/clusters/{cluster}/role/{namespace}/{sa}", s.requireToken(s.putK8sRole))
 	mux.HandleFunc("GET /v1/auth/kubernetes/clusters/{cluster}/role/{namespace}/{sa}", s.requireToken(s.getK8sRole))
 	mux.HandleFunc("DELETE /v1/auth/kubernetes/clusters/{cluster}/role/{namespace}/{sa}", s.requireToken(s.deleteK8sRole))

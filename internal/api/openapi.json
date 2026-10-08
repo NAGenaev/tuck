@@ -333,6 +333,35 @@
           "member_group_ids": { "type": "array", "items": { "type": "string" } }
         }
       },
+      "TuckSecretView": {
+        "type": "object",
+        "properties": {
+          "k8s_namespace": { "type": "string" },
+          "name": { "type": "string" },
+          "tuck_namespace": { "type": "string", "description": "Bound Tuck namespace; empty = root / unbound" },
+          "secret_name": { "type": "string" },
+          "entries": { "type": "array", "items": { "type": "object", "properties": { "key": { "type": "string" }, "path": { "type": "string" } }, "required": ["key", "path"] } },
+          "kv_version": { "type": "string" },
+          "refresh_interval": { "type": "string" },
+          "deletion_policy": { "type": "string" },
+          "restart_targets": { "type": "array", "items": { "type": "object", "properties": { "kind": { "type": "string" }, "name": { "type": "string" } } } },
+          "state": { "type": "string", "enum": ["synced", "error", "pending", "deleting"] },
+          "last_sync_time": { "type": "string", "format": "date-time" },
+          "last_sync_error": { "type": "string" },
+          "synced_revision": { "type": "string" },
+          "conditions": { "type": "array", "items": { "type": "object", "properties": { "type": { "type": "string" }, "status": { "type": "string" }, "reason": { "type": "string" }, "message": { "type": "string" } } } }
+        },
+        "required": ["k8s_namespace", "name", "tuck_namespace", "secret_name", "entries", "kv_version", "refresh_interval", "deletion_policy", "state"]
+      },
+      "TuckSecretList": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/TuckSecretView" } },
+          "count": { "type": "integer" },
+          "truncated": { "type": "boolean" }
+        },
+        "required": ["items", "count", "truncated"]
+      },
       "Namespace": {
         "type": "object",
         "properties": {
@@ -1238,6 +1267,19 @@
         "summary": "Revoke a SecretID",
         "operationId": "revokeSecretID",
         "responses": { "204": { "description": "Revoked" } }
+      }
+    },
+    "/v1/sys/k8s/tucksecrets": {
+      "get": {
+        "tags": ["auth-kubernetes"],
+        "summary": "List TuckSecret resources with their sync status (read-only)",
+        "description": "Requires the list capability on sys/k8s/tucksecrets. A token inside a Tuck namespace sees only TuckSecrets of Kubernetes namespaces bound to it via the tuck.io/tuck-namespace annotation; root without X-Tuck-Namespace sees all. Secret values are never returned.",
+        "operationId": "listTuckSecrets",
+        "responses": {
+          "200": { "description": "TuckSecret resources", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TuckSecretList" } } } },
+          "403": { "description": "Missing list capability on sys/k8s/tucksecrets" },
+          "503": { "description": "Kubernetes API unavailable. code is k8s_unavailable (server has no cluster access), k8s_forbidden (its ServiceAccount may not list TuckSecrets/Namespaces) or k8s_error", "content": { "application/json": { "schema": { "type": "object", "properties": { "error": { "type": "string" }, "code": { "type": "string", "enum": ["k8s_unavailable", "k8s_forbidden", "k8s_error"] } } } } } }
+        }
       }
     },
     "/v1/auth/kubernetes/login": {

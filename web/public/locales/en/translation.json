@@ -13,6 +13,8 @@
     "namespaces": "Namespaces",
     "engines": "Engines",
     "mounts": "Mounts",
+    "kubernetes": "Kubernetes",
+    "tucksecrets": "TuckSecret",
     "operations": "Operations",
     "cluster": "Cluster",
     "auditSinks": "Audit Sinks"

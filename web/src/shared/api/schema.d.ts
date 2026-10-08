@@ -1055,6 +1055,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sys/k8s/tucksecrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List TuckSecret resources with their sync status (read-only)
+         * @description Requires the list capability on sys/k8s/tucksecrets. A token inside a Tuck namespace sees only TuckSecrets of Kubernetes namespaces bound to it via the tuck.io/tuck-namespace annotation; root without X-Tuck-Namespace sees all. Secret values are never returned.
+         */
+        get: operations["listTuckSecrets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/kubernetes/login": {
         parameters: {
             query?: never;
@@ -2057,6 +2077,41 @@ export interface components {
             policies?: string[];
             member_entity_ids?: string[];
             member_group_ids?: string[];
+        };
+        TuckSecretView: {
+            k8s_namespace: string;
+            name: string;
+            /** @description Bound Tuck namespace; empty = root / unbound */
+            tuck_namespace: string;
+            secret_name: string;
+            entries: {
+                key: string;
+                path: string;
+            }[];
+            kv_version: string;
+            refresh_interval: string;
+            deletion_policy: string;
+            restart_targets?: {
+                kind?: string;
+                name?: string;
+            }[];
+            /** @enum {string} */
+            state: "synced" | "error" | "pending" | "deleting";
+            /** Format: date-time */
+            last_sync_time?: string;
+            last_sync_error?: string;
+            synced_revision?: string;
+            conditions?: {
+                type?: string;
+                status?: string;
+                reason?: string;
+                message?: string;
+            }[];
+        };
+        TuckSecretList: {
+            items: components["schemas"]["TuckSecretView"][];
+            count: number;
+            truncated: boolean;
         };
         Namespace: {
             name?: string;
@@ -4512,6 +4567,46 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    listTuckSecrets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description TuckSecret resources */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TuckSecretList"];
+                };
+            };
+            /** @description Missing list capability on sys/k8s/tucksecrets */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Kubernetes API unavailable. code is k8s_unavailable (server has no cluster access), k8s_forbidden (its ServiceAccount may not list TuckSecrets/Namespaces) or k8s_error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error?: string;
+                        /** @enum {string} */
+                        code?: "k8s_unavailable" | "k8s_forbidden" | "k8s_error";
+                    };
+                };
             };
         };
     };

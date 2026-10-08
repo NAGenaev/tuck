@@ -13,6 +13,8 @@
     "namespaces": "Пространства имён",
     "engines": "Движки",
     "mounts": "Точки монтирования",
+    "kubernetes": "Kubernetes",
+    "tucksecrets": "TuckSecret",
     "operations": "Эксплуатация",
     "cluster": "Кластер",
     "auditSinks": "Аудит"

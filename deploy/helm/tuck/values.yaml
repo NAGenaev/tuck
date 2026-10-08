@@ -119,6 +119,11 @@ server:
     # pod ServiceAccount tokens via the TokenReview API). Disable only if
     # Kubernetes auth is not used.
     create: true
+    # -- Let the server list TuckSecret resources and Namespace annotations so the
+    # UI can show them (read-only, sync status only, never Secret values). Needs
+    # operator.enabled. Disable to keep the server off the Kubernetes API beyond
+    # TokenReview.
+    viewTuckSecrets: true
 
   readinessProbe:
     httpGet:

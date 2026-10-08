@@ -150,6 +150,19 @@ operator:
 
 Без Helm: `deploy/operator/namespaced-rbac.yaml`.
 
+## Просмотр в веб-интерфейсе
+
+Страница **Kubernetes → TuckSecret** показывает ресурсы TuckSecret и состояние синхронизации: `synced`, `error` (с текстом последней ошибки), `pending`, `deleting`; для каждого видны Kubernetes-namespace, привязанный Tuck-namespace, имя Secret, пары «ключ в Secret → путь в Tuck», период обновления, политика удаления, цели перезапуска и условия. Страница обновляется раз в 30 секунд. Она **только для чтения**: создание и удаление идёт через `kubectl`/GitOps, иначе пользователь Tuck обошёл бы RBAC кластера. Значения секретов не показываются.
+
+Как это работает: сервер Tuck сам читает список TuckSecret и аннотации Namespace через Kubernetes API своим ServiceAccount (тем же, что делает TokenReview). Чарт выдаёт ему для этого `list` на `tuck.io/tucksecrets` и на `namespaces` (значение `server.rbac.viewTuckSecrets`, по умолчанию `true`, и только при `operator.enabled=true`); в сырых манифестах те же правила в `deploy/server/rbac.yaml`.
+
+Кто что видит:
+
+- токену нужна политика с `list` на `sys/k8s/tucksecrets` (root её имеет);
+- токен внутри namespace Tuck видит только TuckSecret из Kubernetes-namespace, привязанных к нему аннотацией `tuck.io/tuck-namespace`; root без заголовка `X-Tuck-Namespace` видит всё.
+
+Если страница сообщает «Kubernetes API недоступен», сервер запущен вне кластера или без токена ServiceAccount; «Нет прав на чтение», значит, в релизе выключен `server.rbac.viewTuckSecrets` или оператор не включён. Тот же список отдаёт `GET /v1/sys/k8s/tucksecrets`.
+
 ## Проверка
 
 | Действие | Ожидаемый результат |

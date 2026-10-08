@@ -17,6 +17,7 @@ export const ROUTES = {
         TOKEN_ROLES: '/dashboard/token-roles',
         AUDIT_SINKS: '/dashboard/audit-sinks',
         CLUSTER: '/dashboard/cluster',
-        MOUNTS: '/dashboard/mounts'
+        MOUNTS: '/dashboard/mounts',
+        TUCKSECRETS: '/dashboard/tucksecrets'
     }
 } as const

@@ -144,9 +144,9 @@ func TestSyncTeamPoliciesBringsOldTeamsUpToDate(t *testing.T) {
 	if s, b := nsReq(t, ts, http.MethodPost, "/v1/sys/teams", `{"name":"payments","groups":{"admin":["pay-admins"],"reader":["pay-ro"]}}`, root, ""); s != http.StatusCreated {
 		t.Fatalf("onboard: %d %s", s, b)
 	}
-	// An older template: no right to list policies. A team that renamed or removed
+	// The template before team admins could list policies (an exact earlier version). A team that renamed or removed
 	// a policy (team-developer was never created here) must be left alone.
-	old := `{"rules":[{"path":"secret/**","capabilities":["read","write","delete","list"]}]}`
+	old := `{"rules":[{"path":"secret/**","capabilities":["read","write","delete","list"]},{"path":"auth/policy/**","capabilities":["read","list"]}]}`
 	if s, b := nsReq(t, ts, http.MethodPut, "/v1/policy/team-admin", old, root, "payments"); s != http.StatusNoContent {
 		t.Fatalf("age the policy: %d %s", s, b)
 	}
@@ -175,6 +175,25 @@ func TestSyncTeamPoliciesBringsOldTeamsUpToDate(t *testing.T) {
 	}
 	if s, _ := nsReq(t, ts, http.MethodPost, "/v1/sys/teams/sync", ``, admin, "payments"); s != http.StatusForbidden {
 		t.Errorf("team admin ran the sync: %d", s)
+	}
+	// A policy the team edited, or one that only shares the name in a namespace that
+	// was never onboarded, is not ours to rewrite.
+	custom := `{"rules":[{"path":"secret/**","capabilities":["read"]},{"path":"extra/**","capabilities":["read"]}]}`
+	if s, b := nsReq(t, ts, http.MethodPut, "/v1/policy/team-reader", custom, root, "payments"); s != http.StatusNoContent {
+		t.Fatalf("customise: %d %s", s, b)
+	}
+	if s, b := nsReq(t, ts, http.MethodPost, "/v1/sys/namespaces", `{"name":"stranger"}`, root, ""); s != http.StatusCreated {
+		t.Fatalf("namespace: %d %s", s, b)
+	}
+	if s, b := nsReq(t, ts, http.MethodPut, "/v1/policy/team-reader", custom, root, "stranger"); s != http.StatusNoContent {
+		t.Fatalf("stranger policy: %d %s", s, b)
+	}
+	s, b = nsReq(t, ts, http.MethodPost, "/v1/sys/teams/sync", ``, root, "")
+	if s != http.StatusOK || strings.Count(b, `"customized"`) != 2 || strings.Contains(b, `"updated"`) {
+		t.Fatalf("customised policies must be reported and left alone: %d %s", s, b)
+	}
+	if s, b := nsReq(t, ts, http.MethodGet, "/v1/policy/team-reader", "", root, "stranger"); s != http.StatusOK || !strings.Contains(b, "extra/**") {
+		t.Errorf("a foreign policy was rewritten: %d %s", s, b)
 	}
 	if s, _ := nsReq(t, ts, http.MethodPost, "/v1/sys/teams/sync", `{"name":"nope"}`, root, ""); s != http.StatusNotFound {
 		t.Errorf("unknown namespace: %d, want 404", s)

@@ -81,7 +81,8 @@
     "action": {
       "unchanged": "актуальна",
       "would_update": "изменится",
-      "updated": "обновлена"
+      "updated": "обновлена",
+      "customized": "изменена командой (не трогаю)"
     }
   }
 }

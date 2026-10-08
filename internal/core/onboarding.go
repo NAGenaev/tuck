@@ -110,6 +110,28 @@ func TeamLDAPRoleName(ns, access string) string {
 	return strings.ReplaceAll(ns, "/", "--") + "-" + access
 }
 
+// teamTemplateTag is stored in every policy that onboarding writes.
+const teamTemplateTag = "team/v1"
+
+// legacyTeamPolicies are exact earlier versions of the templates. Teams onboarded
+// before policies were tagged still carry them; "team sync" recognises them as
+// ours (and nothing else without the tag).
+func legacyTeamPolicies() map[string][]*policy.Policy {
+	const (
+		r = policy.CapRead
+		w = policy.CapWrite
+		d = policy.CapDelete
+		l = policy.CapList
+	)
+	return map[string][]*policy.Policy{
+		// before a team admin could list policies
+		AccessAdmin: {{Name: teamPolicyName(AccessAdmin), Rules: []policy.Rule{
+			{Path: "secret/**", Capabilities: r | w | d | l},
+			{Path: "auth/policy/**", Capabilities: r | l},
+		}}},
+	}
+}
+
 // teamPolicies are the policies created inside the team's namespace. None of
 // them touch auth roles, tokens or other namespaces.
 func teamPolicies() map[string]*policy.Policy {
@@ -121,7 +143,7 @@ func teamPolicies() map[string]*policy.Policy {
 	)
 	mk := func(access string, secrets policy.Capability, extra ...policy.Rule) *policy.Policy {
 		rules := append([]policy.Rule{{Path: "secret/**", Capabilities: secrets}}, extra...)
-		return &policy.Policy{Name: teamPolicyName(access), Rules: rules}
+		return &policy.Policy{Name: teamPolicyName(access), Rules: rules, Template: teamTemplateTag}
 	}
 	return map[string]*policy.Policy{
 		AccessAdmin: mk(AccessAdmin, r|w|d|l,
@@ -193,6 +215,19 @@ func k8sRoleLabel(b TeamK8sBinding) string {
 		return b.Namespace + "/" + b.ServiceAccount
 	}
 	return b.Cluster + "/" + b.Namespace + "/" + b.ServiceAccount
+}
+
+func (c *Core) ldapRoleExists(ctx context.Context, name string) (bool, error) {
+	names, err := c.ListLDAPRoles(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, n := range names {
+		if n == name {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // PlanTeam validates a team spec and reports what OnboardTeam would create,
@@ -334,6 +369,12 @@ func (c *Core) OnboardTeam(ctx context.Context, spec TeamSpec) (*OnboardResult, 
 		if len(spec.Groups[access]) == 0 {
 			continue
 		}
+		if exists, err := c.ldapRoleExists(ctx, TeamLDAPRoleName(spec.Name, access)); err != nil || exists {
+			if err == nil {
+				err = fmt.Errorf("%w: ldap_role %s: created by someone else meanwhile", ErrOnboardConflict, TeamLDAPRoleName(spec.Name, access))
+			}
+			return nil, rollback(err)
+		}
 		role := &authlda.Role{
 			Name:          TeamLDAPRoleName(spec.Name, access),
 			Groups:        spec.Groups[access],
@@ -349,6 +390,11 @@ func (c *Core) OnboardTeam(ctx context.Context, spec TeamSpec) (*OnboardResult, 
 	}
 
 	for _, b := range spec.K8s {
+		if _, err := c.k8sRoles.Get(ctx, b.Cluster, b.Namespace, b.ServiceAccount); err == nil {
+			return nil, rollback(fmt.Errorf("%w: k8s_role %s: created by someone else meanwhile", ErrOnboardConflict, k8sRoleLabel(b)))
+		} else if !errors.Is(err, k8sauth.ErrRoleNotFound) {
+			return nil, rollback(err)
+		}
 		role := &k8sauth.K8sRole{
 			Cluster: b.Cluster, Namespace: b.Namespace, ServiceAccount: b.ServiceAccount,
 			Policies: []string{teamPolicyName(b.Access)}, TTL: spec.TTL, TuckNamespace: spec.Name,
@@ -368,7 +414,7 @@ func (c *Core) OnboardTeam(ctx context.Context, spec TeamSpec) (*OnboardResult, 
 type PolicySyncItem struct {
 	Namespace string `json:"namespace"`
 	Policy    string `json:"policy"`
-	Action    string `json:"action"` // updated | unchanged (would_update with dry_run)
+	Action    string `json:"action"` // updated | unchanged | customized (left alone); would_update with dry_run
 }
 
 // SyncTeamPolicies brings the team-admin / team-developer / team-reader policies
@@ -404,7 +450,10 @@ func (c *Core) SyncTeamPolicies(ctx context.Context, namespaceName string, dryRu
 				return out, err
 			}
 			item := PolicySyncItem{Namespace: ns, Policy: want.Name, Action: "unchanged"}
-			if !samePolicyRules(have, want) {
+			if !isManagedTeamPolicy(have, access) {
+				// The team edited this policy or it only shares the name: leave it.
+				item.Action = "customized"
+			} else if !samePolicyRules(have, want) || have.Template != want.Template {
 				item.Action = "updated"
 				if dryRun {
 					item.Action = "would_update"
@@ -416,6 +465,23 @@ func (c *Core) SyncTeamPolicies(ctx context.Context, namespaceName string, dryRu
 		}
 	}
 	return out, nil
+}
+
+// isManagedTeamPolicy reports whether have was written by onboarding: tagged,
+// or an exact copy of the current or an earlier template.
+func isManagedTeamPolicy(have *policy.Policy, access string) bool {
+	if have.Template != "" {
+		return true
+	}
+	if samePolicyRules(have, teamPolicies()[access]) {
+		return true
+	}
+	for _, old := range legacyTeamPolicies()[access] {
+		if samePolicyRules(have, old) {
+			return true
+		}
+	}
+	return false
 }
 
 func samePolicyRules(a, b *policy.Policy) bool {

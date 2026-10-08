@@ -343,7 +343,7 @@ var ErrEmptySnapshot = errors.New("raft: snapshot is empty")
 // was applied. Tuck seals the node there: the restored data carries the key
 // ring of the cluster the snapshot came from, so it must be unsealed again
 // with that cluster's key shares.
-func (b *Backend) OnRestore(fn func()) { b.fsm.onRestore = fn }
+func (b *Backend) OnRestore(fn func()) { b.fsm.onRestore.Store(&fn) }
 
 // Restore replaces the data of the whole cluster with the snapshot read from r
 // (the stream written by Snapshot / downloaded from /v1/sys/snapshot). It runs
@@ -364,8 +364,8 @@ func (b *Backend) Restore(r io.Reader, maxBytes int64) (int, error) {
 	if err := json.Unmarshal(raw, &data); err != nil {
 		return 0, fmt.Errorf("raft: not a Tuck snapshot: %w", err)
 	}
-	if len(data) == 0 {
-		return 0, ErrEmptySnapshot
+	if err := validateRestoreData(data); err != nil {
+		return 0, err
 	}
 	payload, err := json.Marshal(command{Op: "restore", Value: raw})
 	if err != nil {

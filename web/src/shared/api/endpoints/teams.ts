@@ -54,7 +54,7 @@ export async function createTeam(req: TeamRequest): Promise<TeamResult> {
 }
 
 export interface PolicySyncItem {
-    action: 'unchanged' | 'updated' | 'would_update'
+    action: 'customized' | 'unchanged' | 'updated' | 'would_update'
     namespace: string
     policy: string
 }

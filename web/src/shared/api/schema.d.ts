@@ -5278,7 +5278,7 @@ export interface operations {
                             namespace?: string;
                             policy?: string;
                             /** @enum {string} */
-                            action?: "updated" | "unchanged" | "would_update";
+                            action?: "updated" | "unchanged" | "customized" | "would_update";
                         }[];
                     };
                 };

@@ -1615,7 +1615,7 @@
         "operationId": "syncTeamPolicies",
         "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" }, "dry_run": { "type": "boolean" } } } } } },
         "responses": {
-          "200": { "description": "Result per policy", "content": { "application/json": { "schema": { "type": "object", "properties": { "dry_run": { "type": "boolean" }, "policies": { "type": "array", "items": { "type": "object", "properties": { "namespace": { "type": "string" }, "policy": { "type": "string" }, "action": { "type": "string", "enum": ["updated", "unchanged", "would_update"] } } } } } } } } },
+          "200": { "description": "Result per policy", "content": { "application/json": { "schema": { "type": "object", "properties": { "dry_run": { "type": "boolean" }, "policies": { "type": "array", "items": { "type": "object", "properties": { "namespace": { "type": "string" }, "policy": { "type": "string" }, "action": { "type": "string", "enum": ["updated", "unchanged", "customized", "would_update"] } } } } } } } } },
           "403": { "description": "Permission denied" },
           "404": { "description": "Namespace not found" }
         }

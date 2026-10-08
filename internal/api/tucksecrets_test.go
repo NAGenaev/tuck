@@ -268,6 +268,19 @@ func TestListTuckSecretsAcrossClusters(t *testing.T) {
 	if s, _ := get("?cluster=nope"); s != http.StatusNotFound {
 		t.Errorf("unknown cluster: %d", s)
 	}
+	// A caller inside a Tuck namespace sees its own rows but not the cluster topology.
+	if r, err := http.DefaultClient.Do(authedReq(t, http.MethodPost, ts.URL+"/v1/sys/namespaces", `{"name":"payments"}`, res.RootToken.ID)); err != nil || r.StatusCode != http.StatusCreated {
+		t.Fatalf("create namespace: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(authedNsReq(t, "GET", ts.URL+"/v1/sys/k8s/tucksecrets", "", res.RootToken.ID, "payments"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	nsBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || strings.Contains(string(nsBody), `"clusters"`) || strings.Contains(string(nsBody), "dc3") || !strings.Contains(string(nsBody), "core-db") {
+		t.Errorf("namespace caller: %d %s", resp.StatusCode, nsBody)
+	}
 	// Only failures: the old "unavailable" semantics (and the reason) survive.
 	srv.SetTuckSecretSources(map[string]TuckSecretSource{"dc3": &fakeTuckSecretSource{err: &operator.StatusError{Code: http.StatusForbidden}}})
 	if s, b := get(""); s != http.StatusServiceUnavailable || !strings.Contains(b, "k8s_forbidden") {

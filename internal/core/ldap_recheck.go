@@ -33,10 +33,17 @@ type LDAPRecheckResult struct {
 
 const ldapTokenPrefix = "ldap:"
 
+// recheckPassTimeout bounds one whole pass over all live LDAP tokens.
+const recheckPassTimeout = 10 * time.Minute
+
 // RecheckLDAPTokens re-validates every live LDAP token against the directory.
 // A directory that cannot be reached never revokes anything: the token TTL
 // stays the upper bound.
 func (c *Core) RecheckLDAPTokens(ctx context.Context) (*LDAPRecheckResult, error) {
+	// A directory that accepts connections and then stops answering must not
+	// freeze the periodic pass (and with it every later revocation) forever.
+	ctx, cancel := context.WithTimeout(ctx, recheckPassTimeout)
+	defer cancel()
 	res := &LDAPRecheckResult{}
 	if cb := c.ClusterBackend(); cb != nil && !cb.IsLeader() {
 		res.Skipped = "not the Raft leader"
@@ -144,8 +151,7 @@ func (c *Core) RecheckLDAPTokens(ctx context.Context) (*LDAPRecheckResult, error
 					}
 				}
 			case len(keep) < len(tok.Policies):
-				tok.Policies = keep
-				if err := c.tokens.Put(ctx, tok); err == nil {
+				if c.narrowToken(ctx, tok.ID, pol) {
 					res.Narrowed++
 				}
 			}
@@ -169,7 +175,7 @@ func (c *Core) RevokeLDAPUserTokens(ctx context.Context, username string) (int, 
 	n := 0
 	for _, id := range ids {
 		tok, err := c.tokens.Get(ctx, id)
-		if err != nil || tok == nil || !strings.EqualFold(tok.DisplayName, want) {
+		if err != nil || tok == nil || !strings.EqualFold(tok.DisplayName, want) || !isLDAPToken(tok) {
 			continue
 		}
 		if err := c.RevokeTokenTree(ctx, tok.ID); err == nil {
@@ -209,6 +215,23 @@ func (c *Core) StartLDAPRecheck(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// narrowToken reduces a token's policies to those still allowed. It re-reads
+// the token right before writing, so a renewal, a use count or a revocation
+// that happened during the slow directory lookups is not overwritten with a
+// stale copy; a token that is gone or expired is left alone.
+func (c *Core) narrowToken(ctx context.Context, id string, allowed []string) bool {
+	fresh, err := c.tokens.Get(ctx, id)
+	if err != nil || fresh == nil || fresh.IsExpired() {
+		return false
+	}
+	keep := intersect(fresh.Policies, allowed)
+	if len(keep) == 0 || len(keep) == len(fresh.Policies) {
+		return false
+	}
+	fresh.Policies = keep
+	return c.tokens.Put(ctx, fresh) == nil
 }
 
 // isLDAPToken reports whether tok was issued by an LDAP login. A hand-made

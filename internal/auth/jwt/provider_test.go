@@ -2,10 +2,15 @@ package jwt
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -186,4 +191,38 @@ func TestParseSecretsList(t *testing.T) {
 	if j.uri != uri {
 		t.Fatalf("unexpected URI: %q", j.uri)
 	}
+}
+
+// Providers are built per login; they must share the transport of one CA.
+func TestTransportSharedPerCA(t *testing.T) {
+	ca := testCAPEM(t)
+	a, b := (&Config{CACert: ca}).transport(), (&Config{CACert: ca}).transport()
+	if a != b {
+		t.Error("each provider got its own transport: idle TLS connections pile up")
+	}
+	if c := (&Config{CACert: testCAPEM(t)}).transport(); c == a {
+		t.Error("a different CA shares the transport")
+	}
+	if (&Config{}).transport() != http.DefaultTransport {
+		t.Error("no ca_cert must use the default transport")
+	}
+}
+
+func testCAPEM(t *testing.T) string {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serial, _ := rand.Int(rand.Reader, big.NewInt(1<<62))
+	tpl := &x509.Certificate{
+		SerialNumber: serial, Subject: pkix.Name{CommonName: "test ca"},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
+		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tpl, tpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
 }

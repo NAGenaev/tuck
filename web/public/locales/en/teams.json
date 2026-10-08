@@ -81,7 +81,8 @@
     "action": {
       "unchanged": "up to date",
       "would_update": "will change",
-      "updated": "updated"
+      "updated": "updated",
+      "customized": "customized (left as is)"
     }
   }
 }

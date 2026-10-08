@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/NAGenaev/tuck/internal/clientip"
 )
@@ -50,5 +52,19 @@ func TestMiddlewareRecordsIdentityAndTrustedClientIP(t *testing.T) {
 	_ = json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &e)
 	if e.ClientIP != "198.51.100.9" {
 		t.Errorf("forged X-Forwarded-For accepted: %q", e.ClientIP)
+	}
+}
+
+func TestSanitizeLabel(t *testing.T) {
+	if got := sanitizeLabel("ldap:alice"); got != "ldap:alice" {
+		t.Errorf("plain label changed: %q", got)
+	}
+	if got := sanitizeLabel("evil\n{\"fake\":1}\r\x00"); strings.ContainsAny(got, "\n\r\x00") {
+		t.Errorf("control characters survived: %q", got)
+	}
+	long := strings.Repeat("я", 500) // multi-byte: must not be cut in the middle of a rune
+	got := sanitizeLabel(long)
+	if len(got) > maxLabelLen || !utf8.ValidString(got) {
+		t.Errorf("long label: %d bytes, valid=%v", len(got), utf8.ValidString(got))
 	}
 }

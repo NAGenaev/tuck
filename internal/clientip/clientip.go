@@ -61,6 +61,19 @@ func isTrusted(ip net.IP) bool {
 	return false
 }
 
+// parseHop reads one X-Forwarded-For entry: a bare address, "ip:port",
+// "[ipv6]:port" or "[ipv6]" (some balancers append the client port).
+func parseHop(h string) net.IP {
+	h = strings.TrimSpace(h)
+	if ip := net.ParseIP(h); ip != nil {
+		return ip
+	}
+	if host, _, err := net.SplitHostPort(h); err == nil {
+		return net.ParseIP(host)
+	}
+	return net.ParseIP(strings.Trim(h, "[]"))
+}
+
 // FromRequest returns the client address (host only, no port). When the direct
 // peer is a trusted proxy, X-Forwarded-For is read from the right: trusted
 // hops are skipped and the first untrusted address wins, so a client cannot
@@ -82,7 +95,7 @@ func FromRequest(r *http.Request) string {
 		}
 	}
 	for i := len(hops) - 1; i >= 0; i-- {
-		ip := net.ParseIP(hops[i])
+		ip := parseHop(hops[i])
 		if ip == nil {
 			return peer // malformed header: do not guess
 		}

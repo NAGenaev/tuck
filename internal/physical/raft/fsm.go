@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	hraft "github.com/hashicorp/raft"
@@ -32,7 +33,7 @@ type fsm struct {
 
 	// onRestore, when set, is called (asynchronously) after a "restore" command
 	// was applied, so the node can seal itself and re-read its keyring.
-	onRestore func()
+	onRestore atomic.Pointer[func()]
 }
 
 func newFSM(path string) (*fsm, error) {
@@ -68,6 +69,11 @@ func (f *fsm) applyCmd(tx *bolt.Tx, cmd command) error {
 		if err := json.Unmarshal(cmd.Value, &data); err != nil {
 			return fmt.Errorf("decode restore payload: %w", err)
 		}
+		// Everything is validated before the bucket is touched: inside a shared
+		// batch transaction a half-done restore would be committed, not rolled back.
+		if err := validateRestoreData(data); err != nil {
+			return err
+		}
 		return replaceAllTx(tx, data)
 	}
 	b := tx.Bucket([]byte(dataBucket))
@@ -88,8 +94,8 @@ func (f *fsm) applyCmd(tx *bolt.Tx, cmd command) error {
 // A node that merely replays an old log entry on startup must not seal itself
 // again: only a restore that has just happened counts.
 func (f *fsm) afterRestore(l *hraft.Log) {
-	if f.onRestore != nil && time.Since(l.AppendedAt) < restoreReactWindow {
-		go f.onRestore()
+	if fn := f.onRestore.Load(); fn != nil && time.Since(l.AppendedAt) < restoreReactWindow {
+		go (*fn)()
 	}
 }
 
@@ -177,6 +183,25 @@ func (f *fsm) Restore(rc io.ReadCloser) error {
 		return fmt.Errorf("decode snapshot: %w", err)
 	}
 	return f.replaceAll(data)
+}
+
+// maxKeySize is bbolt's key size limit.
+const maxKeySize = 32768
+
+// validateRestoreData rejects a data set bbolt would only partly accept.
+func validateRestoreData(data map[string][]byte) error {
+	if len(data) == 0 {
+		return ErrEmptySnapshot
+	}
+	for k := range data {
+		if k == "" {
+			return fmt.Errorf("raft: snapshot has an empty key")
+		}
+		if len(k) > maxKeySize {
+			return fmt.Errorf("raft: snapshot key longer than %d bytes", maxKeySize)
+		}
+	}
+	return nil
 }
 
 // replaceAll atomically replaces the whole data set with data.

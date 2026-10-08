@@ -303,3 +303,20 @@ func TestNodePublishVolume_FileNameCollisionAndAlias(t *testing.T) {
 		t.Error("a path-like file name must be rejected")
 	}
 }
+
+// "path=file" renames a single value; on a secret that expands to several files
+// it would silently do nothing, so it is refused.
+func TestNodePublishVolume_AliasRefusedForExpandedSecrets(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"value": `{"user":"u","password":"p"}`})
+	}))
+	defer ts.Close()
+	_, err := csi.NewDriver("n", newMock()).NodePublishVolume(context.Background(), &csispec.NodePublishVolumeRequest{
+		VolumeId: "v", TargetPath: t.TempDir(),
+		VolumeContext: map[string]string{"tuck.io/addr": ts.URL, "tuck.io/paths": "db/creds=creds.json", "tuck.io/expand-keys": "true"},
+		Secrets:       map[string]string{"token": "t"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "cannot rename") {
+		t.Fatalf("alias on an expanded secret must be refused, got %v", err)
+	}
+}

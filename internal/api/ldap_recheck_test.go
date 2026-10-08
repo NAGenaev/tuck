@@ -237,3 +237,44 @@ func TestLDAPRecheckReusesTheDirectoryConnection(t *testing.T) {
 		t.Errorf("a pass over 2 people opened %d connections, want 1", n)
 	}
 }
+
+// An ambiguous directory answer (two entries for one login) proves nothing about
+// the account; it must not cost the person their tokens. revoke-user, on the
+// other hand, leaves hand-made tokens that merely carry an "ldap:" name alone.
+func TestLDAPRecheckAmbiguousAnswerRevokesNothing(t *testing.T) {
+	ts, dir, root := newRecheckServer(t)
+	putLDAPConfig(t, ts, root)
+	putLDAPRole(t, ts, root, "admins", []string{"admin"}, nil, []string{"default"}, "8h")
+	s, b := ldapLogin(t, ts, "alice", "alicepass")
+	if s != http.StatusOK {
+		t.Fatalf("login: %d %s", s, b)
+	}
+	alice := jsonField(t, b, "token")
+
+	// The fake directory matches a user by substring of the filter, so "lic"
+	// makes the search for "alice" return two entries.
+	dir.set(func(u map[string]fakeLDAPUser) {
+		u["lic"] = fakeLDAPUser{dn: "uid=lic,ou=users,dc=test", password: "x"}
+	})
+	out := recheck(t, ts, root)
+	if !strings.Contains(out, `"revoked":0`) || !strings.Contains(out, `"errors":1`) {
+		t.Fatalf("an ambiguous answer must be an error, not a revocation: %s", out)
+	}
+	if !tokenWorks(t, ts, alice) {
+		t.Error("alice lost her token because the directory answered ambiguously")
+	}
+
+	// revoke-user ignores a hand-made token that only carries the name.
+	s, b = doJSON(t, ts, http.MethodPost, "/v1/auth/token", `{"display_name":"ldap:alice","policies":["default"]}`, root)
+	if s != http.StatusOK && s != http.StatusCreated {
+		t.Fatalf("manual token: %d %s", s, b)
+	}
+	manual := jsonField(t, b, "id")
+	doJSON(t, ts, http.MethodPost, "/v1/auth/ldap/users/alice/revoke", "", root)
+	if tokenWorks(t, ts, alice) {
+		t.Error("revoke-user left the real LDAP token")
+	}
+	if !tokenWorks(t, ts, manual) {
+		t.Error("revoke-user revoked a hand-made token")
+	}
+}

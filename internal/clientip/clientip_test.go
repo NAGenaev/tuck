@@ -43,3 +43,20 @@ func TestFromRequest(t *testing.T) {
 		t.Error("invalid entry must be rejected")
 	}
 }
+
+// Some balancers append the client port or bracket IPv6 addresses.
+func TestFromRequestHopFormats(t *testing.T) {
+	t.Cleanup(func() { _ = SetTrusted(nil) })
+	_ = SetTrusted([]string{"172.30.0.10"})
+	for _, c := range []struct{ xff, want string }{
+		{"203.0.113.7:51234", "203.0.113.7"},
+		{"[2001:db8::1]:443", "2001:db8::1"},
+		{"[2001:db8::1]", "2001:db8::1"},
+		{"2001:db8::1", "2001:db8::1"},
+		{"203.0.113.7:51234, 172.30.0.10:80", "203.0.113.7"},
+	} {
+		if got := FromRequest(req("172.30.0.10:5555", c.xff)); got != c.want {
+			t.Errorf("X-Forwarded-For %q: got %q, want %q", c.xff, got, c.want)
+		}
+	}
+}

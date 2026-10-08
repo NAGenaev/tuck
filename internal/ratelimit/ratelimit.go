@@ -2,10 +2,11 @@
 package ratelimit
 
 import (
-	"github.com/NAGenaev/tuck/internal/clientip"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/NAGenaev/tuck/internal/clientip"
 )
 
 // Limiter is a per-IP token-bucket rate limiter.

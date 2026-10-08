@@ -16,6 +16,9 @@ import (
 
 const maxTuckSecretRows = 5000
 
+// clusterReadTimeout bounds reading one cluster for the TuckSecret page.
+const clusterReadTimeout = 15 * time.Second
+
 // TuckSecretSource reads TuckSecret resources and Namespace annotations from
 // the Kubernetes API. *operator.KubeClient implements it.
 type TuckSecretSource interface {
@@ -193,13 +196,17 @@ func (s *Server) listTuckSecrets(w http.ResponseWriter, r *http.Request) {
 	reports := make([]clusterReport, 0, len(names))
 	truncated := false
 	firstFailure := ""
+	anySucceeded := false
 	for _, name := range names {
 		src := srcs[name]
-		list, err := src.List(r.Context(), "")
+		// One slow or hung cluster must not hold the whole page.
+		cctx, cancel := context.WithTimeout(r.Context(), clusterReadTimeout)
+		list, err := src.List(cctx, "")
 		var annotations map[string]map[string]string
 		if err == nil {
-			annotations, err = src.ListNamespaceAnnotations(r.Context())
+			annotations, err = src.ListNamespaceAnnotations(cctx)
 		}
+		cancel()
 		if err != nil {
 			log.Printf("api: list TuckSecrets (cluster %q): %v", name, err)
 			code := "k8s_error"
@@ -228,9 +235,15 @@ func (s *Server) listTuckSecrets(w http.ResponseWriter, r *http.Request) {
 			items = append(items, v)
 			n++
 		}
+		anySucceeded = true
 		reports = append(reports, clusterReport{Name: name, OK: true, Count: n})
 	}
-	if firstFailure != "" && len(items) == 0 && !anyOK(reports) {
+	// Cluster names and their health are platform topology: only the root
+	// namespace sees them; a team token gets just its own rows.
+	if want != "" {
+		reports = nil
+	}
+	if firstFailure != "" && !anySucceeded {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
 			"error": "cannot read TuckSecrets from the Kubernetes API", "code": firstFailure, "clusters": reports})
 		return
@@ -244,14 +257,9 @@ func (s *Server) listTuckSecrets(w http.ResponseWriter, r *http.Request) {
 		}
 		return items[i].Name < items[j].Name
 	})
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "count": len(items), "truncated": truncated, "clusters": reports})
-}
-
-func anyOK(rs []clusterReport) bool {
-	for _, r := range rs {
-		if r.OK {
-			return true
-		}
+	out := map[string]any{"items": items, "count": len(items), "truncated": truncated}
+	if reports != nil {
+		out["clusters"] = reports
 	}
-	return false
+	writeJSON(w, http.StatusOK, out)
 }

@@ -2,6 +2,7 @@ package jwt
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
@@ -10,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -115,14 +117,35 @@ func (c *Config) transport() http.RoundTripper {
 	if c.CACert == "" {
 		return http.DefaultTransport
 	}
+	// A Provider is built for every login: share the transport (and its idle
+	// TLS connections) between providers that trust the same CA.
+	sum := sha256.Sum256([]byte(c.CACert))
+	key := string(sum[:])
+	transportsMu.Lock()
+	defer transportsMu.Unlock()
+	if tr, ok := transports[key]; ok {
+		return tr
+	}
 	pool := x509.NewCertPool()
 	if !pool.AppendCertsFromPEM([]byte(c.CACert)) {
 		return failingTransport{} // refused at save time; never fall back to system roots silently
 	}
+	if len(transports) >= 4 { // the CA changed a few times: drop the old ones
+		for k, old := range transports {
+			old.CloseIdleConnections()
+			delete(transports, k)
+		}
+	}
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+	transports[key] = tr
 	return tr
 }
+
+var (
+	transportsMu sync.Mutex
+	transports   = map[string]*http.Transport{}
+)
 
 type failingTransport struct{}
 

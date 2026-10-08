@@ -314,7 +314,12 @@ func fetchAll(ctx context.Context, hc *http.Client, st *mountState) (map[string]
 				failed = fmt.Errorf("fetch secret %q: %w", p, err)
 				break
 			}
-			if alias != "" && len(files) == 1 {
+			if alias != "" {
+				if len(files) != 1 {
+					return nil, status.Errorf(codes.InvalidArgument,
+						"tuck.io/paths: %q=%s cannot rename a secret that expands to %d files; use \"path=file\" only for single-value secrets",
+						p, alias, len(files))
+				}
 				for fname, value := range files { // a single value takes the explicit name
 					delete(files, fname)
 					files[alias] = value

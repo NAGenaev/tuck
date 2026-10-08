@@ -378,7 +378,7 @@ export function TeamsPage() {
                                         <td className={styles.mono}>{it.namespace}</td>
                                         <td className={styles.mono}>{it.policy}</td>
                                         <td>
-                                            <Pill tone={it.action === 'unchanged' ? 'mute' : 'brass'}>
+                                            <Pill tone={it.action === 'unchanged' || it.action === 'customized' ? 'mute' : 'brass'}>
                                                 {t(`sync.action.${it.action}`)}
                                             </Pill>
                                         </td>

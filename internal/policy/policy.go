@@ -57,6 +57,10 @@ type Policy struct {
 	// When a token in a child namespace references this policy by name and no
 	// local override exists, the root namespace's definition is used.
 	Inheritable bool `json:"inheritable,omitempty"`
+	// Template marks a policy written by team onboarding (e.g. "team/v1"). Only
+	// policies carrying it (or an exact copy of a known earlier template) are
+	// rewritten by "team sync"; a policy a team edited or created itself is not.
+	Template string `json:"template,omitempty"`
 }
 
 // RootPolicy grants full access to every path.

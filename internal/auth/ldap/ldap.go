@@ -483,8 +483,13 @@ func (s *Session) Resolve(ctx context.Context, roles []*Role, username, tuckNS s
 	if err != nil {
 		return nil, fmt.Errorf("%w: user search: %w", ErrUnavailable, err)
 	}
-	if len(entries) != 1 {
+	switch {
+	case len(entries) == 0:
 		return nil, ErrUserNotFound
+	case len(entries) > 1:
+		// Two entries for one login is a directory problem, not proof that the
+		// account is gone: revoking on it would lock out a person by accident.
+		return nil, fmt.Errorf("%w: %d entries match login %q", ErrUnavailable, len(entries), username)
 	}
 	userDN := entries[0].DN
 	groups, err := a.groupsOf(s.conn, userDN, entries[0].Attributes[groupAttr])

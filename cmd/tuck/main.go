@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -371,10 +372,13 @@ func main() {
 	// reloadClusters re-reads kubernetes.clusters from the config file (SIGHUP
 	// or POST /v1/auth/kubernetes/clusters/reload) and swaps the set in place.
 	var reloadClusters func() ([]string, []string, error)
+	var reloadMu sync.Mutex // SIGHUP and the API may reload at once: apply one file version at a time
 	// onClustersChanged lets the API server follow the cluster list (set below, once it exists).
 	var onClustersChanged func([]config.K8sCluster)
 	if resolvedCfgPath != "" {
 		reloadClusters = func() ([]string, []string, error) {
+			reloadMu.Lock()
+			defer reloadMu.Unlock()
 			fresh, _, err := config.Load(resolvedCfgPath)
 			if err != nil {
 				return nil, nil, err

@@ -108,3 +108,32 @@ func TestFSMApplyBatch(t *testing.T) {
 		}
 	}
 }
+
+// A malformed restore must neither wipe nor half-fill the data: it fails as a
+// whole, also inside a batch, and the entries around it are unaffected.
+func TestFSMRestoreMalformedIsAtomicInBatch(t *testing.T) {
+	f, err := newFSM(t.TempDir() + "/fsm.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.db.Close() }()
+	mk := func(op, k, v string) *hraft.Log {
+		raw, _ := json.Marshal(command{Op: op, Key: k, Value: []byte(v)})
+		return &hraft.Log{Data: raw}
+	}
+	_ = f.ApplyBatch([]*hraft.Log{mk("put", "keep", "1")})
+
+	bad, _ := json.Marshal(map[string][]byte{"ok": []byte("x"), "": []byte("y")}) // empty key
+	res := f.ApplyBatch([]*hraft.Log{mk("put", "before", "2"), mk("restore", "", string(bad)), mk("put", "after", "3")})
+	if res[0] != nil || res[1] == nil || res[2] != nil {
+		t.Fatalf("results: %v", res)
+	}
+	for _, k := range []string{"keep", "before", "after"} {
+		if e, _ := f.get(k); e == nil {
+			t.Errorf("%s lost: the failed restore touched the data", k)
+		}
+	}
+	if e, _ := f.get("ok"); e != nil {
+		t.Error("a half-applied restore left its entries behind")
+	}
+}

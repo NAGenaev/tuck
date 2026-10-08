@@ -13,13 +13,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"github.com/NAGenaev/tuck/internal/clientip"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
+
+	"github.com/NAGenaev/tuck/internal/clientip"
 )
 
 // GenesisHash is the prev_hash of the very first record of a chain.
@@ -184,7 +186,7 @@ type annotation struct {
 func SetIdentity(ctx context.Context, identity, entityID string) {
 	if a, ok := ctx.Value(annotationKey{}).(*annotation); ok {
 		a.mu.Lock()
-		a.identity, a.entityID = identity, entityID
+		a.identity, a.entityID = sanitizeLabel(identity), sanitizeLabel(entityID)
 		a.mu.Unlock()
 	}
 }
@@ -197,6 +199,27 @@ func SetNamespace(ctx context.Context, ns string) {
 		a.namespace = ns
 		a.mu.Unlock()
 	}
+}
+
+// maxLabelLen bounds identity and entity labels in audit records.
+const maxLabelLen = 128
+
+// sanitizeLabel makes a label that may come from an unauthenticated request
+// (the login name of a failed attempt) safe for the audit trail: bounded, and
+// without control characters that could forge lines in line-based sinks.
+func sanitizeLabel(s string) string {
+	if len(s) > maxLabelLen {
+		s = s[:maxLabelLen]
+		for len(s) > 0 && !utf8.ValidString(s) {
+			s = s[:len(s)-1]
+		}
+	}
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || r == 0x2028 || r == 0x2029 {
+			return '?'
+		}
+		return r
+	}, s)
 }
 
 // Middleware wraps handler h, writing one audit entry per request.

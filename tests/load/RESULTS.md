@@ -98,3 +98,23 @@ go test ./internal/api/ -run=^$ -bench=. -count=5 > before.txt
 go test ./internal/api/ -run=^$ -bench=. -count=5 > after.txt
 benchstat before.txt after.txt
 ```
+
+---
+
+## 3-node Raft cluster behind an L7 balancer (lab, 2026-10-08)
+
+Setup: three `tuck-server` containers (Raft, Shamir seal, mTLS between nodes, TLS to clients) on a Windows 10 laptop under Docker Desktop (virtual disk, so fsync is slow: about 9 ms), HAProxy in front, k6 in a container on the same network, 20 secrets of real data in the store. Requests go through the balancer, which sends them only to the leader. Rate limits were raised for the run.
+
+| Scenario | Clients | Total RPS | KV GET avg / p95 | KV PUT avg / p95 | Token create avg / p95 | Errors |
+|---|---|---|---|---|---|---|
+| `load` (60 s) | 50 | 626 | 0.9 ms / 2 ms | 78 ms / 144 ms | 249 ms / 507 ms | 0 |
+| `stress` (ramp to 200) | up to 200 | 889 | 1.2 ms / 3 ms | 106 ms / 197 ms | 315 ms / 578 ms | 0 |
+
+Memory per Tuck node stayed at about 210 MiB and the leader used at most 37 % of one core; the balancer used 15 %.
+
+What the run found and fixed:
+
+- **Write throughput.** Before the fix the Raft state machine applied every committed entry in its own bbolt transaction (one fsync each): the `stress` run reached only 62 RPS with 2.4 s PUT latency. Applying the entries committed together in one transaction (`hraft.BatchingFSM`) gave 889 RPS and 106 ms. A single write on an idle cluster still takes about 19 ms (log fsync + state fsync); that is the cost of durability on this disk, not of load.
+- **Runtime rate limits** could not be raised above the `--rate-*` flag values and were applied only on the node that served the `PUT`; both are fixed.
+
+The p99 targets above (50 ms for PUT) are met by the in-process benchmarks and by a single-node server on a fast disk, not by a 3-node cluster on this laptop; size the disk (fsync latency) first when write latency matters.

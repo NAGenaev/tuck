@@ -1,4 +1,4 @@
-{{- if .Values.server.rbac.create }}
+{{- if and .Values.server.enabled .Values.server.rbac.create }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -34,7 +34,7 @@ subjects:
     name: {{ include "tuck.fullname" . }}-server
     namespace: {{ include "tuck.namespace" . }}
 {{- end }}
-{{- if .Values.server.cluster.enabled }}
+{{- if and .Values.server.enabled .Values.server.cluster.enabled }}
 ---
 # Each pod labels itself tuck.io/leader=true|false from its Raft role. Limited
 # to this release's own pods.

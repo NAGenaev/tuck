@@ -1607,6 +1607,22 @@
         "responses": { "200": { "description": "Role names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
       }
     },
+    "/v1/sys/cluster/restore": {
+      "post": {
+        "tags": ["cluster"],
+        "summary": "Replace the data of the whole Raft cluster with a snapshot",
+        "description": "Body: a snapshot downloaded from GET /v1/sys/snapshot or /v1/sys/cluster/snapshot/{id}. Requires ?confirm=true. Leader only, root namespace only. Every node seals itself afterwards and must be unsealed with the key shares of the cluster the snapshot came from. Tokens and secrets written after the snapshot are lost.",
+        "operationId": "restoreCluster",
+        "parameters": [{ "name": "confirm", "in": "query", "required": true, "schema": { "type": "string", "enum": ["true"] } }],
+        "requestBody": { "required": true, "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } } },
+        "responses": {
+          "200": { "description": "Restored", "content": { "application/json": { "schema": { "type": "object", "properties": { "restored": { "type": "integer" }, "sealed": { "type": "boolean" }, "next_step": { "type": "string" } } } } } },
+          "400": { "description": "Missing confirm, or not a Tuck snapshot" },
+          "403": { "description": "Permission denied" },
+          "503": { "description": "Not the leader" }
+        }
+      }
+    },
     "/v1/auth/ldap/recheck": {
       "post": {
         "tags": ["auth"],

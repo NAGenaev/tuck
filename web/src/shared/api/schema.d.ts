@@ -1267,6 +1267,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sys/cluster/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace the data of the whole Raft cluster with a snapshot
+         * @description Body: a snapshot downloaded from GET /v1/sys/snapshot or /v1/sys/cluster/snapshot/{id}. Requires ?confirm=true. Leader only, root namespace only. Every node seals itself afterwards and must be unsealed with the key shares of the cluster the snapshot came from. Tokens and secrets written after the snapshot are lost.
+         */
+        post: operations["restoreCluster"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/ldap/recheck": {
         parameters: {
             query?: never;
@@ -5185,6 +5205,57 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["KeyList"];
                 };
+            };
+        };
+    };
+    restoreCluster: {
+        parameters: {
+            query: {
+                confirm: "true";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Restored */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        restored?: number;
+                        sealed?: boolean;
+                        next_step?: string;
+                    };
+                };
+            };
+            /** @description Missing confirm, or not a Tuck snapshot */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not the leader */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

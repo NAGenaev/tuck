@@ -336,6 +336,53 @@ func (b *Backend) Snapshot(_ context.Context, w io.Writer) error {
 	return snap.Persist(sink)
 }
 
+// ErrEmptySnapshot is returned by Restore for a snapshot without any entry.
+var ErrEmptySnapshot = errors.New("raft: snapshot is empty")
+
+// OnRestore registers fn to be called on every node after a restore command
+// was applied. Tuck seals the node there: the restored data carries the key
+// ring of the cluster the snapshot came from, so it must be unsealed again
+// with that cluster's key shares.
+func (b *Backend) OnRestore(fn func()) { b.fsm.onRestore = fn }
+
+// Restore replaces the data of the whole cluster with the snapshot read from r
+// (the stream written by Snapshot / downloaded from /v1/sys/snapshot). It runs
+// as one replicated command, so every voter switches atomically. Leader only.
+// It returns the number of restored entries.
+func (b *Backend) Restore(r io.Reader, maxBytes int64) (int, error) {
+	if !b.IsLeader() {
+		return 0, ErrNotLeader
+	}
+	raw, err := io.ReadAll(io.LimitReader(r, maxBytes+1))
+	if err != nil {
+		return 0, fmt.Errorf("raft: read snapshot: %w", err)
+	}
+	if int64(len(raw)) > maxBytes {
+		return 0, fmt.Errorf("raft: snapshot larger than %d bytes", maxBytes)
+	}
+	var data map[string][]byte
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return 0, fmt.Errorf("raft: not a Tuck snapshot: %w", err)
+	}
+	if len(data) == 0 {
+		return 0, ErrEmptySnapshot
+	}
+	payload, err := json.Marshal(command{Op: "restore", Value: raw})
+	if err != nil {
+		return 0, fmt.Errorf("raft: marshal restore: %w", err)
+	}
+	f := b.raft.Apply(payload, 60*time.Second)
+	if err := f.Error(); err != nil {
+		return 0, fmt.Errorf("raft: apply restore: %w", err)
+	}
+	if resp := f.Response(); resp != nil {
+		if err, ok := resp.(error); ok {
+			return 0, err
+		}
+	}
+	return len(data), nil
+}
+
 // Close shuts down the Raft node gracefully.
 func (b *Backend) Close() error {
 	b.stopOnce.Do(func() { close(b.stop) })

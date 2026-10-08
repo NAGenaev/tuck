@@ -296,3 +296,59 @@ func TestClusterStepDownErrorMapping(t *testing.T) {
 		t.Errorf("unknown snapshot: %d", code)
 	}
 }
+
+func TestClusterRestoreAPI(t *testing.T) {
+	ts, _, root := newRaftTestServer(t)
+	put := func(path, val string) {
+		t.Helper()
+		if s, b := doJSON(t, ts, http.MethodPut, "/v1/secret/"+path, `{"v":"`+val+`"}`, root); s != http.StatusNoContent {
+			t.Fatalf("put %s: %d %s", path, s, b)
+		}
+	}
+	put("keep/me", "1")
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/v1/sys/snapshot", nil)
+	req.Header.Set("X-Tuck-Token", root)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || len(snap) == 0 {
+		t.Fatalf("snapshot: %d len=%d", resp.StatusCode, len(snap))
+	}
+	put("after/snapshot", "2")
+
+	post := func(url, tok string, body []byte) (int, string) {
+		t.Helper()
+		r, _ := http.NewRequest(http.MethodPost, ts.URL+url, strings.NewReader(string(body)))
+		r.Header.Set("X-Tuck-Token", tok)
+		rs, err := http.DefaultClient.Do(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = rs.Body.Close() }()
+		b, _ := io.ReadAll(rs.Body)
+		return rs.StatusCode, string(b)
+	}
+
+	if s, b := post("/v1/sys/cluster/restore", root, snap); s != http.StatusBadRequest || !strings.Contains(b, "confirm=true") {
+		t.Errorf("without confirm: %d %s", s, b)
+	}
+	if s, _ := post("/v1/sys/cluster/restore?confirm=true", limitedToken(t, ts, root, `{"path":"secret/**","capabilities":["read"]}`), snap); s != http.StatusForbidden {
+		t.Errorf("unprivileged restore: %d, want 403", s)
+	}
+	if s, _ := post("/v1/sys/cluster/restore?confirm=true", root, []byte("garbage")); s != http.StatusBadRequest {
+		t.Errorf("garbage: %d, want 400", s)
+	}
+	s, b := post("/v1/sys/cluster/restore?confirm=true", root, snap)
+	if s != http.StatusOK || !strings.Contains(b, `"restored"`) {
+		t.Fatalf("restore: %d %s", s, b)
+	}
+	if s, _ := doJSON(t, ts, http.MethodGet, "/v1/secret/keep/me", "", root); s != http.StatusOK {
+		t.Errorf("secret from the snapshot is gone: %d", s)
+	}
+	if s, _ := doJSON(t, ts, http.MethodGet, "/v1/secret/after/snapshot", "", root); s != http.StatusNotFound {
+		t.Errorf("secret written after the snapshot survived: %d", s)
+	}
+}

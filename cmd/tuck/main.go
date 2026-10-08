@@ -207,6 +207,7 @@ func main() {
 	// --- Backend ---
 	var (
 		backend physical.Backend
+		setRestoreHook func(func())
 		err     error
 	)
 	if *clusterMode {
@@ -260,6 +261,7 @@ func main() {
 		}
 
 		backend = rb
+		setRestoreHook = rb.OnRestore
 		log.Printf("tuck: Raft HA backend (node=%s bind=%s dir=%s)", nodeID, *clusterBindAddr, *clusterDir)
 	} else {
 		bb, bbErr := physical.OpenBolt(*dataPath)
@@ -330,6 +332,14 @@ func main() {
 
 	// --- Core ---
 	c := core.NewWithK8s(backend, s, reviewer)
+	if setRestoreHook != nil {
+		// A snapshot restore swaps the data under the barrier; seal so the node
+		// re-reads its key ring when it is unsealed again.
+		setRestoreHook(func() {
+			log.Printf("tuck: cluster data restored from a snapshot; sealing — unseal with the key shares of the snapshot's cluster")
+			c.Seal()
+		})
+	}
 	if err := c.SetBarrierCipher(*barrierCipher); err != nil {
 		log.Fatalf("barrier cipher: %v", err)
 	}

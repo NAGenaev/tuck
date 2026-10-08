@@ -18,6 +18,7 @@ type clusterOps interface {
 	ListSnapshots() ([]physraft.SnapshotInfo, error)
 	CreateSnapshot() (physraft.SnapshotInfo, error)
 	OpenSnapshot(id string) (physraft.SnapshotInfo, io.ReadCloser, error)
+	Restore(r io.Reader, maxBytes int64) (int, error)
 }
 
 // clusterOpsFor authorises the request and returns the Raft operations, writing
@@ -121,6 +122,51 @@ func (s *Server) postClusterSnapshot(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "snapshot failed: " + err.Error()})
 	default:
 		writeJSON(w, http.StatusCreated, map[string]any{"created": true, "snapshot": info})
+	}
+}
+
+// maxRestoreBytes bounds an uploaded snapshot.
+const maxRestoreBytes = 256 << 20
+
+// postClusterRestore handles POST /v1/sys/cluster/restore?confirm=true.
+//
+// The body is a snapshot downloaded earlier from GET /v1/sys/snapshot or
+// /v1/sys/cluster/snapshot/{id}. The whole cluster's data is replaced by it in
+// one replicated step, and every node then seals itself: the snapshot carries
+// the key ring of the cluster it was taken from, so the nodes must be
+// unsealed again with that cluster's key shares. Tokens and secrets written
+// after the snapshot are lost. Root namespace only, leader only.
+func (s *Server) postClusterRestore(w http.ResponseWriter, r *http.Request) {
+	if nsFromCtx(r.Context()) != "" {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
+		return
+	}
+	cb, ops, ok := s.clusterOpsFor(w, r, "sys/cluster/restore", policy.CapWrite)
+	if !ok {
+		return
+	}
+	if r.URL.Query().Get("confirm") != "true" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "restore replaces ALL data of the cluster; repeat with ?confirm=true"})
+		return
+	}
+	if !cb.IsLeader() {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "not leader", "leader_addr": cb.LeaderAddr()})
+		return
+	}
+	n, err := ops.Restore(http.MaxBytesReader(w, r.Body, maxRestoreBytes), maxRestoreBytes)
+	switch {
+	case errors.Is(err, physraft.ErrNotLeader):
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "not leader", "leader_addr": cb.LeaderAddr()})
+	case errors.Is(err, physraft.ErrEmptySnapshot):
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+	case err != nil:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{
+			"restored":  n,
+			"sealed":    true,
+			"next_step": "unseal every node with the key shares of the cluster the snapshot came from",
+		})
 	}
 }
 

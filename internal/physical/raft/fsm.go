@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	hraft "github.com/hashicorp/raft"
 	bolt "go.etcd.io/bbolt"
@@ -15,8 +16,12 @@ import (
 
 const dataBucket = "data"
 
+// restoreReactWindow is how fresh a restore entry must be for a node to seal
+// itself because of it.
+const restoreReactWindow = 5 * time.Minute
+
 type command struct {
-	Op    string `json:"op"`             // "put" | "delete"
+	Op    string `json:"op"`             // "put" | "delete" | "restore" (Value = JSON map of the whole data set)
 	Key   string `json:"key"`
 	Value []byte `json:"value,omitempty"`
 }
@@ -24,6 +29,10 @@ type command struct {
 // fsm is the Raft finite state machine backed by bbolt.
 type fsm struct {
 	db *bolt.DB
+
+	// onRestore, when set, is called (asynchronously) after a "restore" command
+	// was applied, so the node can seal itself and re-read its keyring.
+	onRestore func()
 }
 
 func newFSM(path string) (*fsm, error) {
@@ -45,6 +54,21 @@ func (f *fsm) Apply(l *hraft.Log) interface{} {
 	var cmd command
 	if err := json.Unmarshal(l.Data, &cmd); err != nil {
 		return fmt.Errorf("unmarshal command: %w", err)
+	}
+	if cmd.Op == "restore" {
+		var data map[string][]byte
+		if err := json.Unmarshal(cmd.Value, &data); err != nil {
+			return fmt.Errorf("decode restore payload: %w", err)
+		}
+		if err := f.replaceAll(data); err != nil {
+			return err
+		}
+		// A node that merely replays an old log entry on startup must not seal
+		// itself again: only react to a restore that has just happened.
+		if f.onRestore != nil && time.Since(l.AppendedAt) < restoreReactWindow {
+			go f.onRestore()
+		}
+		return nil
 	}
 	return f.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(dataBucket))
@@ -89,6 +113,11 @@ func (f *fsm) Restore(rc io.ReadCloser) error {
 	if err := json.NewDecoder(rc).Decode(&data); err != nil {
 		return fmt.Errorf("decode snapshot: %w", err)
 	}
+	return f.replaceAll(data)
+}
+
+// replaceAll atomically replaces the whole data set with data.
+func (f *fsm) replaceAll(data map[string][]byte) error {
 	return f.db.Update(func(tx *bolt.Tx) error {
 		if err := tx.DeleteBucket([]byte(dataBucket)); err != nil && err != bolt.ErrBucketNotFound {
 			return err

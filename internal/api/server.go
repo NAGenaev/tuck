@@ -320,6 +320,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sys/cluster/step-down", s.requireToken(s.postClusterStepDown))
 	mux.HandleFunc("GET /v1/sys/cluster/snapshot", s.requireToken(s.getClusterSnapshots))
 	mux.HandleFunc("POST /v1/sys/cluster/snapshot", s.requireToken(s.postClusterSnapshot))
+	mux.HandleFunc("POST /v1/sys/cluster/restore", s.requireToken(s.postClusterRestore))
 	mux.HandleFunc("GET /v1/sys/cluster/snapshot/{id}", s.requireToken(s.getClusterSnapshot))
 
 	h := http.Handler(mux)

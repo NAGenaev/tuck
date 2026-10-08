@@ -29,6 +29,14 @@ spec:
   podInfoOnMount: false
   volumeLifecycleModes:
   - Ephemeral
+  # Per-pod ServiceAccount token for tuck.io/auth: kubernetes (Kubernetes 1.22+).
+  # Empty audience = the API server's own, which Tuck's TokenReview accepts.
+  requiresRepublish: true
+  # Keep the token out of the volume context (Kubernetes 1.35+; ignored before).
+  serviceAccountTokenInSecrets: true
+  tokenRequests:
+  - audience: ""
+    expirationSeconds: 3600
 ---
 apiVersion: v1
 kind: ServiceAccount

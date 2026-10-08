@@ -16,11 +16,18 @@
 //	tuck.io/mode             — octal file permission string (optional, defaults to "0400")
 //	tuck.io/refresh-interval — duration string, e.g. "5m" (optional; omit to keep the
 //	                           mount static for the pod's lifetime, as before this existed)
+//	tuck.io/auth             — "token" (default) or "kubernetes"
+//	tuck.io/k8s-cluster      — trusted cluster name on the Tuck server (kubernetes auth)
+//	tuck.io/k8s-audience     — audience of the projected ServiceAccount token (kubernetes auth)
 //
-// The Tuck token must be supplied as a Kubernetes Secret referenced via
-// nodePublishSecretRef, with key "token". That token is reused unchanged for
-// the mount's whole lifetime by any background refresh — Kubernetes never
-// redelivers nodePublishSecretRef to an already-published volume.
+// With tuck.io/auth=token the Tuck token must be supplied as a Kubernetes Secret
+// referenced via nodePublishSecretRef, with key "token". That token is reused
+// unchanged for the mount's whole lifetime — Kubernetes never redelivers
+// nodePublishSecretRef to an already-published volume.
+//
+// With tuck.io/auth=kubernetes the driver logs in to Tuck with the pod's
+// ServiceAccount token (CSIDriver tokenRequests), rotated by kubelet through
+// requiresRepublish, and logs in again whenever Tuck rejects its token.
 package main
 
 import (

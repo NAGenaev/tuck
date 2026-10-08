@@ -17,16 +17,31 @@
 
 ## Предварительные требования
 
-- Kubernetes 1.20+
+- Kubernetes 1.22+ для входа через ServiceAccount (статический токен работает и на 1.20+)
 - Tuck запущен и доступен изнутри кластера (через Service)
+- Для входа через ServiceAccount: в Tuck настроен доверенный кластер (см. [гайд 09](09-kubernetes-auth.md))
 - Helm 3.x
-- Токен Tuck с правами на чтение нужных секретов
 
 ---
 
 ## Установка через Helm
 
-### 1. Создай токен для CSI Driver
+### 1. Выбери, как драйвер входит в Tuck
+
+**Способ A (рекомендуется): ServiceAccount Pod'а.** Токена в Secret'ах нет. Kubelet выдаёт каждому Pod'у короткоживущий токен его ServiceAccount, драйвер меняет его в Tuck на токен с правами роли и сам перелогинивается, когда срок токена Tuck истёк. В аудите виден конкретный `namespace/serviceaccount`, а не общий токен.
+
+```bash
+# Политика на чтение
+tuckcli policy put csi-readonly '[{"path":"secret/**","capabilities":["read"]}]'
+
+# Роль для ServiceAccount, под которым работает приложение
+tuckcli auth kubernetes role put myapp-ns myapp-sa \
+  --policies=csi-readonly --ttl=1h
+```
+
+В спеке Pod'а указывается `tuck.io/auth: "kubernetes"`, `nodePublishSecretRef` не нужен (пример в разделе «Использование в Pod»).
+
+**Способ B: статический токен.** Подходит, если Kubernetes старше 1.22 или Kubernetes-авторизация в Tuck не включена.
 
 ```bash
 # Токен только на чтение, без срока жизни (см. ограничение ниже)
@@ -38,13 +53,9 @@ kubectl create secret generic tuck-csi-token \
   -n tuck
 ```
 
-Создай политику `csi-readonly` заранее: правила задаются массивом.
+Политику `csi-readonly` нужно создать заранее (команда выше).
 
-```bash
-tuckcli policy put csi-readonly '[{"path":"secret/**","capabilities":["read"]}]'
-```
-
-> **Токен CSI не обновляется автоматически.** Драйвер использует токен из `nodePublishSecretRef` как есть; логина через Kubernetes-auth и продления токена в нём нет. Поэтому не задавайте `--ttl` (без него токен бессрочный) или берите срок с запасом больше жизни Pod'ов и ротируйте токен вместе с пересозданием Pod'ов. Если нужна авторизация без долгоживущего токена, используйте [оператор TuckSecret](07-tucksecret-operator.md): он входит в Tuck через ServiceAccount (K8s auth) и сам продлевает сессию.
+> **Статический токен драйвер сам не продлевает.** Он использует токен из `nodePublishSecretRef` как есть. Поэтому не задавайте `--ttl` (без него токен бессрочный) или берите срок с запасом больше жизни Pod'ов и ротируйте токен вместе с пересозданием Pod'ов. Бессрочный токен с широкими правами нежелателен, поэтому по возможности используйте способ A.
 
 ### 2. Включи CSI в Helm-чарте
 
@@ -61,9 +72,15 @@ helm upgrade --install tuck oci://ghcr.io/nagenaev/tuck \
 csi:
   enabled: true
   kubeletRootDir: /var/lib/kubelet  # измени для RKE2: /var/lib/rancher/rke2/agent/kubelet
+  kubernetesAuth:                   # вход через ServiceAccount Pod'а (способ A), включено по умолчанию
+    enabled: true
+    audience: ""                    # пусто = audience самого API-сервера, его и проверяет Tuck
+    expirationSeconds: 3600         # срок токена ServiceAccount; kubelet обновляет его заранее
 ```
 
-> Имя K8s Secret с токеном (`tuck-csi-token` в примерах ниже) — не настройка чарта, а обычный `nodePublishSecretRef.name` в спеке конкретного Pod'а: чарт разворачивает только сам драйвер (DaemonSet), а не индивидуальные mount'ы, поэтому у него нет и не может быть единого "чартового" токена на все Pod'ы.
+`kubernetesAuth.enabled` добавляет в `CSIDriver` поля `tokenRequests` и `requiresRepublish`. Если используете только статические токены, поставьте `enabled: false`.
+
+> Имя K8s Secret с токеном для способа B (`tuck-csi-token` в примерах ниже) — не настройка чарта, а обычный `nodePublishSecretRef.name` в спеке конкретного Pod'а: чарт разворачивает только сам драйвер (DaemonSet), а не индивидуальные mount'ы, поэтому у него нет и не может быть единого "чартового" токена на все Pod'ы.
 
 ### 3. Проверь, что DaemonSet запустился
 
@@ -117,6 +134,37 @@ spec:
   password    ← содержимое поля "password" из myapp
 ```
 
+### Вход через ServiceAccount (без токена в Secret)
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp
+  namespace: myapp-ns
+spec:
+  serviceAccountName: myapp-sa      # для него создана роль в Tuck
+  volumes:
+    - name: tuck-secrets
+      csi:
+        driver: secrets.tuck.io
+        readOnly: true
+        volumeAttributes:
+          tuck.io/addr: "http://tuck-server.tuck.svc:8200"
+          tuck.io/paths: "myapp"
+          tuck.io/auth: "kubernetes"          # вместо nodePublishSecretRef
+          tuck.io/refresh-interval: "5m"      # по желанию: живое обновление
+  containers:
+    - name: app
+      image: myapp:latest
+      volumeMounts:
+        - name: tuck-secrets
+          mountPath: /run/secrets
+          readOnly: true
+```
+
+Токен Tuck живёт столько, сколько задано в `--ttl` роли. С `refresh-interval` драйвер при отказе Tuck заново входит по актуальному токену ServiceAccount, так что ничего ротировать вручную не нужно.
+
 ### KV v2
 
 ```yaml
@@ -164,6 +212,9 @@ volumeAttributes:
 |----------|----------------------|----------|
 | `tuck.io/addr` | (обязательно) | Адрес сервера Tuck |
 | `tuck.io/paths` | (обязательно) | Пути к секретам в Tuck относительно mount `secret/` (`myapp`, а не `secret/myapp`), через запятую |
+| `tuck.io/auth` | `"token"` | `"kubernetes"` = вход через ServiceAccount Pod'а, `nodePublishSecretRef` не нужен; `"token"` = статический токен из `nodePublishSecretRef` |
+| `tuck.io/k8s-cluster` | (кластер по умолчанию) | Имя доверенного кластера на сервере Tuck, если их несколько (только с `tuck.io/auth: kubernetes`) |
+| `tuck.io/k8s-audience` | `""` | Audience токена, должен совпадать с `tokenRequests` в `CSIDriver` (только с `tuck.io/auth: kubernetes`) |
 | `tuck.io/namespace` | root | Namespace Tuck |
 | `tuck.io/kv-version` | `"1"` | Версия KV engine (`"1"` или `"2"`) — точечный пиннинг версии секрета не поддержан |
 | `tuck.io/insecure` | `"false"` | `"true"` — пропустить проверку TLS-сертификата (только для dev) |
@@ -180,7 +231,9 @@ Pod запускается
   ↓
 kubelet вызывает NodePublishVolume на CSI Driver
   ↓
-tuckcsi читает токен из nodePublishSecretRef
+tuckcsi берёт токен из nodePublishSecretRef
+(или, при tuck.io/auth=kubernetes, меняет токен ServiceAccount Pod'а
+ на токен Tuck через /v1/auth/kubernetes/login)
   ↓
 tuckcsi запрашивает GET /v1/<path> у Tuck сервера
   ↓
@@ -199,7 +252,11 @@ tmpfs размонтируется, данные исчезают
 >
 > **С `tuck.io/refresh-interval` `tuckcsi` фоново перечитывает и перезаписывает файлы**, без пересоздания Pod'а — единый тикер раз в ~30 секунд проверяет, у каких смонтированных томов подошёл срок обновления (поэтому `refresh-interval: "10s"` на практике означает «раз в ~30с», а не буквально каждые 10 секунд — значения меньше 30с автоматически клэмпятся до этого порога). Запись на диск атомарна (temp-файл + rename): контейнер никогда не увидит наполовину записанный файл. Если фоновый запрос к Tuck временно падает (сеть, 5xx), старое содержимое файлов остаётся как есть — ошибка просто логируется, и попытка повторяется на следующем тике.
 >
-> **Токен, переданный через `nodePublishSecretRef` при монтировании, используется для всех последующих фоновых обновлений без изменений** — Kubernetes не передаёт `nodePublishSecretRef` повторно уже смонтированному тому. Если токен истечёт или будет отозван, фоновые обновления начнут молча падать, а том «застынет» на последнем успешно полученном значении (с warning в логах `tuckcsi` каждые ~30с) — без креша драйвера и без порчи файлов, но и без подсказки об этом иначе, чем через логи. Если секрету нужна ротация без пересоздания Pod'а, выставляй TTL токена заведомо дольше ожидаемого времени жизни Pod'а.
+> **Статический токен (`nodePublishSecretRef`) используется для всех фоновых обновлений без изменений** — Kubernetes не передаёт `nodePublishSecretRef` повторно уже смонтированному тому. Если токен истечёт или будет отозван, фоновые обновления начнут молча падать, а том «застынет» на последнем успешно полученном значении (с warning в логах `tuckcsi` каждые ~30с) — без креша драйвера и без порчи файлов. Если секрету нужна ротация без пересоздания Pod'а, выставляй TTL токена заведомо дольше ожидаемого времени жизни Pod'а или переходи на вход через ServiceAccount.
+>
+> **Вход через ServiceAccount (`tuck.io/auth: kubernetes`) работает иначе.** `CSIDriver` объявляет `tokenRequests` и `requiresRepublish`, поэтому kubelet передаёт драйверу токен ServiceAccount Pod'а и до его истечения (по умолчанию час) повторно вызывает `NodePublishVolume` с новым токеном. Повторный вызов только подменяет учётные данные в памяти драйвера: tmpfs и файлы не трогаются. Токен Tuck драйвер получает при монтировании и меняет заново, как только Tuck ответит 401/403 (истёк срок роли). Если и токен ServiceAccount успел истечь, файлы остаются как есть, а в логе будет warning, пока kubelet не пришлёт новый. После перезапуска драйвера смонтированные тома подхватываются при ближайшем republish. Токен ServiceAccount уходит на `tuck.io/addr`, поэтому вне dev-окружения используйте HTTPS.
+>
+> **Audience.** По умолчанию токен выдаётся с audience API-сервера (`audience: ""`), потому что Tuck проверяет его через TokenReview без собственного audience. Отдельный audience для Tuck сейчас не поддержан на стороне сервера.
 >
 > Если приложению нужен настоящий Kubernetes `Secret`-объект, обновляемый живьём (а не просто файлы в tmpfs одного Pod'а) — используй [Operator/TuckSecret CRD](07-tucksecret-operator.md) вместо CSI.
 
@@ -210,11 +267,13 @@ tmpfs размонтируется, данные исчезают
 ```bash
 kubectl apply -f deploy/csi/driver.yaml
 
-# Создай Secret с токеном
+# Только для способа B (статический токен): Secret с токеном
 kubectl create secret generic tuck-csi-token \
   --from-literal=token="<токен>" \
   -n tuck
 ```
+
+`deploy/csi/driver.yaml` уже содержит `tokenRequests` и `requiresRepublish` для способа A.
 
 ---
 
@@ -239,6 +298,8 @@ kubectl describe pod myapp
 
 # Частые причины:
 # - "token not found" → проверь имя Secret в nodePublishSecretRef.name
+# - "kubelet passed no ServiceAccount token" → у CSIDriver нет tokenRequests (csi.kubernetesAuth.enabled=false или старый манифест)
+# - "kubernetes login ... HTTP 403" → нет роли для namespace/serviceaccount Pod'а (tuckcli auth kubernetes role put)
 # - "connection refused" → проверь tuck.io/addr
 # - "permission denied" → проверь политику токена (нужен path read)
 ```

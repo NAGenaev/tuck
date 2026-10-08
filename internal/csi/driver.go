@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -42,7 +43,8 @@ const (
 	ctxMode            = "tuck.io/mode"             // octal file permission string, e.g. "0400" (default "0400")
 	ctxRefreshInterval = "tuck.io/refresh-interval" // duration string, e.g. "5m" — omit to disable background refresh (default)
 
-	// Secret key holding the Tuck token, passed via NodePublishSecrets.
+	// Secret key holding the Tuck token (tuck.io/auth=token, the default),
+	// passed via NodePublishSecrets. Kubernetes auth needs no secret.
 	secretKeyToken = "token"
 
 	// refreshTickInterval is how often the background loop scans for mounts
@@ -71,9 +73,16 @@ type Driver struct {
 // NodePublishVolume already resolved once — the token in particular is
 // reused unchanged for the mount's whole lifetime, since Kubernetes never
 // redelivers nodePublishSecretRef to an already-published volume.
+//
+// With tuck.io/auth=kubernetes, token is the cached Tuck token obtained by
+// logging in with sa; kubelet's periodic republish (CSIDriver
+// requiresRepublish) swaps in a fresh sa, and the next login uses it.
 type mountState struct {
 	addr        string
 	token       string
+	k8s         bool
+	cluster     string
+	sa          saToken
 	ns          string
 	kvVersion   string
 	insecure    bool
@@ -138,9 +147,27 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csispec.NodePublish
 		return nil, status.Error(codes.InvalidArgument, "volume context tuck.io/paths is required")
 	}
 
-	token := req.GetSecrets()[secretKeyToken]
-	if token == "" {
-		return nil, status.Error(codes.InvalidArgument, "node publish secret \"token\" is required")
+	var (
+		token   string
+		sa      saToken
+		useK8s  bool
+		cluster = vc[ctxK8sCluster]
+	)
+	switch vc[ctxAuth] {
+	case "", authToken:
+		token = req.GetSecrets()[secretKeyToken]
+		if token == "" {
+			return nil, status.Error(codes.InvalidArgument, "node publish secret \"token\" is required")
+		}
+	case authKubernetes:
+		useK8s = true
+		var err error
+		sa, err = serviceAccountToken(vc, req.GetSecrets(), vc[ctxK8sAudience])
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "tuck.io/auth=kubernetes: %v", err)
+		}
+	default:
+		return nil, status.Errorf(codes.InvalidArgument, "volume context %s must be %q or %q", ctxAuth, authToken, authKubernetes)
 	}
 
 	ns := vc[ctxNamespace]
@@ -165,6 +192,43 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csispec.NodePublish
 
 	paths := splitPaths(pathsRaw)
 
+	st := &mountState{
+		addr: addr, token: token, k8s: useK8s, cluster: cluster, sa: sa,
+		ns: ns, kvVersion: kvVersion, insecure: insecure, expandKeys: expandKeys,
+		mode: mode, paths: paths, interval: refreshInterval,
+		nextRefresh: time.Now().Add(refreshInterval),
+	}
+
+	// kubelet re-calls NodePublishVolume for an already-mounted volume when the
+	// CSIDriver sets requiresRepublish, to deliver a rotated ServiceAccount
+	// token or Secret. That only rotates credentials: the tmpfs and its files
+	// stay put (CSI requires NodePublishVolume to be idempotent).
+	d.mu.Lock()
+	cur, tracked := d.mounts[req.TargetPath]
+	if tracked && cur.k8s == useK8s {
+		if useK8s {
+			if cur.sa.token != sa.token {
+				slog.Info("csi: ServiceAccount token rotated", "target", req.TargetPath, "expires", sa.expires)
+			}
+			cur.sa = sa
+		} else {
+			cur.token = token
+		}
+		d.mu.Unlock()
+		return &csispec.NodePublishVolumeResponse{}, nil
+	}
+	d.mu.Unlock()
+	if d.isMounted(req.TargetPath) {
+		// Driver restarted: the mount survived, our bookkeeping did not.
+		if useK8s || refreshInterval > 0 {
+			st.nextRefresh = time.Now()
+			d.mu.Lock()
+			d.mounts[req.TargetPath] = st
+			d.mu.Unlock()
+		}
+		return &csispec.NodePublishVolumeResponse{}, nil
+	}
+
 	// Ensure target dir exists.
 	if err := os.MkdirAll(req.TargetPath, 0o750); err != nil {
 		return nil, status.Errorf(codes.Internal, "mkdir target path: %v", err)
@@ -180,32 +244,87 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csispec.NodePublish
 		_ = d.mounter.Unmount(req.TargetPath)
 		return nil, status.Errorf(codes.Internal, "tuck TLS config: %v", err)
 	}
-	for _, p := range paths {
-		files, err := fetchSecretFiles(ctx, hc, addr, token, ns, p, kvVersion, expandKeys)
-		if err != nil {
+	files, err := fetchAll(ctx, hc, st)
+	if err != nil {
+		_ = d.mounter.Unmount(req.TargetPath)
+		return nil, status.Errorf(codes.Internal, "%v", err)
+	}
+	for fname, value := range files {
+		dest := filepath.Join(req.TargetPath, fname)
+		if err := writeFileAtomic(dest, []byte(value), mode); err != nil {
 			_ = d.mounter.Unmount(req.TargetPath)
-			return nil, status.Errorf(codes.Internal, "fetch secret %q: %v", p, err)
-		}
-		for fname, value := range files {
-			dest := filepath.Join(req.TargetPath, fname)
-			if err := writeFileAtomic(dest, []byte(value), mode); err != nil {
-				_ = d.mounter.Unmount(req.TargetPath)
-				return nil, status.Errorf(codes.Internal, "write secret file %q: %v", fname, err)
-			}
+			return nil, status.Errorf(codes.Internal, "write secret file %q: %v", fname, err)
 		}
 	}
 
-	if refreshInterval > 0 {
+	if refreshInterval > 0 || useK8s {
 		d.mu.Lock()
-		d.mounts[req.TargetPath] = &mountState{
-			addr: addr, token: token, ns: ns, kvVersion: kvVersion,
-			insecure: insecure, expandKeys: expandKeys, mode: mode, paths: paths,
-			interval:    refreshInterval,
-			nextRefresh: time.Now().Add(refreshInterval),
-		}
+		d.mounts[req.TargetPath] = st
 		d.mu.Unlock()
 	}
 	return &csispec.NodePublishVolumeResponse{}, nil
+}
+
+// mountChecker is implemented by Mounters that can tell whether a path is
+// already a mount point.
+type mountChecker interface {
+	IsMounted(target string) (bool, error)
+}
+
+func (d *Driver) isMounted(target string) bool {
+	c, ok := d.mounter.(mountChecker)
+	if !ok {
+		return false
+	}
+	m, err := c.IsMounted(target)
+	return err == nil && m
+}
+
+// fetchAll fetches every path of a mount. For Kubernetes auth it logs in
+// first when there is no cached Tuck token, and once more if Tuck rejects the
+// cached one (expired). st.token is updated in place.
+func fetchAll(ctx context.Context, hc *http.Client, st *mountState) (map[string]string, error) {
+	login := func() error {
+		if !st.sa.usable(time.Now()) {
+			return fmt.Errorf("kubernetes login: ServiceAccount token expired, waiting for kubelet to republish")
+		}
+		t, err := loginKubernetes(ctx, hc, st.addr, st.cluster, st.sa.token)
+		if err != nil {
+			return err
+		}
+		st.token = t
+		return nil
+	}
+	if st.k8s && st.token == "" {
+		if err := login(); err != nil {
+			return nil, err
+		}
+	}
+	for attempt := 0; ; attempt++ {
+		all := make(map[string]string)
+		var failed error
+		for _, p := range st.paths {
+			files, err := fetchSecretFiles(ctx, hc, st.addr, st.token, st.ns, p, st.kvVersion, st.expandKeys)
+			if err != nil {
+				failed = fmt.Errorf("fetch secret %q: %w", p, err)
+				break
+			}
+			for fname, value := range files {
+				all[fname] = value
+			}
+		}
+		if failed == nil {
+			return all, nil
+		}
+		var se *httpStatusError
+		if st.k8s && attempt == 0 && errors.As(failed, &se) && se.authRejected() {
+			if err := login(); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		return nil, failed
+	}
 }
 
 // parseRefreshInterval validates tuck.io/refresh-interval. Empty (the
@@ -294,7 +413,7 @@ func (d *Driver) runDueRefreshesAt(ctx context.Context, now time.Time) {
 	d.mu.Lock()
 	var list []due
 	for target, st := range d.mounts {
-		if now.After(st.nextRefresh) {
+		if st.interval > 0 && now.After(st.nextRefresh) {
 			list = append(list, due{target, *st})
 		}
 	}
@@ -319,17 +438,17 @@ func (d *Driver) refreshMount(ctx context.Context, target string, st mountState)
 		return
 	}
 
-	allFiles := make(map[string]string)
-	for _, p := range st.paths {
-		files, err := fetchSecretFiles(ctx, hc, st.addr, st.token, st.ns, p, st.kvVersion, st.expandKeys)
-		if err != nil {
-			slog.Warn("csi: background refresh failed, keeping existing files",
-				"target", target, "path", p, "err", err)
-			return
+	allFiles, err := fetchAll(ctx, hc, &st)
+	if st.k8s && st.token != "" {
+		d.mu.Lock()
+		if cur, ok := d.mounts[target]; ok {
+			cur.token = st.token
 		}
-		for fname, value := range files {
-			allFiles[fname] = value
-		}
+		d.mu.Unlock()
+	}
+	if err != nil {
+		slog.Warn("csi: background refresh failed, keeping existing files", "target", target, "err", err)
+		return
 	}
 
 	for fname, value := range allFiles {
@@ -385,7 +504,7 @@ func fetchSecretFiles(ctx context.Context, hc *http.Client, addr, token, ns, pat
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("tuck API returned HTTP %d: %s", resp.StatusCode, body)
+		return nil, &httpStatusError{code: resp.StatusCode, body: string(body)}
 	}
 
 	var result map[string]any

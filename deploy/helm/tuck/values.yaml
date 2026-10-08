@@ -285,6 +285,18 @@ csi:
   # -- Path where kubelet stores plugins and pod mounts.
   kubeletRootDir: /var/lib/kubelet
 
+  # Log in to Tuck with the pod's own ServiceAccount token (volumeAttributes
+  # tuck.io/auth: kubernetes) instead of a static token from a Secret. Needs
+  # Kubernetes 1.22+. Volumes using a static token keep working unchanged.
+  kubernetesAuth:
+    enabled: true
+    # -- Audience of the projected token. Empty = the API server's own
+    # audience, which is what Tuck's TokenReview checks against.
+    audience: ""
+    # -- Lifetime of each projected token (min 600). Kubelet republishes a
+    # fresh one before it expires.
+    expirationSeconds: 3600
+
   resources:
     limits:
       cpu: 200m

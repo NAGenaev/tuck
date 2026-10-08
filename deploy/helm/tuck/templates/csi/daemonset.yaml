@@ -1,4 +1,8 @@
 {{- if .Values.csi.enabled }}
+{{- /* per-key defaults keep `helm upgrade --reuse-values` from older releases working */ -}}
+{{- $ka := .Values.csi.kubernetesAuth | default dict }}
+{{- $kaEnabled := true }}
+{{- if hasKey $ka "enabled" }}{{ $kaEnabled = $ka.enabled }}{{ end }}
 apiVersion: storage.k8s.io/v1
 kind: CSIDriver
 metadata:
@@ -8,6 +12,19 @@ spec:
   podInfoOnMount: false
   volumeLifecycleModes:
     - Ephemeral
+  {{- if $kaEnabled }}
+  # Kubelet hands each pod's ServiceAccount token to the driver and re-delivers
+  # a fresh one before it expires, so volumes with tuck.io/auth=kubernetes log
+  # in to Tuck without a static token.
+  requiresRepublish: true
+  # Pass the token in the request secrets instead of the volume context, which
+  # CSI sidecars and gRPC loggers may print. Needs Kubernetes 1.35+; older API
+  # servers ignore the field and the driver falls back to the volume context.
+  serviceAccountTokenInSecrets: true
+  tokenRequests:
+    - audience: {{ $ka.audience | default "" | quote }}
+      expirationSeconds: {{ $ka.expirationSeconds | default 3600 }}
+  {{- end }}
 ---
 apiVersion: apps/v1
 kind: DaemonSet

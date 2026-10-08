@@ -652,14 +652,15 @@ export function LoginPage() {
                                 <div className={c.hint}>{t('ldap.chooseNsHint')}</div>
                             </div>
                         )}
-                        <button
-                            className={`${c.btn} ${c.hot} ${c.full} ${phase === 'busy' ? c.loading : ''}`}
-                            hidden={isLdap && nsChoices !== null}
-                            type="submit"
-                        >
-                            <span className={c.spinner} />
-                            {sealed ? t('submitSealed') : t('signIn')}
-                        </button>
+                        {!(isLdap && nsChoices) && (
+                            <button
+                                className={`${c.btn} ${c.hot} ${c.full} ${phase === 'busy' ? c.loading : ''}`}
+                                type="submit"
+                            >
+                                <span className={c.spinner} />
+                                {sealed ? t('submitSealed') : t('signIn')}
+                            </button>
+                        )}
                     </fieldset>
                     <div className={styles.note}>{isLdap ? t('ldap.note') : t('tokenHint')}</div>
                 </form>

@@ -19,10 +19,9 @@ import (
 
 // liveDir is a directory the test can change after people have logged in.
 type liveDir struct {
-	mu     sync.Mutex
-	users  map[string]fakeLDAPUser
-	down   bool
-	binds  int
+	mu    sync.Mutex
+	users map[string]fakeLDAPUser
+	down  bool
 }
 
 func (d *liveDir) dial(_ context.Context, _ authlda.Config) (authlda.Conn, error) {

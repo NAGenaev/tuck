@@ -40,7 +40,7 @@ type client struct {
 // trustCAFile makes the client also trust the CA bundle in path (the bank's
 // internal CA), in addition to the system roots.
 func (c *client) trustCAFile(path string) error {
-	pemBytes, err := os.ReadFile(path) // #nosec G304 — operator-supplied flag
+	pemBytes, err := os.ReadFile(path) // #nosec G304 G703 — operator-supplied flag
 	if err != nil {
 		return err
 	}

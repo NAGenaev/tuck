@@ -228,6 +228,10 @@ injector:
   # -- tuck-agent init container image used when no per-pod override is set.
   agentImage: ""  # defaults to tuck-agent:<appVersion>
 
+  # -- Ignore: pods are admitted without the agent if the injector is down (the
+  # app then starts without its secrets). Fail: pod creation is blocked instead.
+  failurePolicy: Ignore
+
   replicaCount: 2
 
   # -- cert-manager Certificate is created automatically when certManager=true.

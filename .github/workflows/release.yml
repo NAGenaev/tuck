@@ -24,6 +24,13 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # goreleaser's before-hook builds the web UI (embedded into the server binary).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
 

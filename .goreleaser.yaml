@@ -27,7 +27,7 @@ builds:
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
     ldflags:
-      - -s -w
+      - -s -w -X main.Version={{.Version}}
 
   - id: tuck-operator
     main: ./cmd/tuck-operator
@@ -126,6 +126,8 @@ dockers:
 
   - id: tuck-server-arm64
     ids: [tuck]
+    goos: linux
+    goarch: arm64
     image_templates:
       - "ghcr.io/nagenaev/tuck:{{ .Version }}-arm64"
       - "ghcr.io/nagenaev/tuck:latest-arm64"
@@ -150,6 +152,8 @@ dockers:
 
   - id: tuck-operator-arm64
     ids: [tuck-operator]
+    goos: linux
+    goarch: arm64
     image_templates:
       - "ghcr.io/nagenaev/tuck-operator:{{ .Version }}-arm64"
       - "ghcr.io/nagenaev/tuck-operator:latest-arm64"
@@ -173,6 +177,8 @@ dockers:
 
   - id: tuck-injector-arm64
     ids: [tuck-injector]
+    goos: linux
+    goarch: arm64
     image_templates:
       - "ghcr.io/nagenaev/tuck-injector:{{ .Version }}-arm64"
       - "ghcr.io/nagenaev/tuck-injector:latest-arm64"
@@ -196,6 +202,8 @@ dockers:
 
   - id: tuck-agent-arm64
     ids: [tuck-agent]
+    goos: linux
+    goarch: arm64
     image_templates:
       - "ghcr.io/nagenaev/tuck-agent:{{ .Version }}-arm64"
       - "ghcr.io/nagenaev/tuck-agent:latest-arm64"
@@ -219,6 +227,8 @@ dockers:
 
   - id: tuck-csi-arm64
     ids: [tuckcsi]
+    goos: linux
+    goarch: arm64
     image_templates:
       - "ghcr.io/nagenaev/tuck-csi:{{ .Version }}-arm64"
       - "ghcr.io/nagenaev/tuck-csi:latest-arm64"

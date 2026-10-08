@@ -77,7 +77,11 @@ Injector image reference.
 {{- $reg := .Values.global.imageRegistry -}}
 {{- $repo := .Values.injector.image.repository -}}
 {{- $tag := .Values.injector.image.tag | default .Chart.AppVersion -}}
+{{- if $reg -}}
 {{- printf "%s/%s:%s" $reg $repo $tag }}
+{{- else -}}
+{{- printf "%s:%s" $repo $tag }}
+{{- end -}}
 {{- end }}
 
 {{/*
@@ -89,7 +93,11 @@ Agent image reference (used as default by the injector).
 {{- else -}}
 {{- $reg := .Values.global.imageRegistry -}}
 {{- $tag := .Chart.AppVersion -}}
+{{- if $reg -}}
 {{- printf "%s/tuck-agent:%s" $reg $tag }}
+{{- else -}}
+{{- printf "tuck-agent:%s" $tag }}
+{{- end -}}
 {{- end }}
 {{- end }}
 

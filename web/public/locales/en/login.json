@@ -93,6 +93,9 @@
         "termWaiting": "waiting for a username…",
         "passwordSet": "password entered",
         "passwordWaiting": "no password yet",
-        "throttled": "Too many failed attempts. Try again later"
+        "throttled": "Too many failed attempts. Try again later",
+        "chooseNs": "Choose a namespace",
+        "chooseNsHint": "Your groups grant access in several namespaces. The token is issued for exactly one",
+        "rootNs": "root"
     }
 }

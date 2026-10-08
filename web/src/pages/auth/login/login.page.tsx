@@ -108,6 +108,7 @@ export function LoginPage() {
     const [pasted, setPasted] = useState<null | { trimmed: boolean }>(null)
     const [phase, setPhase] = useState<Phase>('idle')
     const [failMsg, setFailMsg] = useState<null | { code: string; text: string }>(null)
+    const [nsChoices, setNsChoices] = useState<null | string[]>(null)
     const [typed, setTyped] = useState(() => (reducedMotion() ? COMMAND.length : 0))
     const [unsealOpen, setUnsealOpen] = useState(false)
     const [shake, setShake] = useState(0)
@@ -142,6 +143,7 @@ export function LoginPage() {
         }
         setPhase('idle')
         setFailMsg(null)
+        setNsChoices(null)
         setTyped(Number.MAX_SAFE_INTEGER)
     }
 
@@ -192,8 +194,12 @@ export function LoginPage() {
         }
     }
 
-    const handleSubmit = async (e: FormEvent) => {
+    const handleSubmit = (e: FormEvent) => {
         e.preventDefault()
+        void signIn()
+    }
+
+    const signIn = async (namespace?: string) => {
         if (busy || sealed) return
         const value = token.trim()
         if (isLdap ? !username.trim() || !password : !value) {
@@ -206,7 +212,7 @@ export function LoginPage() {
             if (isLdap) {
                 // a stale token must not ride along with the login request
                 removeToken()
-                const res = await loginLdap(username.trim(), password)
+                const res = await loginLdap(username.trim(), password, namespace)
                 setToken(res.token)
                 setPassword('')
             } else {
@@ -216,6 +222,13 @@ export function LoginPage() {
         } catch (err) {
             removeToken()
             const status = isAxiosError(err) ? err.response?.status : undefined
+            const choices = isAxiosError(err) && status === 409 ? err.response?.data?.namespaces : undefined
+            if (isLdap && Array.isArray(choices)) {
+                // roles in several namespaces: the password was accepted, ask which one to enter
+                setNsChoices(choices as string[])
+                setPhase('idle')
+                return
+            }
             if (isAxiosError(err) && !err.response) fail('', t('errNetwork'))
             else if (isLdap && status === 401) fail('401', t('ldap.invalid'))
             else if (isLdap && status === 403) fail('403', t('ldap.noRole'))
@@ -522,6 +535,7 @@ export function LoginPage() {
                                     name="username"
                                     onChange={(e) => {
                                         setUsername(e.currentTarget.value)
+                                        setNsChoices(null)
                                         if (phase === 'fail') setPhase('idle')
                                     }}
                                     placeholder={t('ldap.usernamePlaceholder')}
@@ -541,6 +555,7 @@ export function LoginPage() {
                                     name="password"
                                     onChange={(e) => {
                                         setPassword(e.currentTarget.value)
+                                        setNsChoices(null)
                                         if (phase === 'fail') setPhase('idle')
                                     }}
                                     placeholder={t('ldap.passwordPlaceholder')}
@@ -619,8 +634,27 @@ export function LoginPage() {
                         </div>
                             </>
                         )}
+                        {isLdap && nsChoices && (
+                            <div className={c.field} role="group" aria-labelledby="login-ns-label">
+                                <label id="login-ns-label">{t('ldap.chooseNs')}</label>
+                                <div className={styles.nsList}>
+                                    {nsChoices.map((ns) => (
+                                        <button
+                                            className={c.btn}
+                                            key={ns || '(root)'}
+                                            onClick={() => void signIn(ns)}
+                                            type="button"
+                                        >
+                                            {ns || t('ldap.rootNs')}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className={c.hint}>{t('ldap.chooseNsHint')}</div>
+                            </div>
+                        )}
                         <button
                             className={`${c.btn} ${c.hot} ${c.full} ${phase === 'busy' ? c.loading : ''}`}
+                            hidden={isLdap && nsChoices !== null}
                             type="submit"
                         >
                             <span className={c.spinner} />

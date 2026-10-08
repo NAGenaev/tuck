@@ -1260,7 +1260,9 @@ func (c *Core) ListLDAPRoles(ctx context.Context) ([]string, error) {
 }
 
 // LoginLDAP validates LDAP credentials and returns a Tuck token.
-func (c *Core) LoginLDAP(ctx context.Context, username, password string) (*token.Token, error) {
+// namespace picks the namespace for a user whose roles span several (nil = not
+// specified).
+func (c *Core) LoginLDAP(ctx context.Context, username, password string, namespace *string) (*token.Token, error) {
 	cfg, err := c.ldapStore.GetConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -1274,7 +1276,7 @@ func (c *Core) LoginLDAP(ctx context.Context, username, password string) (*token
 		authOpts = append(authOpts, authlda.WithDialer(c.ldapDialerFn))
 	}
 	auth := authlda.NewAuthenticator(*cfg, authOpts...)
-	result, err := auth.Login(ctx, roles, username, password)
+	result, err := auth.LoginNamespace(ctx, roles, username, password, namespace)
 	if err != nil {
 		return nil, err
 	}

@@ -260,3 +260,46 @@ func TestLogin_AmbiguousUserRejected(t *testing.T) {
 		t.Errorf("expected ErrInvalidCredentials, got %v", err)
 	}
 }
+
+func TestLogin_NamespaceSelection(t *testing.T) {
+	conn := newFakeConn("cn=svc,dc=test", "svcpass", sampleUsers())
+	auth := authlda.NewAuthenticator(sampleCfg(), authlda.WithDialer(dialFactory(conn)))
+	roles := []*authlda.Role{
+		{Name: "a", Groups: []string{"admin"}, Policies: []string{"pa"}, TuckNamespace: "team-a"},
+		{Name: "b", Groups: []string{"devs"}, Policies: []string{"pb"}, TuckNamespace: "team-b"},
+		{Name: "b2", Groups: []string{"devs"}, Policies: []string{"pb2"}, TuckNamespace: "team-b"},
+	}
+	ctx := context.Background()
+
+	// alice is in both; without a choice she gets the list, not a token.
+	_, err := auth.Login(ctx, roles, "alice", "alicepass")
+	var choice *authlda.NamespaceChoiceError
+	if !errors.As(err, &choice) || len(choice.Namespaces) != 2 || choice.Namespaces[0] != "team-a" || choice.Namespaces[1] != "team-b" {
+		t.Fatalf("want a namespace choice [team-a team-b], got %v", err)
+	}
+
+	// Choosing merges only that namespace's roles.
+	ns := "team-b"
+	res, err := auth.LoginNamespace(ctx, roles, "alice", "alicepass", &ns)
+	if err != nil || res.TuckNamespace != "team-b" || len(res.Policies) != 2 {
+		t.Fatalf("team-b login: %+v %v", res, err)
+	}
+
+	// bob only has team-b, so no choice is needed.
+	res, err = auth.Login(ctx, roles, "bob", "bobpass")
+	if err != nil || res.TuckNamespace != "team-b" {
+		t.Fatalf("bob: %+v %v", res, err)
+	}
+
+	// Asking for a namespace without a role there is "no role", and the root
+	// namespace is just another choice.
+	ns = "team-z"
+	if _, err := auth.LoginNamespace(ctx, roles, "alice", "alicepass", &ns); !errors.Is(err, authlda.ErrNoRole) {
+		t.Fatalf("foreign namespace: %v", err)
+	}
+	roles = append(roles, &authlda.Role{Name: "r", Groups: []string{"admin"}, Policies: []string{"pr"}})
+	ns = ""
+	if res, err := auth.LoginNamespace(ctx, roles, "alice", "alicepass", &ns); err != nil || res.TuckNamespace != "" || res.Policies[0] != "pr" {
+		t.Fatalf("root login: %+v %v", res, err)
+	}
+}

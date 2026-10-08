@@ -196,8 +196,30 @@ func TestLDAPLoginRoleBoundToNamespace(t *testing.T) {
 	if s, b := nsReq(t, ts, http.MethodPut, "/v1/auth/ldap/role/lr-b", body, root, ""); s != http.StatusNoContent {
 		t.Fatalf("put role b: %d %s", s, b)
 	}
-	if s, b := nsReq(t, ts, http.MethodPost, "/v1/auth/ldap/login", mustJSON(map[string]string{"username": "alice", "password": "alicepass"}), "", ""); s == http.StatusOK {
-		t.Fatalf("conflicting namespaces must not log in: %d %s", s, b)
+	s, b = nsReq(t, ts, http.MethodPost, "/v1/auth/ldap/login", mustJSON(map[string]string{"username": "alice", "password": "alicepass"}), "", "")
+	if s != http.StatusConflict || !strings.Contains(b, `"namespaces":["team-a","team-b"]`) {
+		t.Fatalf("ambiguous login must ask for a namespace: %d %s", s, b)
+	}
+	// The choice list is only revealed after the password checked out.
+	if s, b := nsReq(t, ts, http.MethodPost, "/v1/auth/ldap/login", mustJSON(map[string]string{"username": "alice", "password": "nope"}), "", ""); s != http.StatusUnauthorized || strings.Contains(b, "team-") {
+		t.Fatalf("wrong password must be a plain 401: %d %s", s, b)
+	}
+	// Picking a namespace logs into exactly that one.
+	s, b = nsReq(t, ts, http.MethodPost, "/v1/auth/ldap/login", mustJSON(map[string]string{"username": "alice", "password": "alicepass", "namespace": "team-a"}), "", "")
+	if s != http.StatusOK {
+		t.Fatalf("login team-a: %d %s", s, b)
+	}
+	assertBoundToTeamA(t, ts, jsonField(t, []byte(b), "token"))
+	s, b = nsReq(t, ts, http.MethodPost, "/v1/auth/ldap/login", mustJSON(map[string]string{"username": "alice", "password": "alicepass", "namespace": "team-b"}), "", "")
+	if s != http.StatusOK {
+		t.Fatalf("login team-b: %d %s", s, b)
+	}
+	if s, b := nsReq(t, ts, http.MethodGet, "/v1/secret/prod/pass", "", jsonField(t, []byte(b), "token"), ""); strings.Contains(b, "TEAM-A-SECRET") {
+		t.Fatalf("team-b token must not see team-a: %d %s", s, b)
+	}
+	// A namespace the user holds no role in is refused.
+	if s, b := nsReq(t, ts, http.MethodPost, "/v1/auth/ldap/login", mustJSON(map[string]string{"username": "alice", "password": "alicepass", "namespace": "team-c"}), "", ""); s != http.StatusForbidden {
+		t.Fatalf("foreign namespace must be refused: %d %s", s, b)
 	}
 }
 

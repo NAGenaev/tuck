@@ -23,6 +23,9 @@ func (s *Server) loginLDAP(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
+		// Namespace selects the namespace for a user whose roles span several;
+		// "" is the root namespace, absent means "not specified".
+		Namespace *string `json:"namespace"`
 	}
 	if !decodeJSON(w, body, &req) {
 		return
@@ -39,12 +42,18 @@ func (s *Server) loginLDAP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tok, err := s.core.LoginLDAP(r.Context(), req.Username, req.Password)
+	tok, err := s.core.LoginLDAP(r.Context(), req.Username, req.Password, req.Namespace)
 	if err != nil {
 		if errors.Is(err, authlda.ErrInvalidCredentials) {
 			s.ldapThrottle.fail(req.Username, now)
 		}
+		var choice *authlda.NamespaceChoiceError
 		switch {
+		case errors.As(err, &choice):
+			writeJSON(w, http.StatusConflict, map[string]any{
+				"error":      "namespace selection required",
+				"namespaces": choice.Namespaces,
+			})
 		case errors.Is(err, authlda.ErrNotConfigured):
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "LDAP auth not configured"})
 		case errors.Is(err, authlda.ErrInvalidCredentials):

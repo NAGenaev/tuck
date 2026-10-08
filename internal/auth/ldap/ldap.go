@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -32,10 +33,18 @@ var (
 	ErrInvalidCredentials = errors.New("ldap: invalid username or password")
 	// ErrNoRole is returned when no role matches the authenticated user.
 	ErrNoRole = errors.New("ldap: no matching role for user")
-	// ErrNamespaceConflict is returned when the roles matching a user are bound
-	// to different Tuck namespaces: a token can only belong to one.
-	ErrNamespaceConflict = errors.New("ldap: matching roles are bound to different namespaces")
 )
+
+// NamespaceChoiceError is returned when the roles matching a user are bound to
+// different Tuck namespaces and the caller did not say which one to log into:
+// a token belongs to exactly one namespace. Namespaces lists the choices
+// ("" is the root namespace). It is only returned after the password was
+// verified.
+type NamespaceChoiceError struct{ Namespaces []string }
+
+func (e *NamespaceChoiceError) Error() string {
+	return "ldap: user has roles in several namespaces, a namespace must be selected"
+}
 
 const (
 	configKey = "auth/ldap/config"
@@ -311,6 +320,13 @@ func WithDialer(dial func(ctx context.Context, cfg Config) (Conn, error)) func(*
 // Login validates username+password, resolves group membership, and matches
 // the user against roles. Returns the union of policies from all matching roles.
 func (a *Authenticator) Login(ctx context.Context, roles []*Role, username, password string) (*LoginResult, error) {
+	return a.LoginNamespace(ctx, roles, username, password, nil)
+}
+
+// LoginNamespace is Login for a user who may hold roles in several namespaces:
+// namespace selects the one to log into ("" = root, nil = not specified, which
+// is only accepted when the user's roles all share one namespace).
+func (a *Authenticator) LoginNamespace(ctx context.Context, roles []*Role, username, password string, namespace *string) (*LoginResult, error) {
 	conn, err := a.dial(ctx, a.cfg)
 	if err != nil {
 		return nil, fmt.Errorf("ldap: connect: %w", err)
@@ -355,9 +371,9 @@ func (a *Authenticator) Login(ctx context.Context, roles []*Role, username, pass
 		}
 	}
 
-	policies, ttl, tuckNS, ok := matchRoles(roles, username, userDN, userGroups)
+	policies, ttl, tuckNS, choices, ok := matchRoles(roles, username, userDN, userGroups, namespace)
 	if !ok {
-		return nil, ErrNamespaceConflict
+		return nil, &NamespaceChoiceError{Namespaces: choices}
 	}
 	if len(policies) == 0 {
 		return nil, ErrNoRole
@@ -372,19 +388,38 @@ func (a *Authenticator) Login(ctx context.Context, roles []*Role, username, pass
 	return &LoginResult{UserDN: userDN, Username: username, Policies: policies, TTL: ttl, TuckNamespace: tuckNS, Groups: userGroups}, nil
 }
 
-// matchRoles returns the union of policies and the maximum TTL from all
-// matching roles.
-func matchRoles(roles []*Role, username, userDN string, groups []string) (policies []string, ttl time.Duration, tuckNS string, ok bool) {
-	seen := make(map[string]bool)
-	first := true
+// matchRoles returns the union of policies and the maximum TTL from the
+// matching roles of a single namespace. A user whose roles span several
+// namespaces must pick one (want != nil); otherwise ok is false and
+// namespaces lists the choices. Roles of the other namespaces are ignored: a
+// token is only ever bound to one namespace.
+func matchRoles(roles []*Role, username, userDN string, groups []string, want *string) (policies []string, ttl time.Duration, tuckNS string, namespaces []string, ok bool) {
+	var matched []*Role
+	seenNS := make(map[string]bool)
 	for _, role := range roles {
 		if !roleMatches(role, username, userDN, groups) {
 			continue
 		}
-		if first {
-			tuckNS, first = role.TuckNamespace, false
-		} else if role.TuckNamespace != tuckNS {
-			return nil, 0, "", false
+		matched = append(matched, role)
+		if !seenNS[role.TuckNamespace] {
+			seenNS[role.TuckNamespace] = true
+			namespaces = append(namespaces, role.TuckNamespace)
+		}
+	}
+	sort.Strings(namespaces)
+	switch {
+	case want != nil:
+		tuckNS = *want
+	case len(namespaces) > 1:
+		return nil, 0, "", namespaces, false
+	case len(namespaces) == 1:
+		tuckNS = namespaces[0]
+	}
+
+	seen := make(map[string]bool)
+	for _, role := range matched {
+		if role.TuckNamespace != tuckNS {
+			continue
 		}
 		for _, p := range role.Policies {
 			if !seen[p] {
@@ -396,7 +431,7 @@ func matchRoles(roles []*Role, username, userDN string, groups []string) (polici
 			ttl = role.TTL
 		}
 	}
-	return policies, ttl, tuckNS, true
+	return policies, ttl, tuckNS, namespaces, true
 }
 
 func roleMatches(role *Role, username, userDN string, groups []string) bool {

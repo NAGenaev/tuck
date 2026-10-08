@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	authlda "github.com/NAGenaev/tuck/internal/auth/ldap"
 	"github.com/NAGenaev/tuck/internal/core"
@@ -387,5 +388,44 @@ func TestLDAPConfigRejectsBadCACert(t *testing.T) {
 	})
 	if status, resp := doJSON(t, ts, http.MethodPut, "/v1/auth/ldap/config", body, root); status != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400; %s", status, resp)
+	}
+}
+
+func TestLDAPLoginThrottle(t *testing.T) {
+	ts, _, root := newLDAPTestServer(t)
+	putLDAPConfig(t, ts, root)
+	putLDAPRole(t, ts, root, "r", []string{"devs"}, nil, []string{"root"}, "1h")
+
+	for i := 0; i < ldapMaxFailures; i++ {
+		if status, _ := ldapLogin(t, ts, "alice", "wrong"); status != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: %d, want 401", i, status)
+		}
+	}
+	// Locked even for the correct password, case-insensitively.
+	if status, _ := ldapLogin(t, ts, "ALICE", "wrong"); status != http.StatusTooManyRequests {
+		t.Errorf("after %d failures: %d, want 429", ldapMaxFailures, status)
+	}
+	// Other users are unaffected.
+	if status, _ := ldapLogin(t, ts, "bob", "wrong"); status != http.StatusUnauthorized {
+		t.Errorf("other user: %d, want 401", status)
+	}
+}
+
+func TestLoginThrottleWindowAndSuccess(t *testing.T) {
+	var th loginThrottle
+	now := time.Now()
+	for i := 0; i < ldapMaxFailures; i++ {
+		th.fail("u", now)
+	}
+	if _, locked := th.blocked("u", now); !locked {
+		t.Fatal("want locked")
+	}
+	if _, locked := th.blocked("u", now.Add(ldapFailWindow+time.Second)); locked {
+		t.Fatal("want unlocked after window")
+	}
+	th.fail("v", now)
+	th.success("v")
+	if _, locked := th.blocked("v", now); locked {
+		t.Fatal("success must reset")
 	}
 }

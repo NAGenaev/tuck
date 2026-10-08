@@ -220,6 +220,7 @@ export function LoginPage() {
             else if (isLdap && status === 401) fail('401', t('ldap.invalid'))
             else if (isLdap && status === 403) fail('403', t('ldap.noRole'))
             else if (isLdap && status === 503) fail('503', t('ldap.notConfigured'))
+            else if (isLdap && status === 429) fail('429', t('ldap.throttled'))
             else if (status === 401 || status === 403) fail(String(status), t('invalidToken'))
             else fail(String(status ?? ''), t('errServer'))
             return

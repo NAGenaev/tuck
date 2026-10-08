@@ -35,6 +35,7 @@ type Server struct {
 	audit        audit.Loggable
 	ipLimiter    *ratelimit.Limiter
 	tokenLimiter *ratelimit.Limiter
+	ldapThrottle loginThrottle
 }
 
 // New returns an HTTP server wired to the core's audit Dispatcher.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	authlda "github.com/NAGenaev/tuck/internal/auth/ldap"
@@ -31,8 +32,18 @@ func (s *Server) loginLDAP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	now := time.Now()
+	if left, locked := s.ldapThrottle.blocked(req.Username, now); locked {
+		w.Header().Set("Retry-After", strconv.Itoa(int(left.Seconds())+1))
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many failed attempts, try again later"})
+		return
+	}
+
 	tok, err := s.core.LoginLDAP(r.Context(), req.Username, req.Password)
 	if err != nil {
+		if errors.Is(err, authlda.ErrInvalidCredentials) {
+			s.ldapThrottle.fail(req.Username, now)
+		}
 		switch {
 		case errors.Is(err, authlda.ErrNotConfigured):
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "LDAP auth not configured"})
@@ -45,6 +56,7 @@ func (s *Server) loginLDAP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	s.ldapThrottle.success(req.Username)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token":      tok.ID,
 		"policies":   tok.Policies,

@@ -92,6 +92,7 @@
         "notConfigured": "LDAP sign-in has not been configured by an administrator yet",
         "termWaiting": "waiting for a username…",
         "passwordSet": "password entered",
-        "passwordWaiting": "no password yet"
+        "passwordWaiting": "no password yet",
+        "throttled": "Too many failed attempts. Try again later"
     }
 }

@@ -104,6 +104,45 @@ server:
 
 Сертификат один на все поды, поэтому в SAN нужен шаблон `*.<release>-server-headless.<ns>.svc`, а в extended key usage — и `serverAuth`, и `clientAuth`. Поды стартуют с `--cluster-tls-cert/-key/-ca`; в логе должна быть строка «Raft RPC secured with mutual TLS». Проверено на minikube: 3 пода, общий сертификат, выбор лидера, запись и чтение через Service, смена лидера после удаления пода.
 
+## Обновление версии без остановки
+
+Обновляйте узлы **по одному** и переходите к следующему только когда предыдущий распечатан и кластер здоров. Порядок: сначала standby-узлы, затем передача лидерства, затем бывший лидер.
+
+```bash
+# 0. До начала: все три узла распечатаны (200 у лидера, 429 у остальных)
+for n in 1 2 3; do curl -s -o /dev/null -w "node$n %{http_code}\n" https://node$n:8200/v1/sys/leader; done
+
+# 1. Для каждого standby-узла: заменить образ/бинарник, запустить, внести k долей Shamir,
+#    дождаться, что у него снова 429 (а не 503), и только потом идти дальше
+tuckcli --addr https://node2:8200 unseal <доля>     # k раз
+
+# 2. Передать лидерство и обновить бывший лидер
+curl -X POST -H "X-Tuck-Token: $TOKEN" https://tuck.bank.local:8200/v1/sys/cluster/step-down
+```
+
+Не трогайте лидера, пока хотя бы один из остальных узлов запечатан: без кворума распечатанных узлов кластер перестаёт отвечать (данные при этом целы, после внесения долей он возвращается). При ручной распечатке обновление трёх узлов требует трёх комплектов долей. Если это неприемлемо, используйте авто-распечатку (Transit, совместимый с Vault).
+
+## Адрес клиента и лимиты запросов
+
+Если перед Tuck стоит L7-балансировщик, он должен передавать `X-Forwarded-For`, а его адрес указывается в `trusted_proxies` (см. [25](25-pilot-deployment.md)). Пример для HAProxy, который терминирует TLS, повторно шифрует трафик до Tuck с проверкой сертификата и направляет запросы только лидеру:
+
+```
+frontend tuck_api
+  bind *:8200 ssl crt /etc/haproxy/tuck.pem
+  option forwardfor
+  default_backend tuck_leader
+backend tuck_leader
+  option httpchk
+  http-check send meth GET uri /v1/sys/leader ver HTTP/1.1 hdr Host tuck.bank.local
+  http-check expect status 200
+  default-server check check-ssl ssl verify required ca-file /etc/haproxy/ca.crt verifyhost tuck.bank.local sni str(tuck.bank.local) inter 2s fall 2 rise 1
+  server node1 node1:8200
+  server node2 node2:8200
+  server node3 node3:8200
+```
+
+Лимиты запросов на адрес клиента и на токен задаются флагами `--rate-ip-rps/-burst` и `--rate-token-rps/-burst` (по умолчанию 100/200 и 50/100) и меняются без рестарта через `PUT /v1/sys/config` (поля `ip_rate_limit_rps`, `ip_rate_limit_burst`, `token_rate_limit_rps`, `token_rate_limit_burst`): `0` оставляет значение флага, отрицательное значение отключает лимит. Каждый узел перечитывает сохранённую настройку каждые 10 секунд, поэтому изменение действует на весь кластер и переживает смену лидера.
+
 ## Проверка
 
 | Действие | Ожидаемый результат |

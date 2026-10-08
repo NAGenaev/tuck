@@ -238,9 +238,12 @@ func (ctrl *Controller) reconcile(ctx context.Context, ts TuckSecret) (err error
 		return err
 	}
 
-	paths, err := ctrl.authorizePaths(ctx, ts.Metadata.Namespace, entries)
+	paths, tuckNS, err := ctrl.authorizePaths(ctx, ts.Metadata.Namespace, entries)
 	if err != nil {
 		return err
+	}
+	if tuckNS != "" {
+		ctx = withTuckNamespace(ctx, tuckNS)
 	}
 
 	// Fetch everything before touching the K8s Secret so a failure on one key
@@ -309,35 +312,39 @@ func (ctrl *Controller) reconcile(ctx context.Context, ts TuckSecret) (err error
 // authorizePaths validates every Tuck path of a TuckSecret and, when namespace
 // enforcement is on, checks it against the namespace's allowed prefixes. It
 // fails closed: if the Namespace cannot be read, nothing is fetched.
-func (ctrl *Controller) authorizePaths(ctx context.Context, namespace string, entries map[string]string) (map[string]string, error) {
+func (ctrl *Controller) authorizePaths(ctx context.Context, namespace string, entries map[string]string) (map[string]string, string, error) {
 	if !ctrl.enforceNamespacePaths {
 		out := make(map[string]string, len(entries))
 		for k, p := range entries {
 			out[k] = p
 		}
-		return out, nil
+		return out, "", nil
 	}
 	annotations, err := ctrl.kube.NamespaceAnnotations(ctx, namespace)
 	if err != nil {
-		return nil, fmt.Errorf("read namespace %q to authorize tuck paths: %w", namespace, err)
+		return nil, "", fmt.Errorf("read namespace %q to authorize tuck paths: %w", namespace, err)
+	}
+	tuckNS, err := tuckNamespaceOf(annotations)
+	if err != nil {
+		return nil, "", err
 	}
 	prefixes, err := allowedPrefixes(namespace, annotations)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	out := make(map[string]string, len(entries))
 	for k, p := range entries {
 		n, err := normalizePath(p)
 		if err != nil {
-			return nil, fmt.Errorf("key %q: %w", k, err)
+			return nil, "", fmt.Errorf("key %q: %w", k, err)
 		}
-		if !pathAllowed(n, prefixes) {
-			return nil, fmt.Errorf("key %q: tuck path %q is outside the paths allowed for namespace %q (allowed: %v; extend with the %s annotation on the Namespace)",
+		if tuckNS == "" && !pathAllowed(n, prefixes) {
+			return nil, "", fmt.Errorf("key %q: tuck path %q is outside the paths allowed for namespace %q (allowed: %v; extend with the %s annotation on the Namespace)",
 				k, n, namespace, prefixes, AnnotationAllowedPaths)
 		}
 		out[k] = n
 	}
-	return out, nil
+	return out, tuckNS, nil
 }
 
 // checkSecretConflict refuses to sync when another live TuckSecret in the same

@@ -56,6 +56,8 @@ kubectl create secret generic tuck-csi-token \
 tuckcli policy put csi-readonly '{"paths":[{"path":"secret/*","capabilities":["read"]}]}'
 ```
 
+> **Токен CSI не обновляется автоматически.** Драйвер использует токен из `nodePublishSecretRef` как есть; логина через Kubernetes-auth и продления токена в нём нет. Поэтому для CSI выдавайте токен без срока (`--ttl=0`) или с запасом больше жизни Pod'ов и ротируйте его вместе с пересозданием Pod'ов. Если нужна авторизация без долгоживущего токена, используйте [оператор TuckSecret](07-tucksecret-operator.md): он входит в Tuck через ServiceAccount (K8s auth) и сам продлевает сессию.
+
 ### 2. Включи CSI в Helm-чарте
 
 ```bash

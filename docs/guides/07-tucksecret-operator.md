@@ -118,6 +118,18 @@ kubectl annotate namespace team-a tuck.io/allowed-paths="shared/tls,platform/com
 
 Аннотацию Namespace могут менять только администраторы кластера, поэтому команда не может расширить себе доступ из своего namespace. Политика оператора в Tuck при этом должна по-прежнему быть ограничена (например, `secret/*` на чтение, но не `root`): флаг — это второй рубеж, а не замена ACL.
 
+### Привязка Kubernetes-namespace к Tuck-namespace
+
+Если команды изолированы **Tuck-namespace**'ами (а не префиксами путей), администратор кластера привязывает Kubernetes-namespace к Tuck-namespace аннотацией:
+
+```powershell
+kubectl annotate namespace app-a tuck.io/tuck-namespace=team-a --overwrite
+```
+
+Тогда все TuckSecret из `app-a` читаются из Tuck-namespace `team-a` (оператор передаёт `X-Tuck-Namespace: team-a`) и могут указывать любые пути внутри него: границей изоляции служит сам Tuck-namespace. Ограничение по префиксу `app-a/...` для такого namespace не применяется. Значение проверяется как имя Tuck-namespace; некорректное значение — отказ (fail closed). Аннотация учитывается только при `--enforce-namespace-paths`, и менять её могут только администраторы кластера.
+
+Токен оператора при этом остаётся токеном корневого namespace: его политика (например, `secret/*` на чтение) должна разрешать чтение, а изоляцию между командами обеспечивают аннотации на Namespace. Если нужна изоляция, не зависящая от оператора, запускайте отдельный оператор на команду с K8s-ролью, привязанной к `tuck_namespace` (см. [09](09-kubernetes-auth.md)).
+
 ## Минимальные права оператора в Kubernetes
 
 По умолчанию ClusterRole оператора разрешает писать Secret **во всех** namespace — при компрометации оператора это чтение/подмена любого Secret кластера. Для многокомандных кластеров ограничьте запись списком командных namespace:
@@ -156,6 +168,22 @@ operator:
 | `secretKey` | Ключ в `data` Secret для `tuckPath` |
 | `data` | Карта «ключ Secret → путь в Tuck» для нескольких ключей |
 | `refreshInterval` | Интервал опроса (например `30s`, `5m`) |
+| `kvVersion` | `"2"` (по умолчанию, mount `secret/`) или `"1"` |
+| `deletionPolicy` | `Retain` (по умолчанию) — Secret остаётся после удаления TuckSecret; `Delete` — удаляется вместе с ним |
+| `restartTargets` | Список `{kind, name}` (`Deployment`/`StatefulSet`/`DaemonSet`), которые перезапускаются, когда значение секрета реально изменилось |
+
+### Перезапуск приложений при ротации (`restartTargets`)
+
+```yaml
+spec:
+  secretName: db-creds
+  tuckPath: apps/db
+  secretKey: password
+  restartTargets:
+    - {kind: Deployment, name: api}
+```
+
+Оператор делает то же, что `kubectl rollout restart` (меняет аннотацию в pod template), и только когда значение действительно изменилось: обычный refresh с тем же значением ничего не перезапускает. Функция выключена по умолчанию: включите `operator.enableRestartTargets=true` в Helm (флаг `--enable-restart-targets`); при этом оператору выдаётся дополнительное право `patch` на перечисленные виды workload.
 
 ## Частые ошибки
 

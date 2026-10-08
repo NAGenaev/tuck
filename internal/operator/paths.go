@@ -1,8 +1,11 @@
 package operator
 
 import (
+	"context"
 	"fmt"
 	"strings"
+
+	"github.com/NAGenaev/tuck/internal/namespace"
 )
 
 // AnnotationAllowedPaths is read from the Namespace object. Its value is a
@@ -10,6 +13,26 @@ import (
 // namespace may read, in addition to the default "<namespace>/". Only
 // principals able to edit Namespace objects (cluster admins) can set it.
 const AnnotationAllowedPaths = "tuck.io/allowed-paths"
+
+// AnnotationTuckNamespace is read from the Namespace object. When set, every
+// TuckSecret in that Kubernetes namespace reads from the named Tuck namespace
+// (the operator sends it as X-Tuck-Namespace) and may use any path inside it:
+// the Tuck namespace is the isolation boundary, so the per-namespace path
+// prefix no longer applies. Only cluster admins can set it. It is honoured
+// only with --enforce-namespace-paths, the mode that trusts Namespace objects.
+const AnnotationTuckNamespace = "tuck.io/tuck-namespace"
+
+type tuckNamespaceKey struct{}
+
+// withTuckNamespace makes the Tuck client read from namespace ns.
+func withTuckNamespace(ctx context.Context, ns string) context.Context {
+	return context.WithValue(ctx, tuckNamespaceKey{}, ns)
+}
+
+func tuckNamespaceFrom(ctx context.Context) string {
+	ns, _ := ctx.Value(tuckNamespaceKey{}).(string)
+	return ns
+}
 
 // normalizePath validates a Tuck KV path and returns it without a leading
 // slash. It rejects anything the HTTP stack could rewrite or reinterpret
@@ -69,4 +92,17 @@ func pathAllowed(path string, prefixes []string) bool {
 		}
 	}
 	return false
+}
+
+// tuckNamespaceOf returns the validated Tuck namespace the Kubernetes
+// namespace is bound to, or "" when it is not bound.
+func tuckNamespaceOf(nsAnnotations map[string]string) (string, error) {
+	v := strings.TrimSpace(nsAnnotations[AnnotationTuckNamespace])
+	if v == "" {
+		return "", nil
+	}
+	if err := namespace.ValidateName(v); err != nil {
+		return "", fmt.Errorf("annotation %s: %w", AnnotationTuckNamespace, err)
+	}
+	return v, nil
 }

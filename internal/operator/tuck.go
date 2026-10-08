@@ -77,6 +77,9 @@ func (c *TuckClient) GetSecret(ctx context.Context, path, kvVersion string) ([]b
 		return nil, fmt.Errorf("build secret request: %w", err)
 	}
 	req.Header.Set("X-Tuck-Token", token)
+	if ns := tuckNamespaceFrom(ctx); ns != "" {
+		req.Header.Set("X-Tuck-Namespace", ns)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

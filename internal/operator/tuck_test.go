@@ -58,3 +58,27 @@ func TestGetSecret_KVVersionSelectsURL(t *testing.T) {
 		t.Errorf("kvVersion=\"\": expected /v1/secret/ default prefix, got %q", gotPath)
 	}
 }
+
+func TestGetSecret_SendsTuckNamespace(t *testing.T) {
+	var gotNS string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/auth/kubernetes/login" {
+			_ = json.NewEncoder(w).Encode(map[string]string{"token": "tok"})
+			return
+		}
+		gotNS = r.Header.Get("X-Tuck-Namespace")
+		_ = json.NewEncoder(w).Encode(map[string]string{"value": "ok"})
+	}))
+	defer srv.Close()
+	f := t.TempDir() + "/sa"
+	if err := os.WriteFile(f, []byte("jwt"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := NewTuckClient(srv.URL, f)
+	if _, err := c.GetSecret(withTuckNamespace(context.Background(), "team-a"), "db", "1"); err != nil || gotNS != "team-a" {
+		t.Fatalf("header %q err %v", gotNS, err)
+	}
+	if _, err := c.GetSecret(context.Background(), "db", "1"); err != nil || gotNS != "" {
+		t.Fatalf("unbound read must not send a namespace: %q %v", gotNS, err)
+	}
+}

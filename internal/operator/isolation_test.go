@@ -258,3 +258,48 @@ func TestAddTracked_DataChangeIsASpecChange(t *testing.T) {
 		t.Error("changed data must count as changed")
 	}
 }
+
+type nsRecordingTuck struct{ gotNS, gotPath *string }
+
+func (n nsRecordingTuck) GetSecret(ctx context.Context, p, _ string) ([]byte, error) {
+	*n.gotNS, *n.gotPath = tuckNamespaceFrom(ctx), p
+	return []byte("v"), nil
+}
+
+func TestReconcile_TuckNamespaceAnnotation(t *testing.T) {
+	var ns, path string
+	kube := &mockKube{nsAnnotations: map[string]map[string]string{
+		"app-a": {AnnotationTuckNamespace: "team-a"},
+		"app-b": {AnnotationTuckNamespace: "Bad Name"},
+		"app-c": {},
+	}}
+	ctrl := New(kube, nsRecordingTuck{&ns, &path}, "")
+	ctrl.EnforceNamespacePaths(true)
+
+	// Bound namespace: any path inside the Tuck namespace, read from it.
+	if err := ctrl.reconcile(context.Background(), multiTS("app-a", "x", "s", map[string]string{"k": "shared/db"})); err != nil {
+		t.Fatal(err)
+	}
+	if ns != "team-a" || path != "shared/db" {
+		t.Fatalf("namespace %q path %q, want team-a shared/db", ns, path)
+	}
+	// Traversal is refused even inside a bound namespace.
+	if err := ctrl.reconcile(context.Background(), multiTS("app-a", "y", "s2", map[string]string{"k": "../x"})); err == nil {
+		t.Fatal("dot segments must be refused")
+	}
+	// An invalid annotation fails closed.
+	if err := ctrl.reconcile(context.Background(), multiTS("app-b", "z", "s3", map[string]string{"k": "app-b/db"})); err == nil {
+		t.Fatal("invalid tuck-namespace annotation must fail")
+	}
+	// Unbound namespaces keep the path-prefix rule and the root Tuck namespace.
+	ns = "unset"
+	if err := ctrl.reconcile(context.Background(), multiTS("app-c", "w", "s4", map[string]string{"k": "app-c/db"})); err != nil {
+		t.Fatal(err)
+	}
+	if ns != "" {
+		t.Fatalf("unbound namespace must read from root, got %q", ns)
+	}
+	if err := ctrl.reconcile(context.Background(), multiTS("app-c", "v", "s5", map[string]string{"k": "other/db"})); err == nil {
+		t.Fatal("unbound namespace must stay path-restricted")
+	}
+}

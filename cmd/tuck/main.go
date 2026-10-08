@@ -371,6 +371,8 @@ func main() {
 	// reloadClusters re-reads kubernetes.clusters from the config file (SIGHUP
 	// or POST /v1/auth/kubernetes/clusters/reload) and swaps the set in place.
 	var reloadClusters func() ([]string, []string, error)
+	// onClustersChanged lets the API server follow the cluster list (set below, once it exists).
+	var onClustersChanged func([]config.K8sCluster)
 	if resolvedCfgPath != "" {
 		reloadClusters = func() ([]string, []string, error) {
 			fresh, _, err := config.Load(resolvedCfgPath)
@@ -384,6 +386,9 @@ func main() {
 			added, removed, err := c.ReplaceK8sClusters(next)
 			if err == nil {
 				log.Printf("tuck: kubernetes clusters reloaded: added %v, removed %v", added, removed)
+				if onClustersChanged != nil {
+					onClustersChanged(fresh.Kubernetes.Clusters)
+				}
 			}
 			return added, removed, err
 		}
@@ -464,6 +469,25 @@ func main() {
 
 	// --- API server + rate limiters ---
 	apiSrv := api.New(c)
+	// TuckSecret view: the cluster Tuck runs in (if any) plus every trusted
+	// cluster whose reviewer token may list TuckSecrets and namespaces.
+	var localTuckSecrets api.TuckSecretSource
+	applyTuckSecretSources := func(list []config.K8sCluster) {
+		srcs := map[string]api.TuckSecretSource{}
+		if localTuckSecrets != nil {
+			srcs[""] = localTuckSecrets
+		}
+		for _, cl := range list {
+			kc, err := operator.NewKubeClient(cl.API, cl.TokenFile, cl.CAFile)
+			if err != nil {
+				log.Printf("tuck: TuckSecret view of cluster %q disabled: %v", cl.Name, err)
+				continue
+			}
+			srcs[cl.Name] = kc
+		}
+		apiSrv.SetTuckSecretSources(srcs)
+	}
+	onClustersChanged = applyTuckSecretSources
 	// The --rate-* flags are the defaults; the runtime config (PUT /v1/sys/config,
 	// persisted in the barrier) overrides them without a restart.
 	apiSrv.SetRateDefaults(sysconfig.Config{
@@ -485,12 +509,13 @@ func main() {
 	if *k8sAPI != "" {
 		if _, statErr := os.Stat(*k8sTokenFile); statErr == nil {
 			if kc, kcErr := operator.NewKubeClient(*k8sAPI, *k8sTokenFile, *k8sCaFile); kcErr == nil {
-				apiSrv.SetTuckSecretSource(kc)
+				localTuckSecrets = kc
 			} else {
 				log.Printf("tuck: TuckSecret view disabled: %v", kcErr)
 			}
 		}
 	}
+	applyTuckSecretSources(k8sClusters)
 	// Restore barrier-persisted rate-limit config when the barrier is already
 	// open (dev seal, auto-unseal). Shamir-sealed servers restore in postUnseal.
 	if !errors.Is(startErr, core.ErrNeedsUnseal) && !sealRetry {

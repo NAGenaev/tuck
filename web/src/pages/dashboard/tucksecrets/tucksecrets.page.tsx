@@ -56,7 +56,7 @@ function useRelative() {
 }
 
 function rowKey(it: TuckSecretView) {
-    return `${it.k8s_namespace}/${it.name}`
+    return `${it.cluster ?? ''}/${it.k8s_namespace}/${it.name}`
 }
 
 function Details({ item }: { item: TuckSecretView }) {
@@ -158,6 +158,7 @@ export function TuckSecretsPage() {
 
     const [q, setQ] = useState('')
     const [k8sNs, setK8sNs] = useState('')
+    const [cluster, setCluster] = useState('')
     const [stateFilter, setStateFilter] = useState<'' | TuckSecretState>('')
     const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
 
@@ -172,6 +173,9 @@ export function TuckSecretsPage() {
     })
 
     const items = useMemo(() => data?.items ?? [], [data])
+    const clusters = useMemo(() => [...new Set(items.map((i) => i.cluster ?? ''))].sort(), [items])
+    const multi = clusters.length > 1 || clusters.some((c) => c !== '')
+    const failedClusters = useMemo(() => (data?.clusters ?? []).filter((c) => !c.ok), [data])
     const namespaces = useMemo(() => [...new Set(items.map((i) => i.k8s_namespace))].sort(), [items])
     const counts = useMemo(() => {
         const c: Record<TuckSecretState, number> = { deleting: 0, error: 0, pending: 0, synced: 0 }
@@ -183,6 +187,7 @@ export function TuckSecretsPage() {
     const shown = useMemo(
         () =>
             items.filter((i) => {
+                if (cluster && (i.cluster ?? '') !== cluster) return false
                 if (k8sNs && i.k8s_namespace !== k8sNs) return false
                 if (stateFilter && i.state !== stateFilter) return false
                 if (!filter) return true
@@ -194,7 +199,7 @@ export function TuckSecretsPage() {
                     i.entries.some((e) => e.path.toLowerCase().includes(filter) || e.key.toLowerCase().includes(filter))
                 )
             }),
-        [items, k8sNs, stateFilter, filter]
+        [items, cluster, k8sNs, stateFilter, filter]
     )
 
     const toggle = (key: string) =>
@@ -211,6 +216,7 @@ export function TuckSecretsPage() {
     const resetFilters = () => {
         setQ('')
         setK8sNs('')
+        setCluster('')
         setStateFilter('')
     }
 
@@ -301,6 +307,7 @@ export function TuckSecretsPage() {
                         <tr>
                             <th aria-label="expand" className={styles.chev} />
                             <th>{t('col.name')}</th>
+                            {multi && <th>{t('col.cluster')}</th>}
                             <th>{t('col.k8sNamespace')}</th>
                             <th>{t('col.tuckNamespace')}</th>
                             <th>{t('col.secret')}</th>
@@ -330,6 +337,7 @@ export function TuckSecretsPage() {
                                         <td className={styles.mono}>
                                             <b>{it.name}</b>
                                         </td>
+                                        {multi && <td className={styles.mono}>{it.cluster || t('localCluster')}</td>}
                                         <td className={styles.mono}>{it.k8s_namespace}</td>
                                         <td className={styles.mono}>{it.tuck_namespace || t('root')}</td>
                                         <td className={styles.mono}>{it.secret_name}</td>
@@ -344,7 +352,7 @@ export function TuckSecretsPage() {
                                     </tr>
                                     {isOpen && (
                                         <tr className={styles.detailRow}>
-                                            <td colSpan={7}>
+                                            <td colSpan={multi ? 8 : 7}>
                                                 <Details item={it} />
                                             </td>
                                         </tr>
@@ -420,6 +428,17 @@ export function TuckSecretsPage() {
                 </div>
             )}
 
+            {failedClusters.length > 0 && (
+                <div className={cx(styles.callout, styles.calloutWarn)} role="alert">
+                    <Trans
+                        components={rich}
+                        i18nKey="clusterDown"
+                        ns="tucksecrets"
+                        values={{ names: failedClusters.map((c) => `${c.name || t('localCluster')} (${c.code ?? 'k8s_error'})`).join(', ') }}
+                    />
+                </div>
+            )}
+
             {showData && (
                 <div className={styles.toolbar}>
                     <label className={styles.search}>
@@ -432,6 +451,22 @@ export function TuckSecretsPage() {
                             value={q}
                         />
                     </label>
+                    {multi && (
+                        <select
+                            aria-label={t('filter.cluster')}
+                            className={styles.select}
+                            id="tucksecrets-cluster"
+                            onChange={(e) => setCluster(e.target.value)}
+                            value={cluster}
+                        >
+                            <option value="">{t('filter.allClusters')}</option>
+                            {clusters.map((c) => (
+                                <option key={c} value={c}>
+                                    {c || t('localCluster')}
+                                </option>
+                            ))}
+                        </select>
+                    )}
                     <select
                         aria-label={t('filter.namespace')}
                         className={styles.select}

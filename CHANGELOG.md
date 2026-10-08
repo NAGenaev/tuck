@@ -18,6 +18,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Страница TuckSecret по всем кластерам.** Tuck вне Kubernetes (рекомендуемая схема для банка) теперь показывает статус синхронизации TuckSecret из каждого доверенного кластера: колонка и фильтр «Кластер», сбой одного кластера не скрывает остальные. Нужен `deploy/server/external-cluster-rbac.yaml` в каждом кластере (право `list` на `tucksecrets` и `namespaces` для токена рецензента).
 - **JWT/OIDC: `ca_cert`.** Провайдер на сертификате внутреннего УЦ (типично для банка) теперь можно подключить: PEM-цепочка в конфигурации JWT используется для загрузки JWKS и для token endpoint, и только ей доверяется. Раньше сервер полагался на системное хранилище контейнера. Проверено на реальном Keycloak с CA банка: code + PKCE, claim `groups`, роль по группе, одноразовость `state`.
 - Токен Tuck при входе через JWT/SSO называется по `preferred_username` (иначе `email`, иначе `sub`), например `jwt:anna.sso`, а не по UUID провайдера.
 - **Кластеры Kubernetes без рестарта.** `kubernetes.clusters` перечитывается по SIGHUP или `tuckcli auth kubernetes reload-clusters` (`POST /v1/auth/kubernetes/clusters/reload`): новый кластер доступен сразу, убранный перестаёт принимать вход, некорректный конфиг оставляет текущий набор.

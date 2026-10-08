@@ -1,0 +1,56 @@
+# Apply in EVERY Kubernetes cluster that an external Tuck server serves
+# (kubectl apply -f external-cluster-rbac.yaml). It gives Tuck:
+#   - TokenReview, to verify ServiceAccount tokens (system:auth-delegator);
+#   - read-only list of TuckSecret resources and Namespace annotations, so the
+#     web UI can show the sync status of every cluster (never Secret values).
+# Then issue the reviewer token that Tuck reads from kubernetes.clusters[].token_file
+# and renew it before it expires (Tuck re-reads the file on every use):
+#   kubectl -n tuck-reviewer create token tuck-reviewer --duration=24h > <token_file>.new && mv <token_file>.new <token_file>
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tuck-reviewer
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tuck-reviewer
+  namespace: tuck-reviewer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tuck-reviewer-auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: tuck-reviewer
+    namespace: tuck-reviewer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tuck-reviewer-viewer
+rules:
+  - apiGroups: ["tuck.io"]
+    resources: ["tucksecrets"]
+    verbs: ["list"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tuck-reviewer-viewer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tuck-reviewer-viewer
+subjects:
+  - kind: ServiceAccount
+    name: tuck-reviewer
+    namespace: tuck-reviewer

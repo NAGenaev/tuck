@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/NAGenaev/tuck/internal/audit"
@@ -41,7 +42,8 @@ type Server struct {
 	oidcLimiter *ratelimit.Limiter
 	// tuckSecrets backs the read-only TuckSecret listing; nil when the server
 	// has no Kubernetes API access.
-	tuckSecrets TuckSecretSource
+	tuckSecrets   map[string]TuckSecretSource // cluster name ("" = the cluster the server runs in) -> source
+	tuckSecretsMu sync.RWMutex
 	// rateDefaults are the limits used where the stored runtime config is silent.
 	rateDefaults sysconfig.Config
 	// reloadClusters re-reads the trusted-cluster list from the config file; nil

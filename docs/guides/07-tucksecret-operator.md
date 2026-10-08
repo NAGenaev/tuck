@@ -161,6 +161,8 @@ operator:
 - токену нужна политика с `list` на `sys/k8s/tucksecrets` (root её имеет);
 - токен внутри namespace Tuck видит только TuckSecret из Kubernetes-namespace, привязанных к нему аннотацией `tuck.io/tuck-namespace`; root без заголовка `X-Tuck-Namespace` видит всё.
 
+**Tuck вне кластеров.** Страница читает **все** доверенные кластеры из `kubernetes.clusters` тем же токеном рецензента (`token_file`), что и для TokenReview, и показывает колонку «Кластер» с фильтром. Для этого рецензенту нужно право `list` на `tucksecrets` и `namespaces`: `kubectl apply -f deploy/server/external-cluster-rbac.yaml` в каждом кластере (создаёт ServiceAccount `tuck-reviewer` с `system:auth-delegator` и нужной ролью чтения). Недоступный кластер не скрывает остальные: над таблицей появляется предупреждение с именем кластера и причиной (`k8s_forbidden`, `k8s_error`). Список кластеров обновляется вместе с перечитыванием конфигурации (SIGHUP или `auth kubernetes reload-clusters`). Запрос API: `GET /v1/sys/k8s/tucksecrets[?cluster=dc1]`.
+
 Если страница сообщает «Kubernetes API недоступен», сервер запущен вне кластера или без токена ServiceAccount; «Нет прав на чтение», значит, в релизе выключен `server.rbac.viewTuckSecrets` или оператор не включён. Тот же список отдаёт `GET /v1/sys/k8s/tucksecrets`.
 
 ## Проверка

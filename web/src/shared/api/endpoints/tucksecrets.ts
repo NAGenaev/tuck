@@ -15,6 +15,8 @@ export interface TuckSecretCondition {
 }
 
 export interface TuckSecretView {
+    /** trusted cluster the resource lives in; empty = the cluster Tuck itself runs in */
+    cluster?: string
     k8s_namespace: string
     name: string
     /** Tuck namespace the Kubernetes namespace is bound to; empty = root / unbound */
@@ -32,7 +34,16 @@ export interface TuckSecretView {
     conditions?: TuckSecretCondition[]
 }
 
+export interface ClusterReport {
+    code?: string
+    count: number
+    name: string
+    ok: boolean
+}
+
 export interface TuckSecretsResponse {
+    /** how reading each cluster went; a failing cluster does not hide the others */
+    clusters?: ClusterReport[]
     items: TuckSecretView[]
     count: number
     truncated: boolean

@@ -205,3 +205,72 @@ func TestListTuckSecretsUnavailable(t *testing.T) {
 		t.Fatalf("generic error must not leak details: %d %s", s, b)
 	}
 }
+
+// Tuck usually runs outside the clusters it serves: the page must read every
+// trusted cluster, label the rows with their cluster, and keep working when
+// one cluster is down.
+func TestListTuckSecretsAcrossClusters(t *testing.T) {
+	healthy := func(ns, name string) *fakeTuckSecretSource {
+		return &fakeTuckSecretSource{
+			list: &operator.TuckSecretList{Items: []operator.TuckSecret{tsItem(ns, name, name, true, "")}},
+			ns:   map[string]map[string]string{ns: {"tuck.io/tuck-namespace": "payments"}},
+		}
+	}
+	c := core.New(physical.NewInMem(), seal.NewDev(filepath.Join(t.TempDir(), "rootkey")))
+	res, err := c.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := New(c)
+	srv.SetTuckSecretSources(map[string]TuckSecretSource{
+		"dc1": healthy("payments", "core-db"),
+		"dc2": healthy("payments", "core-db"),
+		"dc3": &fakeTuckSecretSource{err: &operator.StatusError{Code: http.StatusForbidden}},
+	})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	get := func(q string) (int, string) {
+		resp, err := http.DefaultClient.Do(authedReq(t, http.MethodGet, ts.URL+"/v1/sys/k8s/tucksecrets"+q, "", res.RootToken.ID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b)
+	}
+
+	s, b := get("")
+	if s != http.StatusOK {
+		t.Fatalf("one failing cluster must not fail the page: %d %s", s, b)
+	}
+	var out struct {
+		Items    []tuckSecretView `json:"items"`
+		Clusters []clusterReport  `json:"clusters"`
+	}
+	if err := json.Unmarshal([]byte(b), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Items) != 2 || out.Items[0].Cluster != "dc1" || out.Items[1].Cluster != "dc2" {
+		t.Errorf("rows are not labelled per cluster: %+v", out.Items)
+	}
+	reports := map[string]clusterReport{}
+	for _, r := range out.Clusters {
+		reports[r.Name] = r
+	}
+	if !reports["dc1"].OK || reports["dc1"].Count != 1 || reports["dc3"].OK || reports["dc3"].Code != "k8s_forbidden" {
+		t.Errorf("cluster reports: %+v", out.Clusters)
+	}
+
+	// One cluster on request; an unknown one is a 404.
+	if s, b := get("?cluster=dc2"); s != http.StatusOK || strings.Count(b, `"cluster":"dc2"`) != 1 || strings.Contains(b, "dc1") {
+		t.Errorf("?cluster=dc2: %d %s", s, b)
+	}
+	if s, _ := get("?cluster=nope"); s != http.StatusNotFound {
+		t.Errorf("unknown cluster: %d", s)
+	}
+	// Only failures: the old "unavailable" semantics (and the reason) survive.
+	srv.SetTuckSecretSources(map[string]TuckSecretSource{"dc3": &fakeTuckSecretSource{err: &operator.StatusError{Code: http.StatusForbidden}}})
+	if s, b := get(""); s != http.StatusServiceUnavailable || !strings.Contains(b, "k8s_forbidden") {
+		t.Errorf("all clusters failing: %d %s", s, b)
+	}
+}

@@ -444,24 +444,42 @@ func (a *Authenticator) groupsOf(conn Conn, userDN string, fromAttr []string) ([
 	return groups, nil
 }
 
+// Session is one service-account connection to the directory that can resolve
+// many users. Re-validating every live token opens one of these per pass
+// instead of one TLS connection per person, which matters on a domain
+// controller with thousands of users.
+type Session struct {
+	a    *Authenticator
+	conn Conn
+}
+
+// OpenSession connects and binds the service account.
+func (a *Authenticator) OpenSession(ctx context.Context) (*Session, error) {
+	conn, err := a.dial(ctx, a.cfg)
+	if err != nil {
+		return nil, fmt.Errorf("%w: connect: %w", ErrUnavailable, err)
+	}
+	if err := conn.Bind(a.cfg.BindDN, a.cfg.BindPassword); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("%w: service account bind: %w", ErrUnavailable, err)
+	}
+	return &Session{a: a, conn: conn}, nil
+}
+
+// Close releases the connection.
+func (s *Session) Close() { _ = s.conn.Close() }
+
 // Resolve answers, without a password, which policies the user is entitled to
 // in the Tuck namespace tuckNS right now. It is how Tuck notices that a person
 // who logged in earlier has since left the group. An empty result with a nil
 // error means "still in the directory, but no role grants access in tuckNS".
 // ErrUserNotFound means the account is gone; ErrUnavailable that nothing can
 // be concluded.
-func (a *Authenticator) Resolve(ctx context.Context, roles []*Role, username, tuckNS string) ([]string, error) {
-	conn, err := a.dial(ctx, a.cfg)
-	if err != nil {
-		return nil, fmt.Errorf("%w: connect: %w", ErrUnavailable, err)
-	}
-	defer func() { _ = conn.Close() }()
-	if err := conn.Bind(a.cfg.BindDN, a.cfg.BindPassword); err != nil {
-		return nil, fmt.Errorf("%w: service account bind: %w", ErrUnavailable, err)
-	}
+func (s *Session) Resolve(ctx context.Context, roles []*Role, username, tuckNS string) ([]string, error) {
+	a := s.a
 	groupAttr := a.cfg.groupAttrField()
 	filter := fmt.Sprintf("(%s=%s)", a.cfg.userAttrField(), goldap.EscapeFilter(username))
-	entries, err := conn.Search(a.cfg.UserDN, filter, []string{"dn", groupAttr})
+	entries, err := s.conn.Search(a.cfg.UserDN, filter, []string{"dn", groupAttr})
 	if err != nil {
 		return nil, fmt.Errorf("%w: user search: %w", ErrUnavailable, err)
 	}
@@ -469,12 +487,22 @@ func (a *Authenticator) Resolve(ctx context.Context, roles []*Role, username, tu
 		return nil, ErrUserNotFound
 	}
 	userDN := entries[0].DN
-	groups, err := a.groupsOf(conn, userDN, entries[0].Attributes[groupAttr])
+	groups, err := a.groupsOf(s.conn, userDN, entries[0].Attributes[groupAttr])
 	if err != nil {
 		return nil, err
 	}
 	policies, _, _, _, _ := matchRoles(roles, username, userDN, groups, &tuckNS)
 	return policies, nil
+}
+
+// Resolve is OpenSession + Session.Resolve + Close for a single user.
+func (a *Authenticator) Resolve(ctx context.Context, roles []*Role, username, tuckNS string) ([]string, error) {
+	s, err := a.OpenSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer s.Close()
+	return s.Resolve(ctx, roles, username, tuckNS)
 }
 
 // matchRoles returns the union of policies and the maximum TTL from the

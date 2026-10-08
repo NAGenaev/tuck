@@ -81,6 +81,31 @@ func (c *Core) RecheckLDAPTokens(ctx context.Context) (*LDAPRecheckResult, error
 	sort.Strings(users)
 	res.Users = len(users)
 
+	// One directory connection for the whole pass; reopened once if it breaks.
+	var sess *authlda.Session
+	defer func() {
+		if sess != nil {
+			sess.Close()
+		}
+	}()
+	resolve := func(u, ns string) ([]string, error) {
+		for attempt := 0; ; attempt++ {
+			if sess == nil {
+				var oerr error
+				if sess, oerr = auth.OpenSession(ctx); oerr != nil {
+					return nil, oerr
+				}
+			}
+			pol, rerr := sess.Resolve(ctx, roles, u, ns)
+			if rerr != nil && errors.Is(rerr, authlda.ErrUnavailable) && attempt == 0 {
+				sess.Close()
+				sess = nil
+				continue
+			}
+			return pol, rerr
+		}
+	}
+
 	for _, u := range users {
 		if ctx.Err() != nil {
 			break
@@ -95,7 +120,7 @@ func (c *Core) RecheckLDAPTokens(ctx context.Context) (*LDAPRecheckResult, error
 			}
 			pol, seen := perNS[ns]
 			if !seen && !gone && !failed {
-				pol, err = auth.Resolve(ctx, roles, u, ns)
+				pol, err = resolve(u, ns)
 				switch {
 				case errors.Is(err, authlda.ErrUserNotFound):
 					gone, pol = true, nil

@@ -22,6 +22,7 @@ type liveDir struct {
 	mu    sync.Mutex
 	users map[string]fakeLDAPUser
 	down  bool
+	dials int
 }
 
 func (d *liveDir) dial(_ context.Context, _ authlda.Config) (authlda.Conn, error) {
@@ -30,6 +31,7 @@ func (d *liveDir) dial(_ context.Context, _ authlda.Config) (authlda.Conn, error
 	if d.down {
 		return nil, errors.New("connection refused")
 	}
+	d.dials++
 	cp := make(map[string]fakeLDAPUser, len(d.users))
 	for k, v := range d.users {
 		cp[k] = v
@@ -206,5 +208,32 @@ func TestLDAPRevokeUserEndpoint(t *testing.T) {
 		if s2, _ := doJSON(t, ts, http.MethodPost, "/v1/auth/ldap/users/bob/revoke", "", jsonField(t, b, "token")); s2 != http.StatusForbidden {
 			t.Errorf("unprivileged revoke-user: %d, want 403", s2)
 		}
+	}
+}
+
+// A pass over many people uses one directory connection, not one per person.
+func TestLDAPRecheckReusesTheDirectoryConnection(t *testing.T) {
+	ts, dir, root := newRecheckServer(t)
+	putLDAPConfig(t, ts, root)
+	putLDAPRole(t, ts, root, "devs", []string{"devs"}, nil, []string{"default"}, "8h")
+	for _, u := range []string{"alice", "bob"} {
+		pw := map[string]string{"alice": "alicepass", "bob": "bobpass"}[u]
+		for i := 0; i < 3; i++ { // several tokens each
+			if s, b := ldapLogin(t, ts, u, pw); s != http.StatusOK {
+				t.Fatalf("login %s: %d %s", u, s, b)
+			}
+		}
+	}
+	dir.mu.Lock()
+	dir.dials = 0
+	dir.mu.Unlock()
+	if out := recheck(t, ts, root); !strings.Contains(out, `"users":2`) || !strings.Contains(out, `"tokens":6`) {
+		t.Fatalf("pass: %s", out)
+	}
+	dir.mu.Lock()
+	n := dir.dials
+	dir.mu.Unlock()
+	if n != 1 {
+		t.Errorf("a pass over 2 people opened %d connections, want 1", n)
 	}
 }

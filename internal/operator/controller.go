@@ -136,9 +136,12 @@ func (ctrl *Controller) runOnce(ctx context.Context) error {
 		}
 	}
 
-	// 2. Periodic refresh ticker fires every 30 s; the controller reconciles
-	//    any resource whose refreshInterval has elapsed since last sync.
-	ticker := time.NewTicker(30 * time.Second)
+	// 2. The controller reconciles any resource whose refreshInterval has
+	//    elapsed since its last sync. The scan must be much finer than the
+	//    shortest interval: with a 30 s scan and a 30 s interval, a resource
+	//    synced a few milliseconds after a scan was never due at the next one,
+	//    so it waited for the one after (60 s instead of 30 s).
+	ticker := time.NewTicker(dueScanPeriod)
 	defer ticker.Stop()
 
 	// 3. Watch from the resourceVersion returned by the list.
@@ -167,6 +170,11 @@ func (ctrl *Controller) runOnce(ctx context.Context) error {
 		}
 	}
 }
+
+// dueScanPeriod is how often tracked resources are checked for a due refresh.
+// The check only compares timestamps; Tuck is contacted just for resources that
+// are due.
+const dueScanPeriod = 2 * time.Second
 
 // handleEvent dispatches a watch event.
 func (ctrl *Controller) handleEvent(ctx context.Context, ev WatchEvent) error {

@@ -180,7 +180,7 @@ func (d *Dispatcher) RegisterWith(name, typ string, sink Sink, paused bool) {
 	d.sinks[name] = r
 	d.mu.Unlock()
 	if old != nil {
-		old.close(drainTimeout)
+		_ = old.close(drainTimeout)
 	}
 }
 

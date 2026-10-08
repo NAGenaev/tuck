@@ -546,12 +546,3 @@ func indexOf(s string, b byte) int {
 	return -1
 }
 
-func splitList(s string) []string {
-	var out []string
-	for _, p := range strings.Split(s, ",") {
-		if p = strings.TrimSpace(p); p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
-}

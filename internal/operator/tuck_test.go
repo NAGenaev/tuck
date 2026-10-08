@@ -16,8 +16,8 @@ import (
 func TestGetSecret_KVVersionSelectsURL(t *testing.T) {
 	var gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/v1/auth/kubernetes/login":
+		switch r.URL.Path {
+		case "/v1/auth/kubernetes/login":
 			_ = json.NewEncoder(w).Encode(map[string]string{"token": "tok"})
 		default:
 			gotPath = r.URL.Path

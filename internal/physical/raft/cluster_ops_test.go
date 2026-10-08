@@ -220,7 +220,7 @@ func TestSnapshotListCreateOpen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenSnapshot: %v", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	raw, _ := io.ReadAll(rc)
 	var data map[string][]byte
 	if err := json.Unmarshal(raw, &data); err != nil {

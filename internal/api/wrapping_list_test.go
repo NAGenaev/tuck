@@ -27,7 +27,7 @@ func wrapDo(t *testing.T, base, method, path, body, tok, ns string) (int, string
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	b, _ := io.ReadAll(resp.Body)
 	return resp.StatusCode, string(b)
 }
@@ -201,7 +201,7 @@ func TestWrappingListRequiresToken(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != 401 {
 			t.Fatalf("%s: want 401, got %d", p, resp.StatusCode)
 		}

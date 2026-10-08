@@ -50,7 +50,7 @@ func TestRestartKeepsDataAndTokens(t *testing.T) {
 
 	ts2, c2, second, be2 := boot()
 	defer ts2.Close()
-	defer be2.Close()
+	defer func() { _ = be2.Close() }()
 	if second != nil && second.RootToken != nil {
 		t.Fatal("second start must not issue a new root token")
 	}

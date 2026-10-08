@@ -75,12 +75,14 @@ func New(kube KubeClientIface, tuck TuckClientIface, namespace string) *Controll
 	}
 }
 
-// EnforceNamespacePaths turns on per-namespace Tuck path isolation. It must be
-// called before Run.
+// EnableRestartTargets allows TuckSecret resources to trigger rollout restarts
+// of their listed workloads on real secret rotation. It must be called before Run.
 func (ctrl *Controller) EnableRestartTargets(enabled bool) {
 	ctrl.restartTargetsEnabled = enabled
 }
 
+// EnforceNamespacePaths turns on per-namespace Tuck path isolation. It must be
+// called before Run.
 func (ctrl *Controller) EnforceNamespacePaths(enabled bool) {
 	ctrl.enforceNamespacePaths = enabled
 }

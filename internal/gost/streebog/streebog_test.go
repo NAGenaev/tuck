@@ -98,7 +98,7 @@ func TestChunkedWrites(t *testing.T) {
 			},
 		} {
 			whole := mk()
-			whole.Write(data)
+			_, _ = whole.Write(data)
 			want := whole.Sum(nil)
 			for _, step := range []int{1, 7, 64, 100} {
 				h := mk()
@@ -107,7 +107,7 @@ func TestChunkedWrites(t *testing.T) {
 					if end > len(data) {
 						end = len(data)
 					}
-					h.Write(data[i:end])
+					_, _ = h.Write(data[i:end])
 				}
 				if got := h.Sum(nil); !bytes.Equal(got, want) {
 					t.Fatalf("size %d step %d: chunked digest differs", size, step)
@@ -117,7 +117,7 @@ func TestChunkedWrites(t *testing.T) {
 					t.Fatalf("size %d step %d: second Sum differs", size, step)
 				}
 				h.Reset()
-				h.Write(data)
+				_, _ = h.Write(data)
 				if got := h.Sum(nil); !bytes.Equal(got, want) {
 					t.Fatalf("size %d step %d: digest after Reset differs", size, step)
 				}

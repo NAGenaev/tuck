@@ -19,7 +19,7 @@ func nsReq(t *testing.T, ts *httptest.Server, method, path, body, tok, ns string
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var sb strings.Builder
 	buf := make([]byte, 4096)
 	for {
@@ -84,7 +84,7 @@ func TestK8sLoginRoleBoundToNamespace(t *testing.T) {
 
 	// A client-supplied namespace header on login must not influence the token.
 	resp := loginK8s(t, ts, "sa")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var sb strings.Builder
 	buf := make([]byte, 4096)
 	n, _ := resp.Body.Read(buf)
@@ -105,7 +105,7 @@ func TestK8sLoginUnboundRoleStaysInRoot(t *testing.T) {
 		t.Fatalf("put role: %d %s", s, b)
 	}
 	resp := loginK8s(t, ts, "sa")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	buf := make([]byte, 4096)
 	n, _ := resp.Body.Read(buf)
 	tok, err := c.LookupToken(t.Context(), jsonField(t, buf[:n], "token"))
@@ -216,7 +216,7 @@ func TestLoginRefusedWhenBoundNamespaceDeleted(t *testing.T) {
 		t.Fatalf("delete namespace: %d %s", s, b)
 	}
 	resp := loginK8s(t, ts, "sa")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("login into deleted namespace: got %d, want 403", resp.StatusCode)
 	}

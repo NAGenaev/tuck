@@ -129,14 +129,14 @@ func TestRaftTLSRejectsForeignCA(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer srv.Close()
+	defer func() { _ = srv.Close() }()
 	go func() {
 		for {
 			c, err := srv.Accept()
 			if err != nil {
 				return
 			}
-			go func() { defer c.Close(); buf := make([]byte, 1); _, _ = c.Read(buf); _, _ = c.Write([]byte("k")) }()
+			go func() { defer func() { _ = c.Close() }(); buf := make([]byte, 1); _, _ = c.Read(buf); _, _ = c.Write([]byte("k")) }()
 		}
 	}()
 	addr := hraft.ServerAddress(srv.Listener.Addr().String())
@@ -146,12 +146,12 @@ func TestRaftTLSRejectsForeignCA(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		defer cl.Close()
+		defer func() { _ = cl.Close() }()
 		conn, err := cl.Dial(addr, 2*time.Second)
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
 		if _, err := conn.Write([]byte("x")); err != nil {
 			return err

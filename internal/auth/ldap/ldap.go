@@ -169,7 +169,7 @@ func (r *realConn) Search(baseDN, filter string, attrs []string) ([]*Entry, erro
 		0, 30, false,
 		filter, attrs, nil,
 	)
-	res, err := r.inner.Search(req)
+	res, err := r.inner.SearchWithPaging(req, 500) // AD caps unpaged results at 1000 entries
 	if err != nil {
 		return nil, err
 	}

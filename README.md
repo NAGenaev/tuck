@@ -83,10 +83,13 @@ Tuck — специализированная система управлени�
 ### 4.1. Режим разработки (автоматическое снятие печати)
 
 ```sh
-go run ./cmd/tuck --seal-type=dev
-# tuck: unsealed (dev seal), serving on https://127.0.0.1:8200
-# ROOT TOKEN: tuck_...
+go run ./cmd/tuck --tls-auto
+# tuck: TLS enabled (auto-generated self-signed — dev only)
+# ROOT TOKEN (shown once — store it securely):
+# tuck_...
 ```
+
+`--seal-type=dev` задан по умолчанию; без `--tls-auto` (или `--tls-cert`/`--tls-key`) сервер слушает обычный HTTP. Данные пишутся в `tuck.db` в текущем каталоге.
 
 > Режим разработки не предназначен для использования в производственных средах.
 
@@ -95,6 +98,7 @@ go run ./cmd/tuck --seal-type=dev
 ```sh
 export TUCK_ADDR=https://127.0.0.1:8200
 export TUCK_TOKEN=tuck_...
+export TUCK_INSECURE=1   # только для самоподписанного сертификата --tls-auto
 
 tuckcli kv put db/password s3cr3t
 tuckcli kv get db/password
@@ -111,7 +115,7 @@ tuck \
   --addr=0.0.0.0:8200 \
   --tls-cert=/etc/tuck/tls.crt \
   --tls-key=/etc/tuck/tls.key \
-  --data-dir=/var/lib/tuck
+  --data=/var/lib/tuck/tuck.db
 ```
 
 При первом запуске система выводит корневой токен и 5 долей Шамира. Доли распределяются операторам раздельно. После перезапуска сервера для снятия печати необходимо предъявить любые 3 доли:
@@ -267,13 +271,13 @@ tuckcli token revoke <id>
 tuckcli token list
 
 # Управление политиками
-tuckcli policy put <имя> <json-правила>
+tuckcli policy put <имя> <json-массив-правил|->     # [{"path":"secret/app/*","capabilities":["read","list"]}]
 tuckcli policy get <имя>
 tuckcli policy delete <имя>
 tuckcli policy list
 ```
 
-Переменные среды: `TUCK_ADDR` (по умолчанию `https://127.0.0.1:8200`), `TUCK_TOKEN`.
+Переменные среды: `TUCK_ADDR` (по умолчанию `http://127.0.0.1:8200`), `TUCK_TOKEN`, `TUCK_INSECURE=1` (не проверять самоподписанный сертификат; то же, что `--insecure`), `TUCK_NAMESPACE`. Полный список команд: `tuckcli` без аргументов.
 
 ---
 
@@ -282,18 +286,15 @@ tuckcli policy list
 ```go
 import "github.com/NAGenaev/tuck/pkg/client"
 
-c, err := client.New(client.Config{
-    Addr:  "https://tuck:8200",
-    Token: os.Getenv("TUCK_TOKEN"),
-})
+c := client.New("https://tuck:8200", os.Getenv("TUCK_TOKEN")) // + client.WithCAFile(path) / client.WithInsecure()
 
-// KV v1
-_ = c.KV().Put(ctx, "secret/db/password", "s3cr3t")
-val, _ := c.KV().Get(ctx, "secret/db/password")
+// KV v1 (путь относительно mount secret/)
+_ = c.PutSecret(ctx, "db/password", []byte("s3cr3t"))
+val, _ := c.GetSecret(ctx, "db/password")
 
 // KV v2
-_ = c.KVv2().Put(ctx, "app/config", map[string]string{"key": "val"})
-secret, _ := c.KVv2().Get(ctx, "app/config", 0) // 0 = последняя версия
+_, _ = c.KVv2().Write(ctx, "app/config", []byte("val"), 0) // 0 = без CAS
+res, _ := c.KVv2().Read(ctx, "app/config", 0)              // 0 = последняя версия; res.Value
 ```
 
 ---

@@ -26,6 +26,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Браузерный вход через OIDC (SSO).** Authorization code + PKCE (S256), `state` и `nonce`: на странице входа появляется вкладка «SSO» (когда в `PUT /v1/auth/jwt/config` заданы `oidc_authorization_url`, `oidc_token_url`, `oidc_client_id`, `oidc_redirect_uri`, опционально `oidc_client_secret` и `oidc_scopes`; секрет в `GET` не возвращается). Новые ручки `GET /v1/auth/oidc/status`, `GET /v1/auth/oidc/auth-url`, `POST /v1/auth/oidc/callback`; одноразовое состояние живёт в barrier (5 минут), id_token проверяется по `jwks_uri`, роль подбирается как при JWT-входе. Роли JWT получили `bound_groups` (подходит любая группа из claim `groups`), в том числе для обычного JWT-входа.
 - Вход через LDAP для пользователей с ролями в нескольких namespace: после проверки пароля сервер отвечает `409` со списком namespace, клиент повторяет вход с полем `namespace`; в UI показывается выбор.
 - Оператор: аннотация `tuck.io/tuck-namespace` на Kubernetes-Namespace привязывает его к Tuck-namespace (при `--enforce-namespace-paths`).
 - **Helm: mTLS для Raft.** `server.cluster.tls.secretName` (Secret с `tls.crt`, `tls.key`, `ca.crt`) включает взаимный TLS на Raft-порту 8201, `server.cluster.tls.serverName` — проверку имени пира. Проверено на minikube (3 пода, смена лидера). Исправлено: ключ `shamirSeal.n` в `values.yaml` читался Helm как булево значение, и под запускался с пустым `--seal-shamir-n=`.
@@ -54,6 +55,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **Operator: multi-key Secrets.** `TuckSecret.spec.data` (ключ Secret → путь в Tuck) наполняет несколько ключей одного K8s Secret; `tuckPath`/`secretKey` остаются рабочими и могут сочетаться с `data`. `tuckPath`/`secretKey` больше не обязательны в CRD (обязателен `secretName`).
 - **Operator: namespace isolation.** Флаг `--enforce-namespace-paths` (Helm `operator.enforceNamespacePaths`) ограничивает TuckSecret путями `<namespace>/...` плюс префиксы из аннотации Namespace `tuck.io/allowed-paths`; пути с `..`, пустыми сегментами и спецсимволами отклоняются, при ошибке чтения Namespace доступ запрещается.
 - **Auth roles bound to a Tuck namespace.** Роли Kubernetes/AppRole/JWT/LDAP получили необязательное поле `tuck_namespace`: токен, выданный при логине, привязывается к этому namespace (существование проверяется, 404 если нет; namespaced-вызывающий может создавать роли только для своего namespace, иначе 403). Namespace берётся только из роли, заголовок `X-Tuck-Namespace` на логине игнорируется. Пустое значение = root, как раньше. LDAP: если совпавшие роли привязаны к разным namespace, логин отклоняется (токен живёт в одном namespace).
+- `tuckcli`: команды `auth ldap login|config|role`, `auth kubernetes login|role|clusters`; переменная `TUCK_INSECURE=1`; `--namespace` теперь действует и на `kv put/list`.
+- Helm: `injector.failurePolicy`.
 
 ### Fixed
 
@@ -62,6 +65,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **Operator:** `ApplySecret` больше не затирает весь Secret целиком: чужие ключи, labels, annotations и `type` сохраняются (merge), поэтому несколько TuckSecret могут делить один Secret. Два TuckSecret на один ключ одного Secret теперь дают явную ошибку `conflict` вместо тихой перезаписи.
 - **Operator:** значения читаются из Tuck до записи — частичный отказ не оставляет наполовину обновлённый Secret.
 - **Deploy:** в `deploy/operator/deployment.yaml` ClusterRole не хватало `update/patch` на tucksecrets (финализатор) и `patch/delete` на secrets (`deletionPolicy: Delete`).
+- **LDAP:** недоступный каталог и ошибки TLS давали `500` с адресами серверов; теперь `503 directory unavailable`, детали только в логе, таймауты подключения 5 с и операции 10 с (раньше вход мог висеть 81 с). Сетевой сбой при проверке пароля не считается неверным паролем.
+- **LDAP:** блокировка после 5 неудачных входов считается по паре «логин + адрес клиента», а не по одному логину (иначе один злоумышленник блокировал пользователя для всех).
+- **Injector:** patch мутирующего webhook кодировался в base64 дважды, API-сервер получал невалидный patch и при `failurePolicy: Ignore` pod тихо создавался без агента.
+- **Transit seal:** узел, перезапущенный при недоступном Vault, больше не падает (`log.Fatalf`), а остаётся sealed и каждые 5 с повторяет автораспечатку.
+- **Shamir seal:** повторный unseal после `seal` возвращал `500`.
+- **Release:** у arm64-образов в `.goreleaser.yaml` не были заданы `goos/goarch` (в образ попадал бы бинарник amd64); в `release.yml` добавлен `setup-node` для сборки UI.
+- **tuckcli:** BOM в stdin больше не ломает JSON-аргументы.
+- Документация: политики, флаги, HTTP-методы и команды в руководствах сверены с реальными бинарниками; `secret/*` не заходит во вложенные пути (нужен `secret/**`); новое руководство 13 «Подключить команду».
 
 ---
 

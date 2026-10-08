@@ -28,19 +28,21 @@ go build -o tuckcli.exe ./cmd/tuckcli
 ### 2. Запустить сервер в dev-режиме
 
 ```powershell
-.\tuck.exe server -dev
+.\tuck.exe -tls-auto
 ```
 
-В выводе найдите строку **ROOT TOKEN** — скопируйте значение `tuck_...`.
+У `tuck` нет подкоманд и флага `-dev`: dev-режим это значения по умолчанию (`-seal-type dev`) плюс `-tls-auto` для самоподписанного HTTPS. Адрес по умолчанию `127.0.0.1:8200`.
 
-> В dev-режиме сервер уже распечатан (unsealed), данные в памяти, TLS самоподписанный.
+При **первом** старте в логе печатается блок `ROOT TOKEN (shown once ...)`, на следующей строке значение `tuck_...`. Скопируйте его: повторно токен не показывается.
+
+> Dev-режим: сервер распечатывается сам, ключ лежит открытым текстом в файле `tuck-dev-rootkey`, данные хранятся в файле `tuck.db` в текущей папке (переживают перезапуск; для чистого старта удалите оба файла). TLS самоподписанный. Для продакшна см. [04](04-prod-shamir.md).
 
 ### 3. Настроить CLI
 
 ```powershell
 $env:TUCK_ADDR  = "https://127.0.0.1:8200"
 $env:TUCK_TOKEN = "tuck_..."   # ваш root token
-$env:TUCK_INSECURE = "1"       # доверять самоподписанному TLS
+$env:TUCK_INSECURE = "1"       # доверять самоподписанному TLS (то же, что флаг --insecure)
 ```
 
 ### 4. Проверить здоровье
@@ -55,7 +57,7 @@ $env:TUCK_INSECURE = "1"       # доверять самоподписанном
 .\tuckcli.exe kv put myapp/db-password "postgres-secret-xyz"
 ```
 
-Путь `myapp/db-password` соответствует API `PUT /v1/secret/myapp/db-password`.
+Путь в CLI указывается относительно монтирования `secret/`: `myapp/db-password` это API `PUT /v1/secret/myapp/db-password`. Префикс `secret/` в командах `kv` писать не нужно (в политиках, наоборот, нужен).
 
 ### 6. Прочитать секрет
 
@@ -73,7 +75,7 @@ $env:TUCK_INSECURE = "1"       # доверять самоподписанном
 
 | Действие | Ожидаемый результат |
 |----------|---------------------|
-| `tuckcli status` | `sealed: false`, `initialized: true` |
+| `tuckcli status` | `"sealed": false`, `"type": "dev"` |
 | `kv get myapp/db-password` | JSON с полем `value` = `postgres-secret-xyz` |
 | `kv list myapp` | массив с ключом `db-password` |
 
@@ -81,9 +83,10 @@ $env:TUCK_INSECURE = "1"       # доверять самоподписанном
 
 | Симптом | Решение |
 |---------|---------|
-| `connection refused` | Сервер не запущен или неверный `TUCK_ADDR` |
+| `connection refused` | Сервер не запущен или неверный `TUCK_ADDR` (схема `https://`, раз запущен с `-tls-auto`) |
+| `address already in use` | Порт 8200 занят: запустите с `-addr 127.0.0.1:8201` и поправьте `TUCK_ADDR` |
 | `403 permission denied` | Неверный или просроченный `TUCK_TOKEN` |
-| TLS / certificate error | Установите `TUCK_INSECURE=1` или добавьте `-k` в curl |
+| TLS / certificate error | Установите `TUCK_INSECURE=1` (или `--insecure`), в curl добавьте `-k` |
 
 ## Дальше
 

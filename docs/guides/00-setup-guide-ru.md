@@ -69,17 +69,21 @@ cd D:\Projects\tuck
 # Сборка
 go build -o tuck.exe ./cmd/tuck
 
-# Убедиться что работает
-.\tuck.exe --help
+# CLI-клиент
+go build -o tuckcli.exe ./cmd/tuckcli
+
+# Убедиться что работает (у tuck нет подкоманд, только флаги)
+.\tuck.exe -h
+.\tuckcli.exe version
 ```
 
-Бинарь `tuck.exe` появится в корне проекта.
+Бинари `tuck.exe` (сервер) и `tuckcli.exe` (клиент) появятся в корне проекта.
 
 ---
 
 ## 3. Локальный запуск (dev-режим)
 
-Dev-режим — самый быстрый старт: хранит данные в памяти, не требует TLS и запечатывания.
+Dev-режим — самый быстрый старт: сервер сам распечатывается (ключ лежит открытым текстом в файле `tuck-dev-rootkey`), данные хранятся в файле `tuck.db` в текущей папке и переживают перезапуск, TLS самоподписанный. У `tuck` нет подкоманд и флага `-dev`: всё задаётся флагами (`tuck.exe -h`), YAML-файлом (`--config`) или переменными окружения.
 
 ### Запуск сервера
 
@@ -87,19 +91,17 @@ Dev-режим — самый быстрый старт: хранит данны
 
 ```powershell
 cd D:\Projects\tuck
-.\tuck.exe server -dev
+.\tuck.exe -tls-auto
 ```
 
-Вы увидите:
+При **первом** старте в логе печатается блок:
 
 ```
-Tuck server started
-Mode:      dev
-Address:   http://127.0.0.1:8200
-Root token: tuck_<длинная строка>
+ROOT TOKEN (shown once — store it securely):
+tuck_<длинная строка>
 ```
 
-**Скопируйте root token** — он нужен для всех операций.
+**Скопируйте root token** — повторно он не показывается. Адрес по умолчанию `127.0.0.1:8200`, схема `https` (самоподписанный сертификат). Чистый старт: остановите сервер и удалите `tuck.db` и `tuck-dev-rootkey`.
 
 ### Проверка работы
 
@@ -108,31 +110,33 @@ Root token: tuck_<длинная строка>
 ```powershell
 $TOKEN = "tuck_<ваш токен>"
 
-# Health check
-curl.exe -s http://127.0.0.1:8200/v1/sys/health | ConvertFrom-Json
+# Health check (-k: самоподписанный сертификат)
+curl.exe -k -s https://127.0.0.1:8200/v1/health | ConvertFrom-Json
 
 # Записать секрет
-curl.exe -s -X PUT http://127.0.0.1:8200/v1/secret/test/hello `
+curl.exe -k -s -X PUT https://127.0.0.1:8200/v1/secret/test/hello `
   -H "X-Tuck-Token: $TOKEN" `
   -H "Content-Type: text/plain" `
   -d "world"
 
 # Прочитать секрет
-curl.exe -s http://127.0.0.1:8200/v1/secret/test/hello `
+curl.exe -k -s https://127.0.0.1:8200/v1/secret/test/hello `
   -H "X-Tuck-Token: $TOKEN" | ConvertFrom-Json
 ```
 
 ### Запуск с сохранением данных (production-режим)
 
-```powershell
-# Инициализация (один раз)
-.\tuck.exe server init --data-dir D:\tuck-data
+Для продакшна печать секретов по Shamir, свой каталог данных и YAML-конфиг; подробно в [04 — Shamir](04-prod-shamir.md). Коротко:
 
-# Сервер сохраняет данные на диск
-.\tuck.exe server --data-dir D:\tuck-data --addr 127.0.0.1:8200
+```powershell
+# Первый старт: в логе ROOT TOKEN и 5 SHAMIR SHARES (показываются один раз)
+.\tuck.exe -seal-type shamir -data D:\tuck-data\tuck.db -tls-auto -addr 127.0.0.1:8200
+
+# После каждого перезапуска нужны любые 3 доли (k из n)
+.\tuckcli.exe unseal <share>
 ```
 
-После перезапуска сервера в production-режиме потребуется **unseal** ключами из init.
+Или одним файлом: `.\tuck.exe --config tuck.yaml` (поля `addr`, `data`, `tls`, `seal`, ...; см. [25 — Пилот](25-pilot-deployment.md)).
 
 ---
 
@@ -145,8 +149,10 @@ Tuck включает встроенный веб-интерфейс для уп
 Пока сервер запущен (шаг 3), откройте в браузере:
 
 ```
-http://127.0.0.1:8200/ui/
+https://127.0.0.1:8200/ui/
 ```
+
+Браузер предупредит о самоподписанном сертификате (dev-режим): подтвердите исключение.
 
 Или для minikube (после port-forward, см. шаг 6):
 
@@ -190,37 +196,35 @@ http://127.0.0.1:8201/ui/
 
 ## 5. CLI — базовые команды
 
+CLI это `tuckcli.exe`; `tuck.exe` это только сервер.
+
 ```powershell
 # Переменные окружения (чтобы не вводить каждый раз)
-$env:TUCK_ADDR  = "http://127.0.0.1:8200"
-$env:TUCK_TOKEN = "tuck_<ваш токен>"
+$env:TUCK_ADDR     = "https://127.0.0.1:8200"
+$env:TUCK_TOKEN    = "tuck_<ваш токен>"
+$env:TUCK_INSECURE = "1"   # только для самоподписанного dev-сертификата
 
-# Секреты (KV v1)
-.\tuck.exe kv put secret/db/password "supersecret"
-.\tuck.exe kv get secret/db/password
-.\tuck.exe kv list secret/db/
-.\tuck.exe kv delete secret/db/password
-
-# Секреты (KV v2)
-.\tuck.exe kv put v2/secret/app/config "production"
-.\tuck.exe kv get v2/secret/app/config
-.\tuck.exe kv get v2/secret/app/config --version 1
+# Секреты (KV v1); путь указывается относительно mount secret/
+.\tuckcli.exe kv put db/password "supersecret"
+.\tuckcli.exe kv get db/password
+.\tuckcli.exe kv list db/
+.\tuckcli.exe kv delete db/password
 
 # Токены
-.\tuck.exe token create --policy default --ttl 24h
-.\tuck.exe token lookup <token-id>
-.\tuck.exe token revoke <token-id>
+.\tuckcli.exe token create --name=demo --policy=app-readonly --ttl=24h
+.\tuckcli.exe token get <token-id>
+.\tuckcli.exe token revoke <token-id>
 
-# Политики
-.\tuck.exe policy write prod-ro - <<'EOF'
-path "secret/prod/*" { capabilities = ["read"] }
-EOF
-.\tuck.exe policy read prod-ro
+# Политики: JSON-массив правил, из stdin (PS 5.1 портит кавычки в аргументах)
+'[{"path":"secret/prod/*","capabilities":["read"]}]' | .\tuckcli.exe policy put prod-ro -
+.\tuckcli.exe policy get prod-ro
 
 # Identity
-.\tuck.exe identity entity create --name app-service
-.\tuck.exe identity group create --name ops-team
+.\tuckcli.exe identity entity create --name=app-service
+.\tuckcli.exe identity group create --name=ops-team
 ```
+
+`tuckcli` работает только с KV v1. Версионированный KV v2 доступен по HTTP API, см. [03 — KV v2](03-kvv2.md). Полный список команд: `tuckcli.exe` без аргументов.
 
 ---
 
@@ -256,18 +260,20 @@ kubectl -n tuck get pods
 ### Получить root token
 
 ```powershell
-# Токен хранится в файле (создаётся при первом init)
-Get-Content testdata\minikube-root-token.txt
+# Токен печатается в логе при первом старте (строка после заголовка)
+kubectl -n tuck logs deployment/tuck-server | Select-String "ROOT TOKEN" -Context 0,1
 
-# Если файла нет — достать из логов pod'а
-kubectl -n tuck logs deployment/tuck-server | Select-String "Root Token"
+# Сохранить для остальных команд (скрипты scripts\*.ps1 читают этот файл)
+"tuck_<токен>" | Set-Content testdata\minikube-root-token.txt
 ```
+
+Файл `testdata\minikube-root-token.txt` в git не хранится (создаётся скриптом `scripts\minikube-lab.ps1` или вручную).
 
 ### Port-forward к Tuck в minikube
 
 ```powershell
 # В отдельном окне PowerShell (оставить запущенным)
-kubectl -n tuck port-forward svc/tuck 8201:8200
+kubectl -n tuck port-forward svc/tuck-server 8201:8200
 ```
 
 ### Проверить что Tuck работает в k8s
@@ -276,7 +282,7 @@ kubectl -n tuck port-forward svc/tuck 8201:8200
 $K8S_TOKEN = Get-Content testdata\minikube-root-token.txt
 
 # Health
-curl.exe -s http://127.0.0.1:8201/v1/sys/health | ConvertFrom-Json
+curl.exe -s http://127.0.0.1:8201/v1/health | ConvertFrom-Json
 
 # Записать секрет
 curl.exe -s -X PUT http://127.0.0.1:8201/v1/secret/k8s-test `
@@ -295,40 +301,48 @@ curl.exe -s http://127.0.0.1:8201/v1/secret/k8s-test `
 http://127.0.0.1:8201/ui/
 ```
 
-Token: содержимое `testdata\minikube-root-token.txt`
+Token: root token из лога сервера (см. выше)
 
 ### TuckSecret — синхронизация секретов в K8s
 
-Создать CR для синхронизации секрета из Tuck в K8s Secret:
+Создать CR для синхронизации секрета из Tuck в K8s Secret. Оператор логинится в Tuck через ServiceAccount, поэтому сначала нужна роль (политика `root` только для локального стенда):
+
+```powershell
+$env:TUCK_ADDR  = "http://127.0.0.1:8201"
+$env:TUCK_TOKEN = Get-Content testdata\minikube-root-token.txt
+.\tuckcli.exe auth kubernetes role put tuck tuck-operator --policies=root --ttl=5m
+```
 
 ```yaml
 # my-secret.yaml
-apiVersion: secrets.tuck.io/v1alpha1
+apiVersion: tuck.io/v1alpha1
 kind: TuckSecret
 metadata:
   name: demo-app-credentials
   namespace: tuck
 spec:
-  path: secret/demo-app/credentials
-  targetName: demo-app-credentials
-  targetNamespace: tuck
-  refreshIntervalSeconds: 30
+  tuckPath: demo-app/credentials        # путь в KV, без префикса secret/
+  secretName: demo-app-credentials      # имя K8s Secret (в namespace CR)
+  secretKey: value                      # ключ внутри Secret
+  refreshInterval: "30s"
 ```
 
 ```powershell
 # Записать секрет в Tuck
 curl.exe -s -X PUT http://127.0.0.1:8201/v1/secret/demo-app/credentials `
-  -H "X-Tuck-Token: $K8S_TOKEN" `
+  -H "X-Tuck-Token: $env:TUCK_TOKEN" `
   -H "Content-Type: text/plain" `
   -d "my-secret-value"
 
 # Применить CR
 kubectl apply -f my-secret.yaml
 
-# Убедиться что K8s Secret создан
-kubectl -n tuck get secret demo-app-credentials -o jsonpath='{.data.value}' | `
-  [System.Convert]::FromBase64String([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String([System.Text.Encoding]::UTF8.GetString([System.Text.Encoding]::UTF8.GetBytes($_)))))
+# Убедиться что K8s Secret создан и прочитать значение
+$b64 = kubectl -n tuck get secret demo-app-credentials -o jsonpath='{.data.value}'
+[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($b64))
 ```
+
+Подробнее про поля TuckSecret: [07 — оператор](07-tucksecret-operator.md).
 
 ### Обновление образа в minikube (после изменений кода)
 
@@ -406,7 +420,7 @@ cd D:\Projects\tuck
 | K8S-PODS / K8S-OP | pod'ы Running | minikube |
 | CLUSTER / CRD | node Ready + CRD установлен | minikube |
 
-Ожидаемый результат: **32 passed, 0 failed**.
+Ожидаемый результат: `0 failed`; итоги в `RESULTS.md`.
 
 ### Просмотр результатов
 
@@ -425,7 +439,7 @@ Get-Content "$($run.FullName)\FAILURES.md"
 
 ### Остановить локальный сервер
 
-Ctrl+C в окне где запущен `tuck.exe server -dev`.
+Ctrl+C в окне где запущен `tuck.exe`.
 
 ### Остановить port-forward
 
@@ -454,16 +468,16 @@ kubectl delete namespace tuck
 
 ### `tuck.exe: command not found`
 
-Собрать бинарь: `go build -o tuck.exe ./cmd/tuck`
+Собрать бинари: `go build -o tuck.exe ./cmd/tuck` и `go build -o tuckcli.exe ./cmd/tuckcli`
 
 ### `connection refused` на порту 8200 / 8201
 
-- 8200: убедитесь что `tuck.exe server -dev` запущен
-- 8201: убедитесь что `kubectl port-forward svc/tuck 8201:8200` запущен в отдельном окне
+- 8200: убедитесь что `tuck.exe -tls-auto` запущен (адрес `https://127.0.0.1:8200`)
+- 8201: убедитесь что `kubectl port-forward svc/tuck-server 8201:8200` запущен в отдельном окне
 
 ### UI: Invalid token после входа
 
-Токен невалиден или истёк. Используйте root token из вывода `tuck.exe server -dev` или из `testdata\minikube-root-token.txt`.
+Токен невалиден или истёк. Используйте root token из лога сервера при первом старте (повторно не показывается; при потере сбросьте `tuck.db` и `tuck-dev-rootkey` в dev-режиме).
 
 ### Образ в minikube не обновился (старая версия)
 
@@ -478,7 +492,7 @@ kubectl -n tuck rollout restart deployment/tuck-server
 После пересоздания PVC (minikube delete + start) токен меняется. Получить актуальный:
 
 ```powershell
-kubectl -n tuck logs deployment/tuck-server | Select-String "Root Token"
+kubectl -n tuck logs deployment/tuck-server | Select-String "ROOT TOKEN" -Context 0,1
 ```
 
 И обновить файл:
@@ -493,12 +507,9 @@ kubectl -n tuck logs deployment/tuck-server | Select-String "Root Token"
 Оператор потерял роль K8s auth. Исправить:
 
 ```powershell
-$K8S_TOKEN = Get-Content testdata\minikube-root-token.txt
-
-curl.exe -s -X PUT http://127.0.0.1:8201/v1/auth/kubernetes/role/tuck/tuck-operator `
-  -H "X-Tuck-Token: $K8S_TOKEN" `
-  -H "Content-Type: application/json" `
-  -d '{"bound_service_account_names":["tuck-operator"],"bound_service_account_namespaces":["tuck"],"policies":["root"]}'
+$env:TUCK_ADDR  = "http://127.0.0.1:8201"
+$env:TUCK_TOKEN = Get-Content testdata\minikube-root-token.txt
+.\tuckcli.exe auth kubernetes role put tuck tuck-operator --policies=root --ttl=5m
 ```
 
 `root` здесь — только для локального стенда. В продакшне дайте роли узкую политику и включите `--enforce-namespace-paths` (см. [07](07-tucksecret-operator.md)).

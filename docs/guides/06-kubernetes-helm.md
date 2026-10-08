@@ -31,15 +31,15 @@ kubectl -n tuck get pods
 ### 3. Получить root token (dev seal)
 
 ```powershell
-kubectl -n tuck logs deployment/tuck-server | Select-String "ROOT TOKEN"
+kubectl -n tuck logs deployment/tuck-server | Select-String "ROOT TOKEN" -Context 0,1
 ```
 
-Для `sealType: shamir` — выполните init/unseal по [04 — Shamir](04-prod-shamir.md).
+Токен печатается один раз, при первом старте, на строке после заголовка. Для `sealType: shamir` в том же логе будут доли (`SHAMIR SHARES`); после каждого рестарта пода нужны `k` долей через `tuckcli unseal`, см. [04 — Shamir](04-prod-shamir.md).
 
 ### 4. Port-forward для доступа с хоста
 
 ```powershell
-kubectl -n tuck port-forward svc/tuck 8200:8200
+kubectl -n tuck port-forward svc/tuck-server 8200:8200
 ```
 
 ```powershell
@@ -68,12 +68,12 @@ helm upgrade tuck deploy/helm/tuck -n tuck --set operator.enabled=true --set inj
 | Действие | Ожидаемый результат |
 |----------|---------------------|
 | `kubectl get pods -n tuck` | tuck-server Running |
-| `curl .../v1/health` | `{"initialized":true,"sealed":false}` |
+| `curl.exe -s http://127.0.0.1:8200/v1/health` | `"sealed": false` |
 | `helm list -n tuck` | release `tuck` deployed |
 
 ## Minikube на Windows
 
-Пошагово с локальными образами: [docs/MINIKUBE.md](../../docs/MINIKUBE.md).
+Пошагово с локальными образами: раздел 6 в [00 — Установка и запуск](00-setup-guide-ru.md).
 
 ## Дальше
 

@@ -54,7 +54,7 @@ kubectl -n demo create secret generic tuck-token --from-literal=token=tuck_...
 
 | Аннотация | Значение |
 |-----------|----------|
-| `tuck.io/inject` | `"true"` |
+| `tuck.io/inject` | `"true"` — нужна и как аннотация, и как метка (label) Pod'а: webhook срабатывает по метке (objectSelector), а решение об инъекции берётся из аннотации. В Deployment — в `spec.template.metadata` |
 | `tuck.io/addr` | `https://tuck.tuck.svc:8200` |
 | `tuck.io/secrets` | `db/password:db-password,db/user:db-user` |
 | `tuck.io/auth` | `kubernetes` — логин по ServiceAccount вместо токена из Secret |
@@ -75,6 +75,10 @@ kubectl -n demo logs myapp -c tuck-agent
 kubectl -n demo exec myapp -- cat /tuck/secrets/db-password
 ```
 
+### Если injector недоступен
+
+По умолчанию webhook работает с `failurePolicy: Ignore`: пока injector лежит, Pod создаётся **без** init-контейнера и приложение стартует без секретов. Для продакшна, где это недопустимо, задайте `injector.failurePolicy=Fail` (Helm): создание Pod'ов с меткой `tuck.io/inject=true` в помеченных namespace будет блокироваться, пока injector не поднимется. Запускайте не менее 2 реплик injector.
+
 ## Проверка
 
 | Действие | Ожидаемый результат |
@@ -87,7 +91,7 @@ kubectl -n demo exec myapp -- cat /tuck/secrets/db-password
 
 | Симптом | Решение |
 |---------|---------|
-| Webhook не срабатывает | Namespace без `tuck.io/inject=enabled` |
+| Webhook не срабатывает | Namespace без `tuck.io/inject=enabled` или Pod без метки `tuck.io/inject: "true"` |
 | tuck-agent CrashLoop | Неверный addr, TLS, или token |
 | Файл не найден | Ошибка в `tuck.io/secrets` (path:filename) |
 

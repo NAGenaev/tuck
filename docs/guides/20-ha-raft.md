@@ -8,51 +8,49 @@
 
 ## Предварительные условия
 
-- 3+ ноды с общим сетевым доступом
-- TLS между нодами
-- Shamir или auto-unseal
+- 3+ ноды с общим сетевым доступом (HTTP API и порт Raft)
+- TLS между нодами (`--cluster-tls-cert/-key/-ca`)
+- Transit auto-unseal ([05](05-auto-unseal-transit.md)) или Shamir ([04](04-prod-shamir.md))
 
 ## Шаги
 
-### 1. Первая нода (leader)
+Пример для 3 нод с Transit-печатью. Флаги печати у всех нод одинаковы:
 
-```hcl
-storage "raft" {
-  path    = "/var/lib/tuck/raft"
-  node_id = "node1"
-}
+```bash
+SEAL="--seal-type=transit --seal-transit-addr=https://vault.corp:8200 --seal-transit-key=tuck-root"
+export TUCK_TRANSIT_TOKEN=<токен>
 ```
 
-```powershell
-.\tuck.exe server -config node1.hcl
-.\tuckcli.exe operator init
-# unseal...
+### 1. Запустить три ноды
+
+Первая нода создаёт кластер сразу со всеми голосующими участниками (`--cluster-bootstrap` + `--cluster-peers`), остальные запускаются без bootstrap:
+
+```bash
+PEERS="node1=node1:8201,node2=node2:8201,node3=node3:8201"
+
+# node1
+tuck $SEAL --seal-transit-key-file=/var/lib/tuck/transit.enc --addr=0.0.0.0:8200 \
+  --cluster --cluster-node-id=node1 --cluster-bind-addr=0.0.0.0:8201 --cluster-advertise=node1:8201 \
+  --cluster-dir=/var/lib/tuck/raft --cluster-bootstrap --cluster-peers="$PEERS"
+
+# node2, node3: те же флаги, свои --cluster-node-id и --cluster-advertise, без --cluster-bootstrap и --cluster-peers
 ```
 
-### 2. Join вторая нода
+`--cluster-bootstrap` на уже работающей ноде игнорируется, поэтому оставлять флаг в unit-файле безопасно. Лидер выбирается сам, инициализирует хранилище и печатает в лог root-токен (один раз). Остальные ноды ждут инициализации и распечатываются тем же Transit-ключом автоматически.
 
-```hcl
-storage "raft" {
-  path    = "/var/lib/tuck/raft"
-  node_id = "node2"
-}
-retry_join {
-  leader_api_addr = "https://node1:8200"
-}
+### 2. Добавить ноду позже
+
+```bash
+tuck $SEAL ... --cluster --cluster-node-id=node4 --cluster-join=https://node1:8200
 ```
 
-```powershell
-.\tuck.exe server -config node2.hcl
-.\tuckcli.exe operator unseal   # на каждой ноде
-```
+`--cluster-join` просит лидера принять ноду; нужен `TUCK_TOKEN` администратора в окружении запускаемой ноды.
 
-### 3. Третья нода — аналогично node2
+### 3. Проверить состав
 
-### 4. Проверить peers
-
-```powershell
-curl "$env:TUCK_ADDR/v1/sys/storage/raft/configuration" `
-  -H "X-Tuck-Token: $env:TUCK_TOKEN"
+```bash
+curl -s -H "X-Tuck-Token: $TUCK_TOKEN" "$TUCK_ADDR/v1/sys/cluster"
+for n in node1 node2 node3; do curl -s -o /dev/null -w "$n %{http_code}\n" http://$n:8200/v1/sys/leader; done   # 200 у лидера, 429 у остальных
 ```
 
 ## Что делает кластер при записи и отказе
@@ -61,7 +59,8 @@ curl "$env:TUCK_ADDR/v1/sys/storage/raft/configuration" `
 - `GET /v1/sys/leader` (без токена): `200` — активная нода (или обычный режим без Raft), `429` — standby, `503` — запечатана. Используйте для балансировщика вне Kubernetes.
 - Свежая нода-follower не инициализирует хранилище сама: она ждёт, пока leader создаст его и состояние реплицируется (в логе `followers wait for the leader to initialize the store`).
 - Для Transit-печати обёрнутый корневой ключ реплицируется через кластер: все ноды распечатываются одним и тем же ключом, в том числе после `rotate`. Ротацию ключа запускайте на leader. Печать `dev` в кластере не работает (ключ у каждой ноды свой).
-- Падение leader: выборы занимают единицы секунд (проверено: остановка leader → новая нода принимает записи, прежние данные читаются, вернувшаяся нода становится follower).
+- Падение leader: выборы занимают единицы секунд (проверено на 3 локальных нодах с Transit-печатью в Vault: остановка leader → оставшаяся нода принимает записи, прежние секреты читаются с любой ноды; холодный рестарт всех трёх нод: все распечатываются сами, данные на месте).
+- Нода, перезапущенная при недоступном Vault, не падает, а остаётся sealed и сама распечатывается, когда Vault вернётся; остальные ноды всё это время обслуживают запросы (проверено).
 
 ## Kubernetes (Helm)
 
@@ -90,7 +89,7 @@ server:
 - Состав кластера фиксируется при установке. Менять `replicaCount` уже работающего кластера нельзя — добавляйте/удаляйте ноды через `cluster join` / `DELETE /v1/sys/cluster/node/{id}`.
 - Между отказом leader и появлением нового проходит несколько секунд без доступного endpoint: клиенты (оператор по `refreshInterval`, CSI, SDK) повторят запрос при следующей попытке.
 - Raft-трафик между подами — plain TCP, пока не задан `server.cluster.tls.secretName` (mTLS). В банке включите его (раздел ниже).
-- Без `shamir`-автоматизации после рестарта каждый под ждёт ручной распечатки; для пилота используйте Transit.
+- При `shamir` после рестарта каждый под ждёт ручной распечатки; для пилота используйте Transit.
 
 ### mTLS на Raft-транспорте
 

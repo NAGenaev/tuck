@@ -79,23 +79,27 @@ Tuck — open-source менеджер секретов для Kubernetes. Гла
 ### Запуск локально (dev seal)
 
 ```sh
-go run ./cmd/tuck --seal-type=dev
-# tuck: unsealed (dev seal), serving on https://127.0.0.1:8200
-# ROOT TOKEN (shown once): tuck_...
+go run ./cmd/tuck --tls-auto
+# tuck: TLS enabled (auto-generated self-signed — dev only)
+# ROOT TOKEN (shown once — store it securely):
+# tuck_...
 ```
+
+`--seal-type=dev` включён по умолчанию; без `--tls-auto` (или `--tls-cert`/`--tls-key`) сервер слушает обычный HTTP. Данные пишутся в `tuck.db` в текущем каталоге.
 
 ### Сохранить и получить секрет
 
 ```sh
 export TUCK_ADDR=https://127.0.0.1:8200
 export TUCK_TOKEN=tuck_...
+export TUCK_INSECURE=1   # только для самоподписанного сертификата --tls-auto
 
 tuckcli kv put db/password s3cr3t
 tuckcli kv get db/password
-# {"path":"db/password","value":"s3cr3t"}
+# JSON: {"created_at": "...", "path": "db/password", "value": "s3cr3t"}
 
 tuckcli kv list db/
-# {"keys":["password"]}
+# JSON: {"keys": ["password"]}
 ```
 
 ### Через curl
@@ -120,7 +124,7 @@ tuck \
   --addr=0.0.0.0:8200 \
   --tls-cert=/etc/tuck/tls.crt \
   --tls-key=/etc/tuck/tls.key \
-  --data-dir=/var/lib/tuck
+  --data=/var/lib/tuck/tuck.db
 ```
 
 При первом старте Tuck выводит root-токен и 5 шардов Shamir. Раздайте шарды разным операторам — ни один из них в одиночку не может распечатать сервер.

@@ -4,7 +4,7 @@
 
 ## Цель
 
-Запустить Tuck в продакшн-режиме: инициализация, распределённые ключи распечатывания, ручной unseal после рестарта.
+Запустить Tuck с Shamir seal: корневой ключ делится на N долей, для распечатывания нужно K из них. Ни одна доля не хранится на сервере.
 
 ## Кому подходит
 
@@ -12,54 +12,63 @@ SRE, platform engineer.
 
 ## Предварительные условия
 
-- Сервер **без** флага `-dev`
-- Постоянное хранилище (volume) для `data/`
-- TLS-сертификат (не self-signed в prod)
+- Постоянный том для файла данных (`-data`) и файла `tuck-shamir.json`
+- TLS-сертификат внутреннего CA (`-tls-cert` / `-tls-key`); `-tls-auto` (самоподписанный) только для стенда
+- Бинарь `tuck` не имеет подкоманд: всё настраивается флагами или YAML-конфигом (`--config`)
 
 ## Шаги
 
-### 1. Запуск сервера
+### 1. Первый запуск (инициализация)
+
+Отдельной команды `init` нет: инициализация происходит при первом старте, если файла `tuck-shamir.json` ещё нет.
 
 ```powershell
-.\tuck.exe server -config tuck.hcl
+.\tuck.exe -addr 0.0.0.0:8200 `
+  -data D:\tuck\data\tuck.db `
+  -tls-cert D:\tuck\tls.crt -tls-key D:\tuck\tls.key `
+  -seal-type shamir `
+  -seal-shamir-config D:\tuck\data\tuck-shamir.json `
+  -seal-shamir-n 5 -seal-shamir-k 3
 ```
 
-Пример `tuck.hcl`:
+То же в YAML (`.\tuck.exe --config tuck.yaml`):
 
-```hcl
-listener "tcp" {
-  address     = "0.0.0.0:8200"
-  tls_cert_file = "/etc/tuck/tls.crt"
-  tls_key_file  = "/etc/tuck/tls.key"
-}
-
-storage "file" {
-  path = "/var/lib/tuck/data"
-}
+```yaml
+addr: 0.0.0.0:8200
+data: D:\tuck\data\tuck.db
+tls:
+  cert: D:\tuck\tls.crt
+  key: D:\tuck\tls.key
+seal:
+  type: shamir
+  shamir:
+    config: D:\tuck\data\tuck-shamir.json
+    n: 5
+    k: 3
 ```
 
-### 2. Инициализация (один раз)
+В логе **один раз** печатаются `ROOT TOKEN` и N долей (`SHAMIR SHARES`). Больше их не показать нигде: перенесите в разные сейфы (разным людям) и очистите лог. После инициализации сервер уже распечатан. Разрешено `2 <= k <= n <= 255`.
+
+В `tuck-shamir.json` лежат только `{"n":5,"k":3}`, ключевого материала там нет. Файл нужен при перезапуске; при его потере сервер примет флаги `-seal-shamir-n/-k` за первый запуск и не откроет существующие данные.
+
+### 2. Настроить CLI
 
 ```powershell
-.\tuckcli.exe operator init -key-shares=5 -key-threshold=3
+$env:TUCK_ADDR  = "https://tuck.example.com:8200"
+$env:TUCK_TOKEN = "tuck_..."   # root token из лога
 ```
 
-Сохраните **unseal keys** и **initial root token** в безопасное место (разные люди / сейф).
+### 3. После перезапуска сервера: распечатать
 
-### 3. Распечатать (unseal)
-
-Нужно `threshold` ключей (в примере — 3 из 5):
+После каждого рестарта сервер стартует запечатанным. Подайте K долей (в примере 3 из 5), каждая отдельной командой, можно от разных операторов:
 
 ```powershell
-.\tuckcli.exe operator unseal
-# введите unseal key 1
-
-.\tuckcli.exe operator unseal
-# введите unseal key 2
-
-.\tuckcli.exe operator unseal
-# введите unseal key 3
+.\tuckcli.exe unseal <доля-1>
+.\tuckcli.exe unseal <доля-2>
+.\tuckcli.exe unseal <доля-3>
 ```
+
+Первые ответы показывают прогресс (`received_shards` из `required_shards`), последний: `"message": "unseal complete"`. Подать ту же долю дважды нельзя (`duplicate shard`). Команда не требует токена.
 
 ### 4. Проверить статус
 
@@ -67,34 +76,44 @@ storage "file" {
 .\tuckcli.exe status
 ```
 
-Ожидается: `sealed: false`, `initialized: true`.
+Ожидается `"sealed": false`. Пока сервер запечатан, видно `"sealed": true` и `required_shards`. Для проб готовности есть `GET /v1/sys/ready` (`{"ready":true,"sealed":false}`) и `GET /v1/health`.
 
-### 5. После рестарта сервера
-
-Повторите шаг 3 (unseal) — данные на диске, но в памяти зашифрованы пока не unseal.
-
-### 6. (Опционально) Запечатать вручную
+### 5. Запечатать вручную
 
 ```powershell
 .\tuckcli.exe seal
 ```
 
+Ключ стирается из памяти, запросы получают `503 sealed`. Чтобы вернуть сервер в работу, снова подайте K долей (перезапуск не нужен).
+
+### 6. Сменить корневой ключ и доли
+
+Если доля скомпрометирована или состав операторов поменялся:
+
+```powershell
+.\tuckcli.exe rotate
+```
+
+Нужен root-токен. В ответе приходят **новые** N долей (поле `shares`), старые перестают работать. Раздайте новые доли сразу, ответ больше не повторится. Данные при этом не перешифровываются.
+
 ## Проверка
 
 | Действие | Ожидаемый результат |
 |----------|---------------------|
-| `status` до unseal | `sealed: true` |
-| после 3 ключей | `sealed: false` |
-| `kv put` после unseal | 204 / успех |
-| `kv put` пока sealed | ошибка sealed |
+| `status` после рестарта | `"sealed": true`, `"required_shards": 3` |
+| `unseal` ×2 | `received_shards: 2`, всё ещё `sealed: true` |
+| `unseal` третьей долей | `unseal complete`, `status` показывает `sealed: false` |
+| `kv put` пока sealed | `HTTP 503: {"error":"sealed"}` |
+| `kv get` после unseal | данные на месте |
 
 ## Частые ошибки
 
 | Симптом | Решение |
 |---------|---------|
-| Потеряны unseal keys | Без threshold ключей данные **не восстановить** |
-| Root token в git | Отзовите и выпустите новый через unseal + rotate |
-| Каждый рестарт — unseal | Настройте [05 — Auto-unseal Transit](05-auto-unseal-transit.md) |
+| Потеряно больше N−K долей | Без K долей данные **не восстановить** |
+| Доли или root token попали в лог/чат/git | Отзовите токен (`token revoke`), выполните `rotate`, раздайте новые доли |
+| `duplicate shard` | Эта доля уже подана в текущем раунде |
+| Каждый рестарт требует K долей | Это цель Shamir; для автоматики см. [05 — Auto-unseal Transit](05-auto-unseal-transit.md) |
 
 ## Дальше
 

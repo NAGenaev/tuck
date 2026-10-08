@@ -10,13 +10,15 @@
 ### 1.1. Режим разработки (только для локального тестирования)
 
 ```bash
-tuck --seal-type=dev --addr=127.0.0.1:8200
+tuck --seal-type=dev --addr=127.0.0.1:8200 --tls-auto
 ```
+
+Без `--tls-auto` (или `--tls-cert`/`--tls-key`) сервер слушает обычный HTTP, и `TUCK_ADDR` для `tuckcli` должен быть `http://...`. Для самоподписанного сертификата `--tls-auto` на клиенте нужен `TUCK_INSECURE=1` (у `curl` — `-k`).
 
 При первом запуске система выводит:
 
 ```
-ROOT TOKEN (отображается однократно — сохранить в защищённом хранилище):
+ROOT TOKEN (shown once — store it securely):
   tuck_<base64url>
 ```
 
@@ -32,9 +34,9 @@ tuck --seal-type=shamir --seal-shamir-n=5 --seal-shamir-k=3 \
 При первом запуске система выводит корневой токен и 5 долей Шамира:
 
 ```
-ROOT TOKEN (отображается однократно — сохранить в защищённом хранилище):
+ROOT TOKEN (shown once — store it securely):
   tuck_…
-ДОЛИ ШАМИРА (распределить операторам — не хранить совместно):
+SHAMIR SHARES (distribute to operators — never store together):
   [1] <base64url>
   [2] <base64url>
   [3] <base64url>
@@ -57,7 +59,7 @@ ROOT TOKEN (отображается однократно — сохранить
 export TUCK_ADDR=https://tuck.example.com:8200
 tuckcli unseal <доля-1>
 tuckcli unseal <доля-2>
-tuckcli unseal <доля-3>   # "unsealed successfully"
+tuckcli unseal <доля-3>   # в ответе "sealed": false
 ```
 
 Через API:
@@ -174,8 +176,8 @@ tuckcli --token=$ROOT_TOKEN policy delete old-policy
 
 ```bash
 # Проверка работоспособности оператора
-kubectl -n tuck-system get pods
-kubectl -n tuck-system logs -l app=tuck-operator
+kubectl -n tuck get pods -l app.kubernetes.io/component=operator
+kubectl -n tuck logs -l app.kubernetes.io/component=operator
 
 # Статус TuckSecret
 kubectl get ts -A
@@ -185,7 +187,7 @@ kubectl get ts -A
 kubectl annotate ts <name> tuck.io/force-sync="$(date)" --overwrite
 
 # Проверка выбора лидера (HA)
-kubectl -n tuck-system get lease tuck-operator-leader -o yaml
+kubectl -n tuck get lease tuck-operator-leader -o yaml
 ```
 
 ---
@@ -196,16 +198,16 @@ kubectl -n tuck-system get lease tuck-operator-leader -o yaml
 
 | Метрика | Порог оповещения |
 |---------|-----------------|
-| `tuck_barrier_sealed` == 1 | Немедленный вызов дежурного |
+| `tuck_sealed` == 1 | Немедленный вызов дежурного |
 | `tuck_auth_failures_total` > 100/мин | Расследование возможной атаки перебором |
-| `tuck_requests_5xx_total` растёт | Расследование ошибок |
+| `tuck_requests_total{class="5xx"}` растёт | Расследование ошибок |
 | `tuck_gc_removed_tokens_total` | Мониторинг накопления токенов |
 
 Пример правила оповещения Prometheus:
 
 ```yaml
 - alert: TuckSealed
-  expr: tuck_barrier_sealed == 1
+  expr: tuck_sealed == 1
   for: 1m
   severity: critical
   annotations:
@@ -236,7 +238,7 @@ kubectl -n tuck-system get lease tuck-operator-leader -o yaml
 
 ### 10.3. Циклическое перезапуск пода оператора
 
-1. Проверить журналы: `kubectl -n tuck-system logs <pod>`
+1. Проверить журналы: `kubectl -n tuck logs <pod>`
 2. Убедиться в доступности и незапечатанном состоянии сервера Tuck
 3. Проверить наличие файла токена SA и успешность TokenReview
 4. Проверить условия TuckSecret: `kubectl get ts -A -o yaml | grep -A5 conditions`

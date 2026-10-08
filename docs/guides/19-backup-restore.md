@@ -10,8 +10,10 @@
 
 ### 1. Snapshot (встроенный API)
 
+В PowerShell `curl` это алиас `Invoke-WebRequest`, поэтому `curl.exe`; `-k` нужен для самоподписанного dev-сертификата.
+
 ```powershell
-curl -k "$env:TUCK_ADDR/v1/sys/snapshot" `
+curl.exe -k "$env:TUCK_ADDR/v1/sys/snapshot" `
   -H "X-Tuck-Token: $env:TUCK_TOKEN" `
   -o tuck-snapshot.db
 ```
@@ -27,7 +29,7 @@ Get-Item tuck-snapshot.db | Select-Object Length, LastWriteTime
 ### 3. Restore (остановить сервер, заменить data file)
 
 ```powershell
-# остановите tuck server
+# остановите процесс tuck
 Copy-Item tuck-snapshot.db D:\tuck-data\tuck.db -Force
 # запустите сервер снова
 ```
@@ -47,7 +49,7 @@ Copy-Item tuck-snapshot.db D:\tuck-data\tuck.db -Force
 |----------|---------------------|
 | snapshot файл | ненулевой размер |
 | restore + unseal | `kv get` старых секретов работает |
-| health | initialized true |
+| `GET /v1/health` | `"sealed": false` |
 
 ## Рекомендации
 

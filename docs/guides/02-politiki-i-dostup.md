@@ -27,12 +27,13 @@
 
 ### 2. Создать политику (ACL)
 
-Формат — массив `rules` с `path` и `capabilities`:
+Формат — JSON-массив правил, у каждого `path` и `capabilities` (`read`, `write`, `delete`, `list`). Пути пишутся с mount: `secret/...`.
 
 ```powershell
-$rules = '[{"path":"secret/app/*","capabilities":["read","list"]}]'
-.\tuckcli.exe policy put app-readonly $rules
+'[{"path":"secret/app/*","capabilities":["read","list"]}]' | .\tuckcli.exe policy put app-readonly -
 ```
+
+> Windows PowerShell 5.1 съедает двойные кавычки внутри аргумента нативной программы, поэтому JSON передаётся через pipe и `-` (чтение из stdin). Не передавайте его аргументом: `policy put name '[{"path":...}]'` в PS 5.1 сломается. В PowerShell 7 и в bash работают оба варианта.
 
 Проверка:
 
@@ -46,7 +47,7 @@ $rules = '[{"path":"secret/app/*","capabilities":["read","list"]}]'
 .\tuckcli.exe token create --name=my-app --policy=app-readonly --ttl=24h
 ```
 
-Сохраните `token` из ответа.
+Ответ в JSON; сохраните поле `id` (это и есть токен `tuck_...`).
 
 ### 4. Проверить доступ scoped-токеном
 
@@ -67,7 +68,7 @@ $env:TUCK_TOKEN = "tuck_..."   # новый scoped token
 
 | Действие | Ожидаемый результат |
 |----------|---------------------|
-| `policy get app-readonly` | rules с `secret/app/*` и `read`, `list` |
+| `policy get app-readonly` | правило с `secret/app/*` и `read`, `list` |
 | `kv get app/api-key` (scoped) | успех |
 | `kv get admin/root-key` (scoped) | `403 permission denied` |
 | `token lookup-self` | policies содержит `app-readonly` |
@@ -91,7 +92,7 @@ flowchart LR
 |---------|---------|
 | 403 на разрешённый путь | Проверьте префикс: `secret/app/*`, не `app/*` |
 | Политика не применилась | Токен создан до `policy put` — перевыпустите токен |
-| `policy put` падает | JSON должен быть массивом `rules`, не объектом `paths` |
+| `policy put` падает с `invalid JSON` | JSON должен быть массивом `[{"path":...,"capabilities":[...]}]`, не объектом `{"paths":...}`; в PS 5.1 передавайте его через pipe и `-` |
 
 ## Дальше
 

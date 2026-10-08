@@ -46,7 +46,7 @@ kubernetes:
     - {name: seg-b, api: https://k8s-b.example:6443, token_file: /etc/tuck/k8s-b.token, ca_file: /etc/tuck/k8s-b.ca}
 ```
 
-Аудит: `tuck server --config /etc/tuck/tuck.yaml --audit-log /var/log/tuck/audit.log`. Файл ротируется (`--audit-max-size`, `--audit-max-backups`); для SIEM заберите его агентом сбора логов.
+Аудит: `tuck --config /etc/tuck/tuck.yaml --audit-log /var/log/tuck/audit.log`. Файл ротируется (`--audit-max-size`, `--audit-max-backups`); для SIEM заберите его агентом сбора логов.
 
 Для Raft (3 узла) добавьте `cluster:` с `tls_cert`/`tls_key`/`tls_ca` — **mutual TLS на Raft-транспорте**, CA отдельный, выпускающий только сертификаты узлов Tuck ([20](20-ha-raft.md), [MANUAL_TESTS §25](../MANUAL_TESTS.md)). HTTP API защищён обычным TLS; mTLS для клиентов API не реализован.
 
@@ -71,11 +71,12 @@ kubernetes:
 
 ```powershell
 # узкая политика оператора: только чтение KV
-tuckcli policy put operator-read '[{"path":"secret/*","capabilities":["read","list"]}]'
-# роль оператора (логин по ServiceAccount, без статического токена)
-curl -XPUT "$env:TUCK_ADDR/v1/auth/kubernetes/role/tuck/tuck-operator" -H "X-Tuck-Token: $env:TUCK_TOKEN" `
-  -H "Content-Type: application/json" -d '{"policies":["operator-read"],"ttl":"5m"}'
+'[{"path":"secret/**","capabilities":["read","list"]}]' | tuckcli policy put operator-read -
+# роль оператора: namespace tuck, ServiceAccount tuck-operator (логин по SA, без статического токена)
+tuckcli auth kubernetes role put tuck tuck-operator --policies=operator-read --ttl=5m
 ```
+
+> JSON в `policy put` передаётся через stdin (`-`): Windows PowerShell 5.1 портит двойные кавычки в аргументах native-программ. В bash и PowerShell 7 можно передать JSON аргументом.
 
 Оператор ставится Helm с `operator.enforceNamespacePaths=true` — TuckSecret в namespace `team-a` читает только `team-a/...` ([07](07-tucksecret-operator.md)). Для нескольких кластеров задайте `operator.tuckCluster`.
 

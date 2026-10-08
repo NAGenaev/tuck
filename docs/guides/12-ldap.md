@@ -59,7 +59,7 @@ tuckcli auth ldap config put '{
 
 ```bash
 tuckcli namespace create team-a
-tuckcli --namespace=team-a policy put team-a-rw '{"paths":[{"path":"secret/*","capabilities":["read","write","delete","list"]}]}'
+tuckcli --namespace=team-a policy put team-a-rw '[{"path":"secret/**","capabilities":["read","write","delete","list"]}]'
 ```
 
 ### 3. Роль: группа каталога → политики → namespace
@@ -104,6 +104,8 @@ tuckcli auth ldap login --username=alice --password=... --namespace=team-a
 - **401 при верном пароле** — неверный `user_attr` (для AD `sAMAccountName`, не `uid`) или `user_dn` не содержит пользователя.
 - **TLS-ошибка** — не задан `ca_cert` внутреннего CA банка.
 - **409 в скрипте** — у пользователя роли в нескольких namespace; передайте `--namespace`.
+- **Проверено на OpenLDAP:** `ldaps://` + `ca_cert`, STARTTLS, `tls_insecure`, постраничный поиск групп (больше 500) через `memberOf` и `group_dn`. Вложенные группы не раскрываются, правило AD `member:1.2.840.113556.1.4.1941:=` не проверялось.
+- **503 `directory unavailable`** — каталог недоступен или ошибка TLS (нет CA, чужой CA, не то имя). Детали только в логе сервера; таймаут подключения 5 с, операции 10 с. Обычный `ldap://` без `starttls` принимается, но пароли идут открытым текстом.
 
 ## Дальше
 

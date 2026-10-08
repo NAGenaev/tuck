@@ -31,6 +31,7 @@ $env:TUCK_TOKEN = "tuck_..."                    # root или scoped token
 | CI/CD: машина-машина (AppRole) | [10 — AppRole](10-approle.md) |
 | Логин через OIDC / JWT | [11 — JWT / OIDC](11-jwt-oidc.md) |
 | Логин через LDAP / Active Directory | [12 — LDAP](12-ldap.md) |
+| **Подключить команду: namespace, политика, роли LDAP и K8s** | [13 — Подключение команды](13-onboarding-team.md) |
 | Бэкап и восстановление | [19 — Backup / restore](19-backup-restore.md) |
 | HA-кластер Raft (3 ноды) | [20 — Raft HA](20-ha-raft.md) |
 | Безопасно передать секрет одноразовым токеном | [21 — Response Wrapping](21-response-wrapping.md) |
@@ -57,7 +58,7 @@ $env:TUCK_TOKEN = "tuck_..."                    # root или scoped token
 ### Security / IAM
 - [02 Политики и токены](02-politiki-i-dostup.md)
 - [09 K8s SA auth](09-kubernetes-auth.md)
-- [10 AppRole](10-approle.md) · [11 JWT](11-jwt-oidc.md) · [12 LDAP](12-ldap.md)
+- [10 AppRole](10-approle.md) · [11 JWT](11-jwt-oidc.md) · [12 LDAP](12-ldap.md) · [13 Подключение команды](13-onboarding-team.md)
 - [21 Response Wrapping](21-response-wrapping.md)
 
 ### SRE
@@ -71,7 +72,7 @@ $env:TUCK_TOKEN = "tuck_..."                    # root или scoped token
 |--------|-----|
 | Архитектура, диаграммы | [../02-architecture.md](../02-architecture.md) |
 | Полный справочник API/CLI | [../04-api-cli-reference.md](../04-api-cli-reference.md) |
-| Minikube на Windows | [../../docs/MINIKUBE.md](../../docs/MINIKUBE.md) |
+| Minikube на Windows | [00 — Установка и запуск, раздел 6](00-setup-guide-ru.md) |
 | E2E демо operator | [../../docs/E2E-DEMO.md](../../docs/E2E-DEMO.md) |
 | Runbook (инциденты) | [../../docs/RUNBOOK.md](../../docs/RUNBOOK.md) |
 

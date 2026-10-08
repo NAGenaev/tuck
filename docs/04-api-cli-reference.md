@@ -110,7 +110,10 @@ flowchart LR
 | POST | `/v1/auth/kubernetes/login` | K8s SA (TokenReview) |
 | PUT/GET/DELETE | `/v1/auth/kubernetes/role/{ns}/{sa}` | K8s role binding |
 | POST | `/v1/auth/jwt/login` | JWT/OIDC |
-| GET/PUT | `/v1/auth/jwt/config` | JWKS-конфиг |
+| GET/PUT | `/v1/auth/jwt/config` | JWKS-конфиг и параметры OIDC-входа (`oidc_*`, секрет не возвращается) |
+| GET | `/v1/auth/oidc/status` | Включён ли вход через SSO (без токена) |
+| GET | `/v1/auth/oidc/auth-url` | Начать SSO-вход: URL провайдера и `state` (без токена) |
+| POST | `/v1/auth/oidc/callback` | Завершить SSO-вход: `{code,state}` → токен Tuck (без токена) |
 | PUT/GET/DELETE/LIST | `/v1/auth/jwt/role/{name}` | JWT-роли |
 | POST | `/v1/auth/approle/login` | AppRole |
 | PUT/GET/DELETE/LIST | `/v1/auth/approle/role/{name}` | AppRole-роли |
@@ -199,7 +202,7 @@ tuckcli auth kubernetes login|clusters|role ...
 tuckcli auth jwt login ...
 ```
 
-Переменные окружения: `TUCK_ADDR` (по умолчанию `https://127.0.0.1:8200`), `TUCK_TOKEN`.
+Переменные окружения: `TUCK_ADDR` (по умолчанию `http://127.0.0.1:8200`), `TUCK_TOKEN`, `TUCK_INSECURE=1` (не проверять самоподписанный сертификат), `TUCK_NAMESPACE`. Те же значения задаются глобальными флагами `--addr`, `--token`, `--namespace`, `--insecure` (до имени команды). `kv` работает только с KV v1, путь указывается относительно mount `secret/`. `policy put <имя> <json|->` принимает JSON-массив `[{"path":..,"capabilities":[..]}]` аргументом или из stdin.
 
 ---
 
@@ -208,14 +211,15 @@ tuckcli auth jwt login ...
 ```go
 import "github.com/NAGenaev/tuck/pkg/client"
 
-c := client.New("https://tuck:8200", client.WithToken("tuck_..."))
+c := client.New("https://tuck:8200", "tuck_...") // опции: client.WithCAFile(path), client.WithInsecure(), client.WithNamespace(ns)
 
-// KV v1
-_ = c.Put(ctx, "secret/db/password", []byte("s3cr3t"))
-val, _ := c.Get(ctx, "secret/db/password")
+// KV v1 (путь относительно mount secret/)
+_ = c.PutSecret(ctx, "db/password", []byte("s3cr3t"))
+val, _ := c.GetSecret(ctx, "db/password")
 
 // KV v2
-_ = c.V2Write(ctx, "app/config", map[string]string{"key": "val"})
+_, _ = c.KVv2().Write(ctx, "app/config", []byte("val"), 0) // последний аргумент: CAS, 0 = без проверки
+res, _ := c.KVv2().Read(ctx, "app/config", 0)              // 0 = последняя версия; res.Value
 ```
 
 SDK покрывает основные операции (70+ методов): KV, токены, политики, system-операции.

@@ -6,18 +6,18 @@
 
 Безопасно передать секрет или token другой стороне через **одноразовый wrapping token**.
 
+> В PowerShell `curl` это алиас `Invoke-WebRequest`, поэтому везде `curl.exe`. JSON-тело кладём в файл: PS 5.1 съедает двойные кавычки в аргументах native-программ, а pipe может дописать BOM. `-k` нужен для самоподписанного dev-сертификата (`-tls-auto`).
+
 ## Шаги
 
 ### 1. Обернуть payload
 
 ```powershell
-curl -k -X POST "$env:TUCK_ADDR/v1/sys/wrapping/wrap" `
+[IO.File]::WriteAllText("$PWD\wrap.json", '{"ttl":"5m","data":{"password":"super-secret","user":"deploy"}}')
+curl.exe -k -X POST "$env:TUCK_ADDR/v1/sys/wrapping/wrap" `
   -H "X-Tuck-Token: $env:TUCK_TOKEN" `
   -H "Content-Type: application/json" `
-  -d '{
-    "ttl": "5m",
-    "data": {"password": "super-secret", "user": "deploy"}
-  }'
+  --data-binary "@wrap.json"
 ```
 
 Ответ: `token` (например `tuck_wrap_...`) и `expires_at`.
@@ -31,24 +31,29 @@ curl -k -X POST "$env:TUCK_ADDR/v1/sys/wrapping/wrap" `
 Нужен любой валидный Tuck token **и** wrapping token в теле:
 
 ```powershell
-curl -k -X POST "$env:TUCK_ADDR/v1/sys/wrapping/unwrap" `
+[IO.File]::WriteAllText("$PWD\unwrap.json", '{"token":"tuck_wrap_..."}')
+curl.exe -k -X POST "$env:TUCK_ADDR/v1/sys/wrapping/unwrap" `
   -H "X-Tuck-Token: $env:TUCK_TOKEN" `
   -H "Content-Type: application/json" `
-  -d '{"token": "tuck_wrap_..."}'
+  --data-binary "@unwrap.json"
 ```
+
+Ответ: `{"data":{"password":"super-secret","user":"deploy"}}`.
 
 ### 4. Повторный unwrap
 
-Второй вызов с тем же wrapping token — `404 not found or already used`.
+Второй вызов с тем же wrapping token — `404 wrapping token not found or already used`.
 
 ### 5. (Опционально) Проверить TTL до unwrap
 
 ```powershell
-curl -k -X POST "$env:TUCK_ADDR/v1/sys/wrapping/lookup" `
+curl.exe -k -X POST "$env:TUCK_ADDR/v1/sys/wrapping/lookup" `
   -H "X-Tuck-Token: $env:TUCK_TOKEN" `
   -H "Content-Type: application/json" `
-  -d '{"token": "tuck_wrap_..."}'
+  --data-binary "@unwrap.json"
 ```
+
+Ответ: `creation_time`, `expires_at`, `creation_ttl` (секунды).
 
 ## Проверка
 
@@ -69,7 +74,7 @@ caller с правом `list` на `sys/wrapping/list` (root) видит все 
 в пределах текущего namespace.
 
 ```powershell
-curl -k "$env:TUCK_ADDR/v1/sys/wrapping/list" -H "X-Tuck-Token: $env:TUCK_TOKEN"
+curl.exe -k "$env:TUCK_ADDR/v1/sys/wrapping/list" -H "X-Tuck-Token: $env:TUCK_TOKEN"
 ```
 
 ### 7. Отзыв по accessor
@@ -77,7 +82,7 @@ curl -k "$env:TUCK_ADDR/v1/sys/wrapping/list" -H "X-Tuck-Token: $env:TUCK_TOKEN"
 Отзывает капсулу без необходимости знать wrapping token (список её не содержит):
 
 ```powershell
-curl -k -X DELETE "$env:TUCK_ADDR/v1/sys/wrapping/revoke-accessor/$accessor" `
+curl.exe -k -X DELETE "$env:TUCK_ADDR/v1/sys/wrapping/revoke-accessor/$accessor" `
   -H "X-Tuck-Token: $env:TUCK_TOKEN"
 ```
 

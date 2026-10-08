@@ -29,11 +29,8 @@
 ### 1. Создай токен для CSI Driver
 
 ```bash
-# Создай ограниченный токен
-TOKEN=$(tuckcli token create \
-  --policies=csi-readonly \
-  --ttl=0 \
-  --format=json | jq -r .id)
+# Токен только на чтение, без срока жизни (см. ограничение ниже)
+TOKEN=$(tuckcli token create --name=csi --policy=csi-readonly | jq -r .id)
 
 # Сохрани в K8s Secret
 kubectl create secret generic tuck-csi-token \
@@ -41,22 +38,13 @@ kubectl create secret generic tuck-csi-token \
   -n tuck
 ```
 
-Создай политику `csi-readonly` заранее (пример):
-
-```json
-{
-  "paths": [
-    {"path": "secret/*", "capabilities": ["read"]},
-    {"path": "kv/*",     "capabilities": ["read"]}
-  ]
-}
-```
+Создай политику `csi-readonly` заранее: правила задаются массивом.
 
 ```bash
-tuckcli policy put csi-readonly '{"paths":[{"path":"secret/*","capabilities":["read"]}]}'
+tuckcli policy put csi-readonly '[{"path":"secret/**","capabilities":["read"]}]'
 ```
 
-> **Токен CSI не обновляется автоматически.** Драйвер использует токен из `nodePublishSecretRef` как есть; логина через Kubernetes-auth и продления токена в нём нет. Поэтому для CSI выдавайте токен без срока (`--ttl=0`) или с запасом больше жизни Pod'ов и ротируйте его вместе с пересозданием Pod'ов. Если нужна авторизация без долгоживущего токена, используйте [оператор TuckSecret](07-tucksecret-operator.md): он входит в Tuck через ServiceAccount (K8s auth) и сам продлевает сессию.
+> **Токен CSI не обновляется автоматически.** Драйвер использует токен из `nodePublishSecretRef` как есть; логина через Kubernetes-auth и продления токена в нём нет. Поэтому не задавайте `--ttl` (без него токен бессрочный) или берите срок с запасом больше жизни Pod'ов и ротируйте токен вместе с пересозданием Pod'ов. Если нужна авторизация без долгоживущего токена, используйте [оператор TuckSecret](07-tucksecret-operator.md): он входит в Tuck через ServiceAccount (K8s auth) и сам продлевает сессию.
 
 ### 2. Включи CSI в Helm-чарте
 
@@ -107,7 +95,7 @@ spec:
         driver: secrets.tuck.io
         volumeAttributes:
           tuck.io/addr: "http://tuck-server.tuck.svc:8200"
-          tuck.io/paths: "secret/myapp"       # путь в KV v1 (через запятую — несколько путей)
+          tuck.io/paths: "myapp"       # путь в KV v1 (через запятую — несколько путей)
           tuck.io/expand-keys: "true"          # каждый ключ = отдельный файл
         nodePublishSecretRef:
           name: tuck-csi-token       # K8s Secret с токеном
@@ -125,8 +113,8 @@ spec:
 
 ```
 /run/secrets/
-  username    ← содержимое поля "username" из secret/myapp
-  password    ← содержимое поля "password" из secret/myapp
+  username    ← содержимое поля "username" из myapp
+  password    ← содержимое поля "password" из myapp
 ```
 
 ### KV v2
@@ -134,7 +122,7 @@ spec:
 ```yaml
 volumeAttributes:
   tuck.io/addr: "http://tuck-server.tuck.svc:8200"
-  tuck.io/paths: "kv/myapp"
+  tuck.io/paths: "myapp"
   tuck.io/kv-version: "2"          # включает KV v2
   tuck.io/expand-keys: "true"
 ```
@@ -145,7 +133,7 @@ volumeAttributes:
 
 ```yaml
 volumeAttributes:
-  tuck.io/paths: "secret/db-password"
+  tuck.io/paths: "db-password"
   tuck.io/expand-keys: "false"   # весь JSON пишется в один файл с именем "db-password"
 ```
 
@@ -153,7 +141,7 @@ volumeAttributes:
 
 ```yaml
 volumeAttributes:
-  tuck.io/paths: "secret/myapp"
+  tuck.io/paths: "myapp"
   tuck.io/mode: "0400"   # только чтение для владельца (по умолчанию: "0400")
 ```
 
@@ -162,7 +150,7 @@ volumeAttributes:
 ```yaml
 volumeAttributes:
   tuck.io/addr: "http://tuck-server.tuck.svc:8200"
-  tuck.io/paths: "secret/myapp"
+  tuck.io/paths: "myapp"
   tuck.io/refresh-interval: "5m"   # опрашивать Tuck и перезаписывать файлы каждые ~5 минут
 ```
 
@@ -175,7 +163,7 @@ volumeAttributes:
 | Параметр | Значение по умолчанию | Описание |
 |----------|----------------------|----------|
 | `tuck.io/addr` | (обязательно) | Адрес сервера Tuck |
-| `tuck.io/paths` | (обязательно) | Пути к секретам в Tuck, через запятую |
+| `tuck.io/paths` | (обязательно) | Пути к секретам в Tuck относительно mount `secret/` (`myapp`, а не `secret/myapp`), через запятую |
 | `tuck.io/namespace` | root | Namespace Tuck |
 | `tuck.io/kv-version` | `"1"` | Версия KV engine (`"1"` или `"2"`) — точечный пиннинг версии секрета не поддержан |
 | `tuck.io/insecure` | `"false"` | `"true"` — пропустить проверку TLS-сертификата (только для dev) |

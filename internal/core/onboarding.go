@@ -124,6 +124,7 @@ func teamPolicies() map[string]*policy.Policy {
 	}
 	return map[string]*policy.Policy{
 		AccessAdmin: mk(AccessAdmin, r|w|d|l,
+			policy.Rule{Path: "auth/policy", Capabilities: l},
 			policy.Rule{Path: "auth/policy/**", Capabilities: r | l}),
 		AccessDeveloper: mk(AccessDeveloper, r|w|l),
 		AccessReader:    mk(AccessReader, r|l),

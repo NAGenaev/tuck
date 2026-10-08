@@ -76,6 +76,10 @@ func TestOnboardTeam(t *testing.T) {
 	if s, _ := nsReq(t, ts, http.MethodDelete, "/v1/secret/app/db", "", dev, "payments"); s != http.StatusForbidden {
 		t.Errorf("developer delete: %d, want 403", s)
 	}
+	// The Policies page lists policies with LIST on auth/policy, so team admins need it.
+	if s, b := nsReq(t, ts, "LIST", "/v1/policy/", "", admin, "payments"); s != http.StatusOK {
+		t.Errorf("team admin cannot list policies: %d %s", s, b)
+	}
 	// A team admin cannot bind more groups to its namespace.
 	if s, b := nsReq(t, ts, http.MethodPut, "/v1/auth/ldap/role/evil", `{"groups":["CN=x"],"policies":["team-admin"]}`, admin, "payments"); s != http.StatusForbidden {
 		t.Errorf("team admin created an LDAP role: %d %s", s, b)

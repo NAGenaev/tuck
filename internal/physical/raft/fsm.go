@@ -50,40 +50,103 @@ func newFSM(path string) (*fsm, error) {
 	return &fsm{db: db}, nil
 }
 
-func (f *fsm) Apply(l *hraft.Log) interface{} {
+// decode parses one log entry. A parse error is the entry's own outcome and
+// never aborts the entries around it.
+func decode(l *hraft.Log) (command, error) {
 	var cmd command
 	if err := json.Unmarshal(l.Data, &cmd); err != nil {
-		return fmt.Errorf("unmarshal command: %w", err)
+		return cmd, fmt.Errorf("unmarshal command: %w", err)
 	}
+	return cmd, nil
+}
+
+// applyCmd runs one command inside tx. The returned error is that command's
+// outcome (it is handed back to the caller of raft.Apply).
+func (f *fsm) applyCmd(tx *bolt.Tx, cmd command) error {
 	if cmd.Op == "restore" {
 		var data map[string][]byte
 		if err := json.Unmarshal(cmd.Value, &data); err != nil {
 			return fmt.Errorf("decode restore payload: %w", err)
 		}
-		if err := f.replaceAll(data); err != nil {
-			return err
+		return replaceAllTx(tx, data)
+	}
+	b := tx.Bucket([]byte(dataBucket))
+	if b == nil {
+		return fmt.Errorf("data bucket missing")
+	}
+	switch cmd.Op {
+	case "put":
+		return b.Put([]byte(cmd.Key), cmd.Value)
+	case "delete":
+		return b.Delete([]byte(cmd.Key))
+	default:
+		return fmt.Errorf("unknown op: %s", cmd.Op)
+	}
+}
+
+// afterRestore tells the node that a restore command has just been committed.
+// A node that merely replays an old log entry on startup must not seal itself
+// again: only a restore that has just happened counts.
+func (f *fsm) afterRestore(l *hraft.Log) {
+	if f.onRestore != nil && time.Since(l.AppendedAt) < restoreReactWindow {
+		go f.onRestore()
+	}
+}
+
+func (f *fsm) Apply(l *hraft.Log) interface{} {
+	cmd, err := decode(l)
+	if err != nil {
+		return err
+	}
+	if err := f.db.Update(func(tx *bolt.Tx) error { return f.applyCmd(tx, cmd) }); err != nil {
+		return err
+	}
+	if cmd.Op == "restore" {
+		f.afterRestore(l)
+	}
+	return nil
+}
+
+// ApplyBatch implements hraft.BatchingFSM: every entry the leader committed
+// together is applied in ONE bbolt transaction, so the whole batch costs one
+// fsync instead of one per entry. Entries stay in order; a failing entry gets
+// its own error and does not undo the others.
+func (f *fsm) ApplyBatch(logs []*hraft.Log) []interface{} {
+	results := make([]interface{}, len(logs))
+	cmds := make([]*command, len(logs))
+	for i, l := range logs {
+		cmd, err := decode(l)
+		if err != nil {
+			results[i] = err
+			continue
 		}
-		// A node that merely replays an old log entry on startup must not seal
-		// itself again: only react to a restore that has just happened.
-		if f.onRestore != nil && time.Since(l.AppendedAt) < restoreReactWindow {
-			go f.onRestore()
+		cmds[i] = &cmd
+	}
+	txErr := f.db.Update(func(tx *bolt.Tx) error {
+		for i, c := range cmds {
+			if c == nil {
+				continue
+			}
+			if err := f.applyCmd(tx, *c); err != nil {
+				results[i] = err
+			}
 		}
 		return nil
-	}
-	return f.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(dataBucket))
-		if b == nil {
-			return fmt.Errorf("data bucket missing")
-		}
-		switch cmd.Op {
-		case "put":
-			return b.Put([]byte(cmd.Key), cmd.Value)
-		case "delete":
-			return b.Delete([]byte(cmd.Key))
-		default:
-			return fmt.Errorf("unknown op: %s", cmd.Op)
-		}
 	})
+	if txErr != nil { // the commit itself failed: nothing of the batch was stored
+		for i := range results {
+			if results[i] == nil {
+				results[i] = txErr
+			}
+		}
+		return results
+	}
+	for i, c := range cmds {
+		if c != nil && c.Op == "restore" && results[i] == nil {
+			f.afterRestore(logs[i])
+		}
+	}
+	return results
 }
 
 func (f *fsm) Snapshot() (hraft.FSMSnapshot, error) {
@@ -118,21 +181,23 @@ func (f *fsm) Restore(rc io.ReadCloser) error {
 
 // replaceAll atomically replaces the whole data set with data.
 func (f *fsm) replaceAll(data map[string][]byte) error {
-	return f.db.Update(func(tx *bolt.Tx) error {
-		if err := tx.DeleteBucket([]byte(dataBucket)); err != nil && err != bolt.ErrBucketNotFound {
+	return f.db.Update(func(tx *bolt.Tx) error { return replaceAllTx(tx, data) })
+}
+
+func replaceAllTx(tx *bolt.Tx, data map[string][]byte) error {
+	if err := tx.DeleteBucket([]byte(dataBucket)); err != nil && err != bolt.ErrBucketNotFound {
+		return err
+	}
+	b, err := tx.CreateBucket([]byte(dataBucket))
+	if err != nil {
+		return err
+	}
+	for k, v := range data {
+		if err := b.Put([]byte(k), v); err != nil {
 			return err
 		}
-		b, err := tx.CreateBucket([]byte(dataBucket))
-		if err != nil {
-			return err
-		}
-		for k, v := range data {
-			if err := b.Put([]byte(k), v); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	}
+	return nil
 }
 
 // get reads a single key from the local FSM state.

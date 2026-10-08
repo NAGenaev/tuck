@@ -2,10 +2,13 @@ package raft
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 	"time"
+
+	hraft "github.com/hashicorp/raft"
 )
 
 func TestRaftRestoreReplacesAllData(t *testing.T) {
@@ -65,5 +68,43 @@ func TestRaftRestoreRejectsBadInput(t *testing.T) {
 	}
 	if e, _ := b.Get(ctx, "keep"); e == nil || string(e.Value) != "me" {
 		t.Error("a rejected restore changed the data")
+	}
+}
+
+// The FSM applies a batch of committed entries in one transaction; entries
+// stay in order and a bad entry affects only itself.
+func TestFSMApplyBatch(t *testing.T) {
+	f, err := newFSM(t.TempDir() + "/fsm.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.db.Close() }()
+	log := func(op, k, v string) *hraft.Log {
+		raw, _ := json.Marshal(command{Op: op, Key: k, Value: []byte(v)})
+		return &hraft.Log{Data: raw}
+	}
+	res := f.ApplyBatch([]*hraft.Log{
+		log("put", "a", "1"),
+		log("put", "b", "2"),
+		{Data: []byte("not json")},
+		log("bogus", "x", ""),
+		log("delete", "a", ""),
+		log("put", "c", "3"),
+	})
+	if len(res) != 6 {
+		t.Fatalf("results: %d", len(res))
+	}
+	for i, wantErr := range []bool{false, false, true, true, false, false} {
+		if (res[i] != nil) != wantErr {
+			t.Errorf("entry %d: result %v, want error=%v", i, res[i], wantErr)
+		}
+	}
+	if e, _ := f.get("a"); e != nil {
+		t.Error("a was deleted later in the batch")
+	}
+	for k, want := range map[string]string{"b": "2", "c": "3"} {
+		if e, _ := f.get(k); e == nil || string(e.Value) != want {
+			t.Errorf("%s = %v", k, e)
+		}
 	}
 }

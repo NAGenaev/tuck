@@ -243,3 +243,25 @@ func TestLoginRefusedWhenBoundNamespaceDeleted(t *testing.T) {
 		t.Fatalf("login into deleted namespace: got %d, want 403", resp.StatusCode)
 	}
 }
+
+// Deleting a namespace must destroy its data: recreating the name may not
+// bring the old secrets and policies back.
+func TestDeletedNamespaceDataDoesNotResurrect(t *testing.T) {
+	ts, _, root := newLDAPTestServer(t)
+	seedTeams(t, ts, root)
+	if s, b := nsReq(t, ts, http.MethodDelete, "/v1/sys/namespaces/team-a", "", root, ""); s >= 300 {
+		t.Fatalf("delete: %d %s", s, b)
+	}
+	if s, b := nsReq(t, ts, http.MethodPost, "/v1/sys/namespaces", `{"name":"team-a"}`, root, ""); s != http.StatusCreated {
+		t.Fatalf("recreate: %d %s", s, b)
+	}
+	if s, b := nsReq(t, ts, http.MethodGet, "/v1/secret/prod/pass", "", root, "team-a"); s != http.StatusNotFound || strings.Contains(b, "TEAM-A-SECRET") {
+		t.Fatalf("old secret came back: %d %s", s, b)
+	}
+	if s, b := nsReq(t, ts, http.MethodGet, "/v1/policy/rd", "", root, "team-a"); s != http.StatusNotFound {
+		t.Fatalf("old policy came back: %d %s", s, b)
+	}
+	if s, b := nsReq(t, ts, http.MethodGet, "/v1/secret/prod/pass", "", root, "team-b"); s != http.StatusOK || !strings.Contains(b, "TEAM-B-SECRET") {
+		t.Fatalf("team-b must be untouched: %d %s", s, b)
+	}
+}

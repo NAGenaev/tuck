@@ -1633,7 +1633,24 @@ func (c *Core) DeleteNamespace(ctx context.Context, name string) error {
 	if name == "" || name == namespace.RootNamespace {
 		return fmt.Errorf("cannot delete the root namespace")
 	}
-	return c.namespaces.Delete(ctx, name)
+	// Drop the record first so no new request can enter the namespace while its
+	// data is wiped; tokens bound to it already fail the existence check.
+	if err := c.namespaces.Delete(ctx, name); err != nil {
+		return err
+	}
+	// Without this, secrets and policies survive and reappear if the name is
+	// ever created again.
+	prefix := namespace.StoragePrefix(name)
+	keys, err := c.barrier.List(ctx, prefix)
+	if err != nil {
+		return fmt.Errorf("namespace %q deleted, listing its data: %w", name, err)
+	}
+	for _, k := range keys {
+		if err := c.barrier.Delete(ctx, k); err != nil {
+			return fmt.Errorf("namespace %q deleted, wiping its data: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // ListNamespaces returns the names of all non-root namespaces.

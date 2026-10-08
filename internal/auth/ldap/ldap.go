@@ -34,6 +34,10 @@ var (
 	ErrInvalidCredentials = errors.New("ldap: invalid username or password")
 	// ErrNoRole is returned when no role matches the authenticated user.
 	ErrNoRole = errors.New("ldap: no matching role for user")
+
+	// ErrUserNotFound is returned by Resolve when the directory has no (or no
+	// unambiguous) entry for the user any more.
+	ErrUserNotFound = errors.New("ldap: user not found")
 	// ErrUnavailable wraps every failure that is not the user's fault: the
 	// directory cannot be reached, TLS verification fails, the service account
 	// cannot bind, a search errors out. Callers map it to 503 rather than 500
@@ -103,6 +107,30 @@ type Config struct {
 
 	// StartTLS upgrades an ldap:// connection to TLS via the STARTTLS extension.
 	StartTLS bool `json:"starttls,omitempty"`
+
+	// RecheckInterval is how often Tuck re-reads the directory for every live
+	// LDAP token and revokes the ones whose owner no longer has a matching
+	// role (left the group, account removed). Go duration such as "5m";
+	// empty = 5m; "0" or "off" disables the check.
+	RecheckInterval string `json:"recheck_interval,omitempty"`
+}
+
+// DefaultRecheckInterval applies when RecheckInterval is empty.
+const DefaultRecheckInterval = 5 * time.Minute
+
+// RecheckEvery returns the re-validation period; 0 means disabled.
+func (c *Config) RecheckEvery() (time.Duration, error) {
+	switch strings.ToLower(strings.TrimSpace(c.RecheckInterval)) {
+	case "":
+		return DefaultRecheckInterval, nil
+	case "0", "off", "disabled":
+		return 0, nil
+	}
+	d, err := time.ParseDuration(strings.TrimSpace(c.RecheckInterval))
+	if err != nil || d < 30*time.Second {
+		return 0, fmt.Errorf("recheck_interval %q: want a duration of at least 30s, or \"off\"", c.RecheckInterval)
+	}
+	return d, nil
 }
 
 func (c *Config) userAttrField() string {
@@ -373,19 +401,9 @@ func (a *Authenticator) LoginNamespace(ctx context.Context, roles []*Role, usern
 		return nil, ErrInvalidCredentials
 	}
 
-	if a.cfg.GroupDN != "" {
-		if err := conn.Bind(a.cfg.BindDN, a.cfg.BindPassword); err != nil {
-			return nil, fmt.Errorf("%w: re-bind for group search: %w", ErrUnavailable, err)
-		}
-		gf := a.cfg.buildGroupFilter(userDN)
-		gEntries, err := conn.Search(a.cfg.GroupDN, gf, []string{"dn"})
-		if err != nil {
-			return nil, fmt.Errorf("%w: group search: %w", ErrUnavailable, err)
-		}
-		userGroups = make([]string, len(gEntries))
-		for i, e := range gEntries {
-			userGroups[i] = e.DN
-		}
+	userGroups, err = a.groupsOf(conn, userDN, userGroups)
+	if err != nil {
+		return nil, err
 	}
 
 	policies, ttl, tuckNS, choices, ok := matchRoles(roles, username, userDN, userGroups, namespace)
@@ -403,6 +421,60 @@ func (a *Authenticator) LoginNamespace(ctx context.Context, roles []*Role, usern
 	}
 
 	return &LoginResult{UserDN: userDN, Username: username, Policies: policies, TTL: ttl, TuckNamespace: tuckNS, Groups: userGroups}, nil
+}
+
+// groupsOf returns the user's groups: the memberOf-style attribute values
+// already read from the user entry, or, with group_dn set, the result of an
+// explicit group search (which needs the service account bound again).
+func (a *Authenticator) groupsOf(conn Conn, userDN string, fromAttr []string) ([]string, error) {
+	if a.cfg.GroupDN == "" {
+		return fromAttr, nil
+	}
+	if err := conn.Bind(a.cfg.BindDN, a.cfg.BindPassword); err != nil {
+		return nil, fmt.Errorf("%w: re-bind for group search: %w", ErrUnavailable, err)
+	}
+	gEntries, err := conn.Search(a.cfg.GroupDN, a.cfg.buildGroupFilter(userDN), []string{"dn"})
+	if err != nil {
+		return nil, fmt.Errorf("%w: group search: %w", ErrUnavailable, err)
+	}
+	groups := make([]string, len(gEntries))
+	for i, e := range gEntries {
+		groups[i] = e.DN
+	}
+	return groups, nil
+}
+
+// Resolve answers, without a password, which policies the user is entitled to
+// in the Tuck namespace tuckNS right now. It is how Tuck notices that a person
+// who logged in earlier has since left the group. An empty result with a nil
+// error means "still in the directory, but no role grants access in tuckNS".
+// ErrUserNotFound means the account is gone; ErrUnavailable that nothing can
+// be concluded.
+func (a *Authenticator) Resolve(ctx context.Context, roles []*Role, username, tuckNS string) ([]string, error) {
+	conn, err := a.dial(ctx, a.cfg)
+	if err != nil {
+		return nil, fmt.Errorf("%w: connect: %w", ErrUnavailable, err)
+	}
+	defer func() { _ = conn.Close() }()
+	if err := conn.Bind(a.cfg.BindDN, a.cfg.BindPassword); err != nil {
+		return nil, fmt.Errorf("%w: service account bind: %w", ErrUnavailable, err)
+	}
+	groupAttr := a.cfg.groupAttrField()
+	filter := fmt.Sprintf("(%s=%s)", a.cfg.userAttrField(), goldap.EscapeFilter(username))
+	entries, err := conn.Search(a.cfg.UserDN, filter, []string{"dn", groupAttr})
+	if err != nil {
+		return nil, fmt.Errorf("%w: user search: %w", ErrUnavailable, err)
+	}
+	if len(entries) != 1 {
+		return nil, ErrUserNotFound
+	}
+	userDN := entries[0].DN
+	groups, err := a.groupsOf(conn, userDN, entries[0].Attributes[groupAttr])
+	if err != nil {
+		return nil, err
+	}
+	policies, _, _, _, _ := matchRoles(roles, username, userDN, groups, &tuckNS)
+	return policies, nil
 }
 
 // matchRoles returns the union of policies and the maximum TTL from the
@@ -497,6 +569,9 @@ func (c *Config) Validate() error {
 		if _, err := certPool(c.CACert); err != nil {
 			return err
 		}
+	}
+	if _, err := c.RecheckEvery(); err != nil {
+		return err
 	}
 	return nil
 }

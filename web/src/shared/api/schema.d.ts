@@ -1267,6 +1267,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/ldap/recheck": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-validate all live LDAP tokens against the directory now
+         * @description Revokes tokens whose owner no longer has a matching role (left the group, account removed) and narrows tokens that lost some policies. An unreachable directory revokes nothing. Root namespace only; runs on the Raft leader.
+         */
+        post: operations["recheckLDAP"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/ldap/users/{username}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                username: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke every live token of an LDAP login */
+        post: operations["revokeLDAPUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/ldap/login": {
         parameters: {
             query?: never;
@@ -5149,6 +5188,73 @@ export interface operations {
             };
         };
     };
+    recheckLDAP: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        skipped?: string;
+                        users?: number;
+                        tokens?: number;
+                        revoked?: number;
+                        narrowed?: number;
+                        errors?: number;
+                        revoked_users?: string[];
+                    };
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    revokeLDAPUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                username: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Number of revoked tokens */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        username?: string;
+                        revoked?: number;
+                    };
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     loginLDAP: {
         parameters: {
             query?: never;
@@ -5226,6 +5332,8 @@ export interface operations {
                     ca_cert?: string;
                     starttls?: boolean;
                     tls_insecure?: boolean;
+                    /** @description How often live LDAP tokens are re-validated against the directory and revoked when the owner lost access. Duration (min 30s), empty = 5m, "off" disables */
+                    recheck_interval?: string;
                 };
             };
         };

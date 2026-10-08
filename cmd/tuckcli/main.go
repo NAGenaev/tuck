@@ -946,6 +946,8 @@ Auth logins:
   auth ldap config get | put <json|->
   auth ldap role put <name> [--groups=a,b] [--users=u1,u2] [--policies=p1,p2] [--ttl=8h] [--tuck-namespace=<ns>]
   auth ldap role get|delete <name>   |   auth ldap role list
+  auth ldap recheck                  Re-validate all live LDAP tokens against the directory now (revokes those whose owner lost access)
+  auth ldap revoke-user <username>   Revoke every live token of an LDAP login
   auth kubernetes login --jwt=... [--cluster=<name>]
   auth kubernetes clusters
   auth kubernetes role put <k8s-ns> <service-account> [--cluster=<name>] [--policies=p1,p2] [--ttl=24h] [--tuck-namespace=<ns>]

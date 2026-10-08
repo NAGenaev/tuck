@@ -27,6 +27,7 @@ type Token struct {
 	Policies    []string      `json:"policies"`
 	Namespace   string        `json:"namespace,omitempty"` // namespace this token is bound to; empty = root
 	EntityID    string        `json:"entity_id,omitempty"` // set when issued via an auth method login
+	AuthMethod  string        `json:"auth_method,omitempty"` // "ldap" for tokens issued by an LDAP login; used to re-validate them against the directory
 	CreatedAt   time.Time     `json:"created_at"`
 	ExpiresAt   time.Time     `json:"expires_at"` // zero means never
 	Renewable   bool          `json:"renewable"`  // false by default

@@ -13,7 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
+	"github.com/NAGenaev/tuck/internal/clientip"
 	"net/http"
 	"os"
 	"strings"
@@ -42,6 +42,11 @@ type Entry struct {
 	Status      int    `json:"status"`
 	ClientIP    string `json:"client_ip,omitempty"`
 	Fingerprint string `json:"fingerprint,omitempty"` // truncated SHA-256(tokenID)
+	// Identity is who the request is attributed to: the token's display name
+	// (e.g. "ldap:alice") or, for a login attempt, the claimed login. It is
+	// written at request time, so it stays readable after the token is revoked.
+	Identity string `json:"identity,omitempty"`
+	EntityID string `json:"entity_id,omitempty"` // stable identity of the person/workload across logins
 	DurationMS  int64  `json:"duration_ms"`
 	PrevHash    string `json:"prev_hash"` // hex SHA-256 of previous record
 	Hash        string `json:"hash"`      // hex SHA-256 of this record (excl. hash field)
@@ -152,17 +157,11 @@ func Fingerprint(tokenID string) string {
 	return hex.EncodeToString(h[:6]) // 6 bytes = 12 hex chars
 }
 
-// ClientIP extracts the remote IP from a request, respecting X-Forwarded-For.
-func ClientIP(r *http.Request) string {
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		if host, _, err := net.SplitHostPort(fwd); err == nil {
-			return host
-		}
-		return fwd
-	}
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
-	return host
-}
+// ClientIP extracts the client address from a request. X-Forwarded-For is
+// honoured only when the direct peer is a configured trusted proxy
+// (see package clientip); otherwise a client could write any address into
+// the audit log.
+func ClientIP(r *http.Request) string { return clientip.FromRequest(r) }
 
 // Loggable is implemented by Logger and Dispatcher.
 type Loggable interface {
@@ -176,6 +175,18 @@ type annotationKey struct{}
 type annotation struct {
 	mu        sync.Mutex
 	namespace string
+	identity  string
+	entityID  string
+}
+
+// SetIdentity records who the request is attributed to for its audit entry
+// (token display name, entity id). It is a no-op outside of Middleware.
+func SetIdentity(ctx context.Context, identity, entityID string) {
+	if a, ok := ctx.Value(annotationKey{}).(*annotation); ok {
+		a.mu.Lock()
+		a.identity, a.entityID = identity, entityID
+		a.mu.Unlock()
+	}
 }
 
 // SetNamespace records the validated namespace of the request for its audit
@@ -198,7 +209,7 @@ func Middleware(l Loggable, h http.Handler) http.Handler {
 		h.ServeHTTP(rw, r)
 
 		ann.mu.Lock()
-		ns := ann.namespace
+		ns, identity, entityID := ann.namespace, ann.identity, ann.entityID
 		ann.mu.Unlock()
 
 		tok := r.Header.Get("X-Tuck-Token")
@@ -212,6 +223,8 @@ func Middleware(l Loggable, h http.Handler) http.Handler {
 			Status:      rw.status,
 			ClientIP:    ClientIP(r),
 			Fingerprint: Fingerprint(tok),
+			Identity:    identity,
+			EntityID:    entityID,
 			DurationMS:  time.Since(start).Milliseconds(),
 		})
 	})

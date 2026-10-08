@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/NAGenaev/tuck/internal/audit"
 	"github.com/NAGenaev/tuck/internal/core"
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
 	"github.com/NAGenaev/tuck/internal/policy"
@@ -60,6 +61,7 @@ func (s *Server) loginK8s(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	audit.SetIdentity(r.Context(), tok.DisplayName, tok.EntityID)
 	writeJSON(w, http.StatusOK, map[string]string{"token": tok.ID})
 }
 

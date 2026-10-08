@@ -3,10 +3,11 @@ package api
 import (
 	"errors"
 	"io"
-	"net"
 	"net/http"
 
+	"github.com/NAGenaev/tuck/internal/audit"
 	authjwt "github.com/NAGenaev/tuck/internal/auth/jwt"
+	"github.com/NAGenaev/tuck/internal/clientip"
 )
 
 const (
@@ -15,10 +16,7 @@ const (
 )
 
 func (s *Server) oidcAllowed(w http.ResponseWriter, r *http.Request) bool {
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		ip = r.RemoteAddr
-	}
+	ip := clientip.FromRequest(r)
 	if !s.oidcLimiter.Allow(ip) {
 		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate limit exceeded"})
 		return false
@@ -99,6 +97,7 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	audit.SetIdentity(r.Context(), tok.DisplayName, tok.EntityID)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token":      tok.ID,
 		"policies":   tok.Policies,

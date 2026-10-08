@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NAGenaev/tuck/internal/audit"
 	authjwt "github.com/NAGenaev/tuck/internal/auth/jwt"
 	"github.com/NAGenaev/tuck/internal/policy"
 )
@@ -46,6 +47,7 @@ func (s *Server) loginJWT(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	audit.SetIdentity(r.Context(), tok.DisplayName, tok.EntityID)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token":      tok.ID,
 		"policies":   tok.Policies,

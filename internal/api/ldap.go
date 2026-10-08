@@ -9,7 +9,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/NAGenaev/tuck/internal/audit"
 	authlda "github.com/NAGenaev/tuck/internal/auth/ldap"
+	"github.com/NAGenaev/tuck/internal/clientip"
 	"github.com/NAGenaev/tuck/internal/policy"
 )
 
@@ -36,8 +38,11 @@ func (s *Server) loginLDAP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Attribute the attempt, successful or not, to the claimed login.
+	audit.SetIdentity(r.Context(), "ldap:"+req.Username, "")
+
 	now := time.Now()
-	throttleID := ldapThrottleID(req.Username, r.RemoteAddr)
+	throttleID := ldapThrottleID(req.Username, clientip.FromRequest(r))
 	if left, locked := s.ldapThrottle.blocked(throttleID, now); locked {
 		w.Header().Set("Retry-After", strconv.Itoa(int(left.Seconds())+1))
 		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many failed attempts, try again later"})
@@ -71,6 +76,7 @@ func (s *Server) loginLDAP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.ldapThrottle.success(throttleID)
+	audit.SetIdentity(r.Context(), tok.DisplayName, tok.EntityID)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token":      tok.ID,
 		"policies":   tok.Policies,

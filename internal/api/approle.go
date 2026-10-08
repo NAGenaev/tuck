@@ -4,11 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net"
 	"net/http"
 	"time"
 
+	"github.com/NAGenaev/tuck/internal/audit"
 	"github.com/NAGenaev/tuck/internal/auth/approle"
+	"github.com/NAGenaev/tuck/internal/clientip"
 	"github.com/NAGenaev/tuck/internal/policy"
 )
 
@@ -32,7 +33,7 @@ func (s *Server) loginAppRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	remoteIP, _, _ := net.SplitHostPort(r.RemoteAddr)
+	remoteIP := clientip.FromRequest(r)
 	tok, err := s.core.LoginAppRole(r.Context(), req.RoleID, req.SecretID, remoteIP)
 	if err != nil {
 		if errors.Is(err, approle.ErrInvalidCredentials) {
@@ -42,6 +43,7 @@ func (s *Server) loginAppRole(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	audit.SetIdentity(r.Context(), tok.DisplayName, tok.EntityID)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token":      tok.ID,
 		"policies":   tok.Policies,

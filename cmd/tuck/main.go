@@ -18,6 +18,7 @@ import (
 
 	"github.com/NAGenaev/tuck/internal/api"
 	"github.com/NAGenaev/tuck/internal/audit"
+	"github.com/NAGenaev/tuck/internal/clientip"
 	"github.com/NAGenaev/tuck/internal/config"
 	"github.com/NAGenaev/tuck/internal/core"
 	"github.com/NAGenaev/tuck/internal/haregister"
@@ -79,6 +80,8 @@ func main() {
 
 	// Barrier cipher
 	barrierCipher := flag.String("barrier-cipher", "", "at-rest cipher suite for a NEW store: aes-256-gcm (default) | gost-kuznyechik-mgm; ignored for an existing store")
+
+	trustedProxies := flag.String("trusted-proxies", "", "comma-separated IPs/CIDRs of load balancers whose X-Forwarded-For is believed (client address in audit log, rate limits, AppRole CIDRs); empty = header ignored")
 
 	requireMlock := flag.Bool("require-mlock", false, "refuse to start unless process memory can be locked (no swap); Linux only")
 
@@ -180,6 +183,7 @@ func main() {
 		apply("otel-endpoint", cfg.Telemetry.OtelEndpoint)
 		apply("barrier-cipher", cfg.Barrier.Cipher)
 		applyBool("require-mlock", cfg.RequireMlock)
+		apply("trusted-proxies", strings.Join(cfg.TrustedProxies, ","))
 
 		log.Printf("tuck: loaded config from %q", resolvedCfgPath)
 	}
@@ -191,6 +195,13 @@ func main() {
 		log.Printf("tuck: WARNING: %v — the root key and DEK may be swapped to disk (set --require-mlock to make this fatal)", err)
 	} else {
 		log.Printf("tuck: process memory locked, core dumps disabled")
+	}
+
+	if err := clientip.SetTrusted(strings.Split(*trustedProxies, ",")); err != nil {
+		log.Fatalf("tuck: --trusted-proxies: %v", err)
+	}
+	if strings.TrimSpace(*trustedProxies) != "" {
+		log.Printf("tuck: trusting X-Forwarded-For from %s", *trustedProxies)
 	}
 
 	// --- Backend ---
@@ -361,6 +372,7 @@ func main() {
 	defer stop()
 
 	c.StartGC(ctx)
+	c.StartLDAPRecheck(ctx)
 
 	if *clusterMode {
 		log.Printf("tuck: cluster mode — followers wait for the leader to initialize the store")

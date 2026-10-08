@@ -1380,7 +1380,8 @@ func (c *Core) LoginLDAP(ctx context.Context, username, password string, namespa
 	if err := c.checkLoginNamespace(ctx, result.TuckNamespace); err != nil {
 		return nil, err
 	}
-	tok, err := c.CreateToken(ctx, "ldap:"+result.Username, result.Policies, result.TTL, loginTokenOpts(result.TuckNamespace)...)
+	tok, err := c.CreateToken(ctx, "ldap:"+result.Username, result.Policies, result.TTL,
+		append(loginTokenOpts(result.TuckNamespace), func(t *token.Token) { t.AuthMethod = "ldap" })...)
 	if err != nil {
 		return nil, err
 	}

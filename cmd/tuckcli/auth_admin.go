@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -44,9 +45,24 @@ func readJSONArg(arg string) string {
 
 func dispatchLDAPAuth(c *client, args []string) {
 	if len(args) < 1 {
-		fatalf("usage: auth ldap login|config|role")
+		fatalf("usage: auth ldap login|config|role|recheck|revoke-user")
 	}
 	switch args[0] {
+	case "recheck":
+		resp, err := c.do("POST", "/v1/auth/ldap/recheck", nil)
+		if err != nil {
+			fatalf("request: %v", err)
+		}
+		printJSON(mustJSON(resp, 200))
+	case "revoke-user":
+		if len(args) < 2 {
+			fatalf("usage: auth ldap revoke-user <username>")
+		}
+		resp, err := c.do("POST", "/v1/auth/ldap/users/"+url.PathEscape(args[1])+"/revoke", nil)
+		if err != nil {
+			fatalf("request: %v", err)
+		}
+		printJSON(mustJSON(resp, 200))
 	case "login":
 		fs := flag.NewFlagSet("auth ldap login", flag.ExitOnError)
 		username := fs.String("username", "", "LDAP username (required)")

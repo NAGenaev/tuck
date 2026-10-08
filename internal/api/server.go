@@ -246,6 +246,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/auth/ldap/login", s.loginLDAP)
 	mux.HandleFunc("GET /v1/auth/ldap/config", s.requireToken(s.getLDAPConfig))
 	mux.HandleFunc("PUT /v1/auth/ldap/config", s.requireToken(s.putLDAPConfig))
+	mux.HandleFunc("POST /v1/auth/ldap/recheck", s.requireToken(s.recheckLDAP))
+	mux.HandleFunc("POST /v1/auth/ldap/users/{username}/revoke", s.requireToken(s.revokeLDAPUser))
 	mux.HandleFunc("PUT /v1/auth/ldap/role/{name}", s.requireToken(s.putLDAPRole))
 	mux.HandleFunc("GET /v1/auth/ldap/role/{name}", s.requireToken(s.getLDAPRole))
 	mux.HandleFunc("DELETE /v1/auth/ldap/role/{name}", s.requireToken(s.deleteLDAPRole))
@@ -346,6 +348,7 @@ func (s *Server) requireToken(next http.HandlerFunc) http.HandlerFunc {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid or expired token"})
 			return
 		}
+		audit.SetIdentity(r.Context(), tok.DisplayName, tok.EntityID)
 		if err := s.core.TrackUse(r.Context(), id); err != nil {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "token has exceeded its use limit"})
 			return

@@ -1607,6 +1607,30 @@
         "responses": { "200": { "description": "Role names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
       }
     },
+    "/v1/auth/ldap/recheck": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "Re-validate all live LDAP tokens against the directory now",
+        "description": "Revokes tokens whose owner no longer has a matching role (left the group, account removed) and narrows tokens that lost some policies. An unreachable directory revokes nothing. Root namespace only; runs on the Raft leader.",
+        "operationId": "recheckLDAP",
+        "responses": {
+          "200": { "description": "Result", "content": { "application/json": { "schema": { "type": "object", "properties": { "skipped": { "type": "string" }, "users": { "type": "integer" }, "tokens": { "type": "integer" }, "revoked": { "type": "integer" }, "narrowed": { "type": "integer" }, "errors": { "type": "integer" }, "revoked_users": { "type": "array", "items": { "type": "string" } } } } } } },
+          "403": { "description": "Permission denied" }
+        }
+      }
+    },
+    "/v1/auth/ldap/users/{username}/revoke": {
+      "parameters": [{ "name": "username", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "tags": ["auth"],
+        "summary": "Revoke every live token of an LDAP login",
+        "operationId": "revokeLDAPUser",
+        "responses": {
+          "200": { "description": "Number of revoked tokens", "content": { "application/json": { "schema": { "type": "object", "properties": { "username": { "type": "string" }, "revoked": { "type": "integer" } } } } } },
+          "403": { "description": "Permission denied" }
+        }
+      }
+    },
     "/v1/auth/ldap/login": {
       "post": {
         "tags": ["auth-ldap"],
@@ -1628,7 +1652,7 @@
         "tags": ["auth-ldap"],
         "summary": "Set LDAP config",
         "operationId": "putLDAPConfig",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["urls", "user_dn"], "properties": { "urls": { "type": "array", "items": { "type": "string", "example": "ldaps://ldap.example.com:636" } }, "bind_dn": { "type": "string" }, "bind_password": { "type": "string", "description": "Never returned by GET; omitted on save = keep the stored one" }, "user_dn": { "type": "string" }, "user_attr": { "type": "string", "description": "uid (default) or sAMAccountName for AD" }, "group_dn": { "type": "string" }, "group_attr": { "type": "string" }, "group_filter": { "type": "string", "description": "Supports {{.UserDN}}; for nested AD groups use (member:1.2.840.113556.1.4.1941:={{.UserDN}})" }, "ca_cert": { "type": "string", "description": "PEM bundle of the CA(s) that sign the directory certificates; empty = system trust store" }, "starttls": { "type": "boolean" }, "tls_insecure": { "type": "boolean" } } } } } },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["urls", "user_dn"], "properties": { "urls": { "type": "array", "items": { "type": "string", "example": "ldaps://ldap.example.com:636" } }, "bind_dn": { "type": "string" }, "bind_password": { "type": "string", "description": "Never returned by GET; omitted on save = keep the stored one" }, "user_dn": { "type": "string" }, "user_attr": { "type": "string", "description": "uid (default) or sAMAccountName for AD" }, "group_dn": { "type": "string" }, "group_attr": { "type": "string" }, "group_filter": { "type": "string", "description": "Supports {{.UserDN}}; for nested AD groups use (member:1.2.840.113556.1.4.1941:={{.UserDN}})" }, "ca_cert": { "type": "string", "description": "PEM bundle of the CA(s) that sign the directory certificates; empty = system trust store" }, "starttls": { "type": "boolean" }, "tls_insecure": { "type": "boolean" }, "recheck_interval": { "type": "string", "description": "How often live LDAP tokens are re-validated against the directory and revoked when the owner lost access. Duration (min 30s), empty = 5m, \"off\" disables" } } } } } },
         "responses": { "204": { "description": "Saved" } }
       }
     },

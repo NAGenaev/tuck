@@ -79,6 +79,10 @@ type Config struct {
 	} `yaml:"barrier"`
 
 
+	// TrustedProxies lists load balancers (IP or CIDR) whose X-Forwarded-For
+	// header is believed when deriving the client address.
+	TrustedProxies []string `yaml:"trusted_proxies"`
+
 	// RequireMlock makes startup fail when process memory cannot be locked.
 	RequireMlock bool `yaml:"require_mlock"`
 

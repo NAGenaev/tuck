@@ -2,7 +2,7 @@
 package ratelimit
 
 import (
-	"net"
+	"github.com/NAGenaev/tuck/internal/clientip"
 	"net/http"
 	"sync"
 	"time"
@@ -85,10 +85,7 @@ func (l *Limiter) Cleanup(ttl time.Duration) {
 // Returns 429 Too Many Requests when the limit is exceeded.
 func (l *Limiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-		if ip == "" {
-			ip = r.RemoteAddr
-		}
+		ip := clientip.FromRequest(r)
 		if !l.Allow(ip) {
 			http.Error(w, `{"error":"rate limit exceeded"}`, http.StatusTooManyRequests)
 			return

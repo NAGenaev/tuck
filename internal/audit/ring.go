@@ -203,7 +203,7 @@ func (f Filter) Match(e Entry) bool {
 	}
 	if f.Query != "" {
 		q := strings.ToLower(f.Query)
-		hay := strings.ToLower(e.Path + " " + e.RequestID + " " + e.Fingerprint + " " + e.ClientIP + " " + e.Namespace)
+		hay := strings.ToLower(e.Path + " " + e.RequestID + " " + e.Fingerprint + " " + e.ClientIP + " " + e.Namespace + " " + e.Identity)
 		if !strings.Contains(hay, q) {
 			return false
 		}

@@ -25,3 +25,40 @@ subjects:
     name: {{ include "tuck.fullname" . }}-server
     namespace: {{ include "tuck.namespace" . }}
 {{- end }}
+{{- if .Values.server.cluster.enabled }}
+---
+# Each pod labels itself tuck.io/leader=true|false from its Raft role. Limited
+# to this release's own pods.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "tuck.fullname" . }}-server-leader-label
+  namespace: {{ include "tuck.namespace" . }}
+  labels:
+    {{- include "tuck.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "patch"]
+    resourceNames:
+      {{- $fn := include "tuck.fullname" . }}
+      {{- range $i := until (int .Values.server.replicaCount) }}
+      - {{ $fn }}-server-{{ $i }}
+      {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "tuck.fullname" . }}-server-leader-label
+  namespace: {{ include "tuck.namespace" . }}
+  labels:
+    {{- include "tuck.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "tuck.fullname" . }}-server-leader-label
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "tuck.fullname" . }}-server
+    namespace: {{ include "tuck.namespace" . }}
+{{- end }}

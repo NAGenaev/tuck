@@ -9,7 +9,13 @@ metadata:
     app.kubernetes.io/component: server
 spec:
   replicas: {{ .Values.server.replicaCount }}
+  {{- if .Values.server.cluster.enabled }}
+  serviceName: {{ include "tuck.serverHeadless" . }}
+  # All Raft members must come up together to elect a leader.
+  podManagementPolicy: Parallel
+  {{- else }}
   serviceName: {{ include "tuck.fullname" . }}-server
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "tuck.name" . }}
@@ -58,9 +64,17 @@ spec:
             - --otel-endpoint={{ .Values.server.otelEndpoint }}
             {{- end }}
             {{- if .Values.server.cluster.enabled }}
+            {{- $fn := include "tuck.fullname" . }}
+            {{- $hl := include "tuck.serverHeadless" . }}
+            {{- $ns := include "tuck.namespace" . }}
             - --cluster
             - --cluster-bind-addr={{ .Values.server.cluster.bindAddr }}
             - --cluster-dir={{ .Values.server.cluster.dir }}
+            - --cluster-node-id=$(POD_NAME)
+            - --cluster-advertise=$(POD_NAME).{{ $hl }}.{{ $ns }}.svc:8201
+            - --cluster-bootstrap
+            - --cluster-peers={{ range $i := until (int .Values.server.replicaCount) }}{{ if $i }},{{ end }}{{ $fn }}-server-{{ $i }}={{ $fn }}-server-{{ $i }}.{{ $hl }}.{{ $ns }}.svc:8201{{ end }}
+            - --cluster-label-leader
             {{- end }}
           ports:
             - name: api
@@ -70,6 +84,16 @@ spec:
               containerPort: 8201
             {{- end }}
           env:
+            {{- if .Values.server.cluster.enabled }}
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            {{- end }}
             {{- if .Values.server.transitSeal.tokenSecretName }}
             - name: TUCK_TRANSIT_TOKEN
               valueFrom:
@@ -88,6 +112,15 @@ spec:
               mountPath: /tls
               readOnly: true
             {{- end }}
+          {{- if .Values.server.cluster.enabled }}
+          # A follower serves HTTP only after the leader initialized the store.
+          startupProbe:
+            httpGet:
+              path: /v1/health
+              port: {{ .Values.server.service.port }}
+            periodSeconds: 5
+            failureThreshold: 60
+          {{- end }}
           livenessProbe:
             {{- toYaml .Values.server.livenessProbe | nindent 12 }}
           readinessProbe:

@@ -66,7 +66,12 @@ server:
   # -- OpenTelemetry OTLP HTTP endpoint. Empty = disabled.
   otelEndpoint: ""
 
-  # -- Raft HA cluster settings
+  # -- Raft HA cluster settings. Needs an odd replicaCount >= 3, persistence, and
+  # sealType transit (auto-unseal; the wrapped root key is replicated to every
+  # node) or shamir (each pod must be unsealed). The sealType=dev key is local
+  # to a pod, so it is rejected. The Service routes to the leader only (pods
+  # label themselves tuck.io/leader). The member list is fixed at install:
+  # resize the cluster with the join/remove API, not by changing replicaCount.
   cluster:
     enabled: false
     bindAddr: "0.0.0.0:8201"

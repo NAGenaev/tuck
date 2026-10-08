@@ -20,6 +20,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/audit"
 	"github.com/NAGenaev/tuck/internal/config"
 	"github.com/NAGenaev/tuck/internal/core"
+	"github.com/NAGenaev/tuck/internal/haregister"
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
 	"github.com/NAGenaev/tuck/internal/physical"
 	physraft "github.com/NAGenaev/tuck/internal/physical/raft"
@@ -72,6 +73,7 @@ func main() {
 	clusterTLSKey    := flag.String("cluster-tls-key", "", "Raft mTLS: node private key (PEM)")
 	clusterTLSCA     := flag.String("cluster-tls-ca", "", "Raft mTLS: CA bundle (PEM) that signs all node certificates")
 	clusterTLSName   := flag.String("cluster-tls-server-name", "", "Raft mTLS: expected peer certificate name (empty = verify chain only)")
+	clusterLabelLeader := flag.Bool("cluster-label-leader", false, "Kubernetes: label this pod tuck.io/leader=true|false by Raft role so a Service can select the leader (needs POD_NAMESPACE, POD_NAME and RBAC pods/patch)")
 	clusterPeers     := flag.String("cluster-peers", "", "comma-separated bootstrap peers: id=raftAddr,... (used with --cluster-bootstrap)")
 
 	// Barrier cipher + experimental engines
@@ -164,6 +166,7 @@ func main() {
 		applyBool("cluster-bootstrap", cfg.Cluster.Bootstrap)
 		apply("cluster-join", cfg.Cluster.Join)
 		apply("cluster-peers", cfg.Cluster.Peers)
+		applyBool("cluster-label-leader", cfg.Cluster.LabelLeader)
 		apply("cluster-tls-cert", cfg.Cluster.TLSCert)
 		apply("cluster-tls-key", cfg.Cluster.TLSKey)
 		apply("cluster-tls-ca", cfg.Cluster.TLSCA)
@@ -453,6 +456,22 @@ func main() {
 			log.Fatalf("serve: %v", serveErr)
 		}
 	}()
+
+	if *clusterLabelLeader {
+		cb := c.ClusterBackend()
+		if cb == nil {
+			log.Fatalf("--cluster-label-leader requires --cluster")
+		}
+		pod := os.Getenv("POD_NAME")
+		if pod == "" {
+			pod = *clusterNodeID
+		}
+		labeler, lblErr := haregister.InCluster(os.Getenv("POD_NAMESPACE"), pod)
+		if lblErr != nil {
+			log.Fatalf("--cluster-label-leader: %v", lblErr)
+		}
+		go labeler.Run(ctx, cb.IsLeader, time.Second, 30*time.Second, log.Printf)
+	}
 
 	scheme := "http"
 	if tlsCfg != nil {

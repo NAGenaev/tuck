@@ -1,4 +1,5 @@
 {{- if .Values.server.enabled }}
+{{- include "tuck.validateCluster" . }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -13,15 +14,43 @@ spec:
     app.kubernetes.io/name: {{ include "tuck.name" . }}
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/component: server
+    {{- if .Values.server.cluster.enabled }}
+    # Followers refuse writes (and logins are writes): route to the leader only.
+    # Each pod keeps this label equal to its Raft role (--cluster-label-leader).
+    tuck.io/leader: "true"
+    {{- end }}
   ports:
     - name: api
       port: {{ .Values.server.service.port }}
       targetPort: {{ .Values.server.service.port }}
       protocol: TCP
-    {{- if .Values.server.cluster.enabled }}
+{{- if .Values.server.cluster.enabled }}
+---
+# Stable per-pod DNS for Raft peers. Not-ready pods are published too: nodes
+# must find each other before any of them is ready.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "tuck.serverHeadless" . }}
+  namespace: {{ include "tuck.namespace" . }}
+  labels:
+    {{- include "tuck.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: {{ include "tuck.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: server
+  ports:
+    - name: api
+      port: {{ .Values.server.service.port }}
+      targetPort: {{ .Values.server.service.port }}
+      protocol: TCP
     - name: raft
       port: 8201
       targetPort: 8201
       protocol: TCP
-    {{- end }}
+{{- end }}
 {{- end }}

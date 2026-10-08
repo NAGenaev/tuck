@@ -119,3 +119,28 @@ Tuck server address for operator/injector.
 {{- printf "%s://%s-server.%s.svc:%d" $scheme (include "tuck.fullname" .) (include "tuck.namespace" .) (int .Values.server.service.port) }}
 {{- end }}
 {{- end }}
+
+{{/*
+Headless Service giving every server pod a stable DNS name (Raft peers).
+*/}}
+{{- define "tuck.serverHeadless" -}}
+{{- printf "%s-server-headless" (include "tuck.fullname" .) -}}
+{{- end }}
+
+{{/*
+Validate and gate Raft HA settings. Fails early on combinations that cannot work.
+*/}}
+{{- define "tuck.validateCluster" -}}
+{{- if .Values.server.cluster.enabled }}
+{{- if eq .Values.server.sealType "dev" }}
+{{- fail "server.cluster.enabled does not work with sealType=dev: every pod would generate its own root key. Use sealType=transit (auto-unseal) or shamir." }}
+{{- end }}
+{{- if not .Values.server.persistence.enabled }}
+{{- fail "server.cluster.enabled requires server.persistence.enabled=true (the Raft log must survive pod restarts)" }}
+{{- end }}
+{{- $n := int .Values.server.replicaCount }}
+{{- if or (lt $n 3) (eq (mod $n 2) 0) }}
+{{- fail (printf "server.cluster.enabled requires an odd server.replicaCount >= 3 (got %d): an even or single-node Raft group has no fault tolerance gain" $n) }}
+{{- end }}
+{{- end }}
+{{- end }}

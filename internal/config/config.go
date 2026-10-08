@@ -54,6 +54,8 @@ type Config struct {
 		Bootstrap bool   `yaml:"bootstrap"`
 		Join      string `yaml:"join"`
 		Peers     string `yaml:"peers"`
+		// LabelLeader publishes the Raft role as the pod label tuck.io/leader.
+		LabelLeader bool `yaml:"label_leader"`
 
 		TLSCert       string `yaml:"tls_cert"`
 		TLSKey        string `yaml:"tls_key"`

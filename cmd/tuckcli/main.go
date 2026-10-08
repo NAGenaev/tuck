@@ -83,6 +83,9 @@ func (c *client) doRaw(method, path string, bodyReader io.Reader) (*http.Respons
 	if c.token != "" {
 		req.Header.Set("X-Tuck-Token", c.token)
 	}
+	if c.namespace != "" {
+		req.Header.Set("X-Tuck-Namespace", c.namespace)
+	}
 	return c.http.Do(req) // #nosec G704
 }
 
@@ -336,17 +339,6 @@ func cmdAuthAppRoleLogin(c *client, roleID, secretID string) {
 	resp, err := c.do("POST", "/v1/auth/approle/login", map[string]string{
 		"role_id":   roleID,
 		"secret_id": secretID,
-	})
-	if err != nil {
-		fatalf("request: %v", err)
-	}
-	printJSON(mustJSON(resp, 200))
-}
-
-func cmdAuthLDAPLogin(c *client, username, password string) {
-	resp, err := c.do("POST", "/v1/auth/ldap/login", map[string]string{
-		"username": username,
-		"password": password,
 	})
 	if err != nil {
 		fatalf("request: %v", err)
@@ -950,7 +942,14 @@ Policies:
 
 Auth logins:
   auth approle login --role-id=... --secret-id=...
-  auth ldap login --username=... --password=...
+  auth ldap login --username=... --password=... [--namespace=<ns>]
+  auth ldap config get | put <json|->
+  auth ldap role put <name> [--groups=a,b] [--users=u1,u2] [--policies=p1,p2] [--ttl=8h] [--tuck-namespace=<ns>]
+  auth ldap role get|delete <name>   |   auth ldap role list
+  auth kubernetes login --jwt=... [--cluster=<name>]
+  auth kubernetes clusters
+  auth kubernetes role put <k8s-ns> <service-account> [--cluster=<name>] [--policies=p1,p2] [--ttl=24h] [--tuck-namespace=<ns>]
+  auth kubernetes role get|delete <k8s-ns> <service-account> [--cluster=<name>]
   auth jwt login --jwt=... [--role=...]
 
 Identity:
@@ -1363,7 +1362,7 @@ func main() {
 
 	case "auth":
 		if len(args) < 3 {
-			fatalf("auth requires a provider and subcommand: approle login, ldap login, jwt login")
+			fatalf("auth requires a provider and subcommand: approle, ldap, kubernetes, jwt")
 		}
 		switch args[1] {
 		case "approle":
@@ -1379,17 +1378,9 @@ func main() {
 			}
 			cmdAuthAppRoleLogin(c, *roleID, *secretID)
 		case "ldap":
-			if len(args) < 3 || args[2] != "login" {
-				fatalf("usage: auth ldap login --username=... --password=...")
-			}
-			fs := flag.NewFlagSet("auth ldap login", flag.ExitOnError)
-			username := fs.String("username", "", "LDAP username (required)")
-			password := fs.String("password", "", "LDAP password (required)")
-			_ = fs.Parse(args[3:])
-			if *username == "" || *password == "" {
-				fatalf("auth ldap login requires --username and --password")
-			}
-			cmdAuthLDAPLogin(c, *username, *password)
+			dispatchLDAPAuth(c, args[2:])
+		case "kubernetes":
+			dispatchK8sAuth(c, args[2:])
 		case "jwt":
 			if len(args) < 3 || args[2] != "login" {
 				fatalf("usage: auth jwt login --jwt=... [--role=...]")

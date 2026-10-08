@@ -429,3 +429,22 @@ func TestLoginThrottleWindowAndSuccess(t *testing.T) {
 		t.Fatal("success must reset")
 	}
 }
+
+func TestLDAPThrottleIsPerClientAddress(t *testing.T) {
+	var th loginThrottle
+	now := time.Now()
+	attacker := ldapThrottleID("alice", "203.0.113.5:4444")
+	victim := ldapThrottleID("Alice", "198.51.100.7:5555")
+	for i := 0; i < ldapMaxFailures; i++ {
+		th.fail(attacker, now)
+	}
+	if _, locked := th.blocked(attacker, now); !locked {
+		t.Fatal("attacker address must be locked")
+	}
+	if _, locked := th.blocked(victim, now); locked {
+		t.Fatal("another address must not be locked out by the attacker")
+	}
+	if ldapThrottleID("alice", "203.0.113.5:1") != ldapThrottleID("alice", "203.0.113.5:2") {
+		t.Fatal("source port must not matter")
+	}
+}

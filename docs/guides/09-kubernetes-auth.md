@@ -37,6 +37,13 @@ curl -X PUT "$env:TUCK_ADDR/v1/auth/kubernetes/role/default/my-app" `
   -d '{"policies":["my-app-policy"],"ttl":"1h"}'
 ```
 
+То же через CLI (с привязкой токенов роли к namespace Tuck через `--tuck-namespace`, пустое значение — root):
+
+```bash
+tuckcli auth kubernetes role put default my-app --policies=my-app-policy --ttl=1h --tuck-namespace=team-a
+tuckcli auth kubernetes role get default my-app
+```
+
 ### 4. Логин с хоста (тест)
 
 ```powershell

@@ -4,57 +4,109 @@
 
 ## Цель
 
-Сотрудники логинятся логином/паролем домена LDAP или AD; Tuck выдаёт token с политиками по группам.
+Сотрудники входят в UI и CLI логином и паролем из корпоративного каталога. Tuck сопоставляет группы пользователя с ролями и выдаёт токен с нужными политиками, привязанный к одному namespace.
+
+## Как это работает
+
+```
+логин + пароль
+   │ 1. bind сервисной учёткой, поиск пользователя (user_attr=логин)
+   │ 2. bind найденным DN с введённым паролем   → неверный пароль = 401
+   │ 3. группы: атрибут memberOf пользователя ИЛИ поиск в group_dn по group_filter
+   │ 4. роли Tuck, подходящие под группы/логин (имя группы — CN или полный DN)
+   ▼
+токен: объединение политик подходящих ролей, TTL = максимальный из ролей,
+       привязан к tuck_namespace роли
+```
+
+Важно:
+
+- **Namespace из LDAP не создаются.** Namespace создаёт администратор Tuck (UI «Namespaces», `tuckcli namespace create`). LDAP только решает, в какой из существующих namespace попадёт пользователь: это поле `tuck_namespace` в роли.
+- Если у пользователя есть роли в нескольких namespace, сервер отвечает `409` со списком `namespaces`. UI показывает выбор, CLI просит повторить вход с `--namespace=<имя>`. Пароль проверяется до ответа 409.
+- Роли разных namespace никогда не смешиваются: токен живёт ровно в одном namespace.
+- Нет подходящей роли — `403`. Неверный пароль — `401`. LDAP не настроен — `503`.
+- После 5 неудачных входов с одного адреса подряд для пары «логин + адрес» вход блокируется на 5 минут (`429`, заголовок `Retry-After`). Другие адреса и другие пользователи не затрагиваются. Если Tuck стоит за прокси, который скрывает адрес клиента, лимит действует на логин целиком.
 
 ## Шаги
 
-### 1. Настроить LDAP mount
+### 1. Настроить подключение
 
-```powershell
-curl -X POST "$env:TUCK_ADDR/v1/auth/ldap/config" `
-  -H "X-Tuck-Token: $env:TUCK_TOKEN" `
-  -H "Content-Type: application/json" `
-  -d '{
-    "url": "ldap://ldap.example.com",
-    "binddn": "cn=tuck,ou=services,dc=example,dc=com",
-    "bindpass": "bind-password",
-    "userdn": "ou=users,dc=example,dc=com",
-    "userattr": "uid",
-    "groupdn": "ou=groups,dc=example,dc=com",
-    "groupattr": "cn"
-  }'
+```bash
+tuckcli auth ldap config put '{
+  "urls": ["ldaps://ldap.example.com:636"],
+  "bind_dn": "cn=tuck-svc,ou=service-accounts,dc=example,dc=com",
+  "bind_password": "service-password",
+  "user_dn": "ou=users,dc=example,dc=com",
+  "user_attr": "sAMAccountName",
+  "group_attr": "memberOf",
+  "ca_cert": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
+}'
 ```
 
-### 2. Маппинг групп на политики
+| Поле | Назначение |
+|------|------------|
+| `urls` | Серверы по порядку предпочтения. `ldaps://` — TLS, `ldap://` + `starttls: true` — STARTTLS |
+| `bind_dn` / `bind_password` | Сервисная учётка для поиска (пароль не возвращается в `GET`) |
+| `user_dn`, `user_attr` | База поиска пользователей и атрибут логина (`uid`, для AD — `sAMAccountName`) |
+| `group_attr` | Атрибут пользователя с группами, по умолчанию `memberOf` |
+| `group_dn`, `group_filter` | Явный поиск групп вместо `memberOf`; в фильтре `{{.UserDN}}`, по умолчанию `(member={{.UserDN}})` |
+| `ca_cert` | PEM внутреннего CA банка; если задан, доверяются только эти CA |
+| `tls_insecure` | Отключает проверку сертификата. В проде не использовать |
 
-```powershell
-curl -X POST "$env:TUCK_ADDR/v1/auth/ldap/groups/devops" `
-  -H "X-Tuck-Token: $env:TUCK_TOKEN" `
-  -H "Content-Type: application/json" `
-  -d '{"policies":["devops-full"]}'
+Проверка: `tuckcli auth ldap config get`.
+
+### 2. Namespace и политика для команды
+
+```bash
+tuckcli namespace create team-a
+tuckcli --namespace=team-a policy put team-a-rw '{"paths":[{"path":"secret/*","capabilities":["read","write","delete","list"]}]}'
 ```
 
-### 3. Логин пользователя
+### 3. Роль: группа каталога → политики → namespace
 
-```powershell
-.\tuckcli.exe auth ldap login --username=alice --password=...
+```bash
+tuckcli auth ldap role put team-a-devs \
+  --groups="team-a-devs" \
+  --policies=team-a-rw \
+  --ttl=8h \
+  --tuck-namespace=team-a
 ```
 
-### 4. Проверка
+`--groups` принимает CN группы (`team-a-devs`) или её полный DN. `--users` даёт доступ по логину без группы. Роли хранятся в root; список — `tuckcli auth ldap role list`.
 
-```powershell
-.\tuckcli.exe token lookup-self
+Группа администраторов Tuck, например, получает политику `admin` в root (пустой `--tuck-namespace`).
+
+### 4. Вход
+
+UI: страница входа, вкладка LDAP. CLI:
+
+```bash
+tuckcli auth ldap login --username=alice --password=...
+# если у alice роли в нескольких namespace, будет 409; повторите:
+tuckcli auth ldap login --username=alice --password=... --namespace=team-a
 ```
+
+Дальше работайте с полученным токеном: `export TUCK_TOKEN=...`, `tuckcli --namespace=team-a kv list secret/`.
 
 ## Проверка
 
 | Действие | Ожидаемый результат |
 |----------|---------------------|
-| ldap login alice | token |
-| alice в группе devops | policies содержит devops-full |
-| неверный пароль | 400 / invalid credentials |
+| вход alice, группа `team-a-devs` | токен с политикой `team-a-rw`, привязан к `team-a` |
+| неверный пароль | `401` |
+| пользователь без подходящей роли | `403` |
+| 5 неверных паролей подряд с одного адреса | `429` + `Retry-After` |
+| токен `team-a` с заголовком `X-Tuck-Namespace: team-b` | `403` |
+
+## Частые ошибки
+
+- **403 `no matching role`** — группа в роли не совпадает с группой пользователя. Проверьте CN/DN и то, что `group_attr` или `group_dn` действительно возвращают группы (для AD вложенные группы через `memberOf` не раскрываются).
+- **401 при верном пароле** — неверный `user_attr` (для AD `sAMAccountName`, не `uid`) или `user_dn` не содержит пользователя.
+- **TLS-ошибка** — не задан `ca_cert` внутреннего CA банка.
+- **409 в скрипте** — у пользователя роли в нескольких namespace; передайте `--namespace`.
 
 ## Дальше
 
+- [09 — Kubernetes auth](09-kubernetes-auth.md)
 - [11 — JWT](11-jwt-oidc.md)
 - [02 — Политики](02-politiki-i-dostup.md)

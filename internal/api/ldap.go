@@ -36,7 +36,8 @@ func (s *Server) loginLDAP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now()
-	if left, locked := s.ldapThrottle.blocked(req.Username, now); locked {
+	throttleID := ldapThrottleID(req.Username, r.RemoteAddr)
+	if left, locked := s.ldapThrottle.blocked(throttleID, now); locked {
 		w.Header().Set("Retry-After", strconv.Itoa(int(left.Seconds())+1))
 		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many failed attempts, try again later"})
 		return
@@ -45,7 +46,7 @@ func (s *Server) loginLDAP(w http.ResponseWriter, r *http.Request) {
 	tok, err := s.core.LoginLDAP(r.Context(), req.Username, req.Password, req.Namespace)
 	if err != nil {
 		if errors.Is(err, authlda.ErrInvalidCredentials) {
-			s.ldapThrottle.fail(req.Username, now)
+			s.ldapThrottle.fail(throttleID, now)
 		}
 		var choice *authlda.NamespaceChoiceError
 		switch {
@@ -65,7 +66,7 @@ func (s *Server) loginLDAP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	s.ldapThrottle.success(req.Username)
+	s.ldapThrottle.success(throttleID)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token":      tok.ID,
 		"policies":   tok.Policies,

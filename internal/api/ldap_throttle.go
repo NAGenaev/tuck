@@ -1,6 +1,7 @@
 package api
 
 import (
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -12,8 +13,10 @@ const (
 	ldapMaxTracked  = 10000
 )
 
-// loginThrottle counts consecutive failed LDAP logins per username so that
-// guessing passwords through Tuck cannot lock the user out of the directory.
+// loginThrottle counts failed LDAP logins per (username, client address) so that
+// guessing passwords through Tuck cannot lock the user out of the directory,
+// while one attacker cannot lock the user out for everyone else. Behind a proxy
+// every client shares the proxy's address and the limit degrades to per-username.
 // The zero value is ready to use.
 type loginThrottle struct {
 	mu    sync.Mutex
@@ -23,6 +26,16 @@ type loginThrottle struct {
 type failState struct {
 	count int
 	first time.Time
+}
+
+// ldapThrottleID builds the throttle identity from the TCP peer address only;
+// forwarded-for headers are client-controlled and would let an attacker dodge the limit.
+func ldapThrottleID(username, remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
+	}
+	return username + "|" + host
 }
 
 func throttleKey(username string) string { return strings.ToLower(strings.TrimSpace(username)) }

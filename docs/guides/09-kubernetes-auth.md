@@ -106,6 +106,20 @@ curl -X PUT -H "X-Tuck-Token: $ROOT" $TUCK/v1/auth/kubernetes/clusters/dc2/role/
 
 Ограничения: список кластеров читается при старте (изменение – рестарт); Operator выбирает кластер флагом `--tuck-cluster`.
 
+### Ротация токена reviewer
+
+`token_file` перечитывается **при каждом TokenReview**, поэтому токен можно менять без рестарта Tuck (покрыто тестом `TestReviewer_RereadsTokenFileEveryCall`). Не держите бессрочный токен из Secret — выпускайте короткий и обновляйте файл:
+
+- **Свой кластер** (Tuck внутри кластера): projected-том `serviceAccountToken` с `expirationSeconds` — kubelet сам обновляет файл, делать ничего не нужно.
+- **Удалённый кластер** (`dc2`): ограниченный токен выпускается снаружи и кладётся в файл на узле Tuck, например по расписанию (cron / systemd-timer, период меньше срока токена):
+
+```bash
+kubectl --context dc2 -n tuck-reviewer create token tuck-reviewer --duration=24h \
+  > /etc/tuck/k8s/dc2.token.new && mv /etc/tuck/k8s/dc2.token.new /etc/tuck/k8s/dc2.token
+```
+
+`mv` атомарен — Tuck не увидит наполовину записанный файл. SA `tuck-reviewer` должен иметь только `create` на `tokenreviews.authentication.k8s.io` (ClusterRole `system:auth-delegator`). Если файл недоступен, логин отклоняется (ошибка, а не пропуск).
+
 ## Дальше
 
 - [08 — Injector](08-webhook-injector.md) + scoped token

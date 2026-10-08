@@ -17,7 +17,7 @@ builds:
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
     ldflags:
-      - -s -w -X main.Version={{.Version}}
+      - -s -w -X github.com/NAGenaev/tuck/internal/version.Version={{.Version}} -X github.com/NAGenaev/tuck/internal/version.Commit={{.ShortCommit}} -X github.com/NAGenaev/tuck/internal/version.BuildDate={{.Date}}
 
   - id: tuckcli
     main: ./cmd/tuckcli

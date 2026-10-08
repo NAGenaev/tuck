@@ -2,8 +2,8 @@ apiVersion: v2
 name: tuck
 description: Kubernetes-native secrets manager — single binary, no external DB, auto-unseal by default.
 type: application
-version: 0.13.0
-appVersion: "0.13.0"
+version: 2.0.0
+appVersion: "2.0.0"
 keywords:
   - secrets
   - security

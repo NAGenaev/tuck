@@ -9,6 +9,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+---
+
+## [2.0.0] — 2026-10-08
+
+Мажорный релиз: **несовместимое изменение API** — удалены движки PKI, Transit, SSH, TOTP, Database и Leases (Tuck сфокусирован на Kubernetes: KV, K8s auth, оператор, CSI, injector, Raft HA). Аутентификация LDAP, AppRole, JWT/OIDC и Kubernetes сохранена. Seal типа `transit` (авто-распечатка через Vault-совместимый Transit) остаётся.
+
+### Security
+
+- Обновлены зависимости с уязвимостями из `govulncheck`: Go 1.25.13 (stdlib: `net/http`, `crypto/tls`, `net/url`, `encoding/asn1`, `html/template`), gRPC 1.83.2 (панический отказ сервера CSI при отсутствии authority/Host), OpenTelemetry 1.45. В веб-интерфейсе: axios, react-router 7.18.4, i18next-http-backend 4 (`npm audit`: 0 уязвимостей). Тот же набор в модуле Terraform-провайдера.
+
 ### Removed
 
 - Вне области пилота удалены: облачные seal (AWS KMS, GCP KMS, Azure Key Vault), облачные динамические движки (AWS, GCP, Azure), GitHub-логин, `internal/plugin`, `internal/replication`, их API-ручки, ресурсы Terraform-провайдера и страницы веб-интерфейса. Go-код: 52 937 → 44 779 строк (−8 158); вместе с веб-частью и зависимостями коммит `46745ac`: −11 957 / +470 строк, 80 файлов. Это ломает конфигурации, где использовались эти функции.
@@ -30,7 +40,6 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **Raft: передача лидерства, метрики репликации, снапшоты.** `POST /v1/sys/cluster/step-down` (опционально `target_id`) передаёт лидерство другому voter без остановки процесса; без цели — самому актуальному follower. `GET /v1/sys/cluster` дополнен per-server метриками (`term`, `commit_index`, `applied_index`, `last_log_index`, `last_contact_ms`, `heartbeat_rtt_ms`, `lag_entries`, `reachable`) — для своего узла точные, для остальных только у лидера и по наблюдению за heartbeat (устаревают на величину одного heartbeat), кольцом из 60 реальных замеров (`history`) и сведениями о TLS-сертификате узла на транспорте Raft. `GET/POST /v1/sys/cluster/snapshot` и `GET /v1/sys/cluster/snapshot/{id}` — снапшоты в снапшот-хранилище Raft (хранятся на диске узла, 3 последних) с метаданными и повторной выгрузкой; восстановление из снапшота через API не предлагается — `Raft.Restore` предназначен для DR и инвалидирует кэши работающего узла. Веб-интерфейс: кнопка передачи лидерства с живым индикатором выборов, панели репликации/TLS со спарклайнами из реальных замеров, список снапшотов, калькулятор кворума (чистая арифметика по текущей конфигурации, явно подписан как расчёт, ничего не останавливает) и команда присоединения узла из реальных значений статуса.
 - **Raft: join-токены.** `POST /v1/sys/cluster/join-token` (root/sudo, только на лидере) выпускает недолговечный токен по встроенной политике `cluster-join` (только `sys/cluster` read+write — не delete, не step-down/snapshot и не сам этот путь, так что join-токен не может выписать себе подобных) через обычный механизм токенов (TTL по умолчанию 600 с/макс. 3600 с, `num_uses` по умолчанию 1/макс. 10 — лимиты не новые, те же `MaxTTL`/`MaxUses`, что и у `POST /v1/auth/token`). Снимает необходимость выдавать root-токен или вручную собирать политику для подключения нового узла. Веб-интерфейс: кнопка «Сгенерировать join-токен» в панели «Как добавить узел», значение показывается один раз (компонент `Reveal` с копированием и авто-маскировкой), обратный отсчёт до истечения и остаток использований; команда присоединения подставляет токен в `TUCK_TOKEN=`.
 - docs/guides/25-pilot-deployment.md — гайд по пилотному развёртыванию; в `MANUAL_TESTS.md` добавлены разделы 21–26.
-- **Transit: ГОСТ.** Тип ключа `kuznyechik-mgm` («Кузнечик» + MGM; encrypt/decrypt/rewrap, ротация версий) и HMAC на Стрибоге (`streebog-256`, `streebog-512`). Не сертифицировано ФСБ; подпись ГОСТ Р 34.10 не реализована.
 - **`--require-mlock`** (`require_mlock` в конфиге): запуск прерывается, если память процесса нельзя заблокировать от свопа. Без флага — прежнее предупреждение (теперь единое на всех ОС). На Linux дополнительно отключаются core dump. Для контейнера нужен `CAP_IPC_LOCK`.
 - **Barrier: шифрование путей.** Новые хранилища (`barrier/meta` версии 3) не хранят имена записей в backend в открытом виде: каждый сегмент пути шифруется детерминированно и обратимо (AEAD, AAD — родительский путь), ключ путей лежит в keyring и переживает `rekey` и `rotate-data-key`. Скрыты имена; форма дерева, число записей и длины сегментов остаются видимыми. Хранилища версий 1–2 работают с открытыми путями. См. docs/11 §1.1.
 - Логин по роли, привязанной к удалённому namespace, возвращает 403. Ночной fuzz в CI (`soak.yml`), новый `FuzzSuiteOpen` по всем наборам шифров барьера.
@@ -39,7 +48,6 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **Barrier: ротация DEK.** Keyring версионирован; `POST /v1/sys/rotate-data-key[?reencrypt=true]` создаёт новый ключ данных и при `reencrypt` перешифровывает все записи, удаляя старые ключи. Формат записи новых хранилищ: `version(4) || nonce || ciphertext`.
 - **Injector: Kubernetes auth.** Аннотация `tuck.io/auth: kubernetes` — агент логинится по JWT ServiceAccount Pod'а (`TUCK_AUTH=kubernetes`), статический токен и Secret с ним не нужны. `client.Auth().LoginKubernetes`.
 - **Barrier cipher suites.** Шифр барьера теперь сменный (`--barrier-cipher`, `barrier.cipher`): `aes-256-gcm` (по умолчанию) или `gost-kuznyechik-mgm`. Выбор фиксируется при первой инициализации в `barrier/meta`. Новые хранилища привязывают шифртекст к пути записи через AEAD associated data; хранилища без `barrier/meta` читаются как раньше (AES-256-GCM без AAD). Набор ГОСТ — собственная реализация, **не сертифицирована ФСБ**; сертифицированное СКЗИ подключается через `barrier.RegisterSuite`. См. docs/11-barrier-and-ciphers.md.
-- **Experimental engines gate.** PKI, SSH, TOTP, AWS, GCP, Azure в бинарнике `tuck` выключены по умолчанию (404 `disabled`); включаются `--enable-engine=pki,totp` или `enable_engines`.
 - docs/12-bank-readiness-todo.md — план доработок по итогам банковского аудита.
 - **Operator: multi-key Secrets.** `TuckSecret.spec.data` (ключ Secret → путь в Tuck) наполняет несколько ключей одного K8s Secret; `tuckPath`/`secretKey` остаются рабочими и могут сочетаться с `data`. `tuckPath`/`secretKey` больше не обязательны в CRD (обязателен `secretName`).
 - **Operator: namespace isolation.** Флаг `--enforce-namespace-paths` (Helm `operator.enforceNamespacePaths`) ограничивает TuckSecret путями `<namespace>/...` плюс префиксы из аннотации Namespace `tuck.io/allowed-paths`; пути с `..`, пустыми сегментами и спецсимволами отклоняются, при ошибке чтения Namespace доступ запрещается.
@@ -1688,7 +1696,8 @@ Pre-release for M10 testing.
 
 ---
 
-[Unreleased]: https://github.com/NAGenaev/tuck/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/NAGenaev/tuck/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/NAGenaev/tuck/compare/v1.37.0...v2.0.0
 [0.13.0]: https://github.com/NAGenaev/tuck/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/NAGenaev/tuck/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/NAGenaev/tuck/compare/v0.10.0...v0.11.0

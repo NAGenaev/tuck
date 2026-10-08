@@ -254,8 +254,9 @@ func (f *fakeRaft) OpenSnapshot(string) (physraft.SnapshotInfo, io.ReadCloser, e
 }
 
 func TestClusterStepDownErrorMapping(t *testing.T) {
-	fb := &fakeRaft{Backend: physical.NewInMem()}
+	fb := &fakeRaft{Backend: physical.NewInMem(), leader: true} // a follower cannot initialize the store
 	ts, _, tok := serveCore(t, core.New(fb, seal.NewDev(filepath.Join(t.TempDir(), "rootkey"))))
+	fb.leader = false
 
 	// Not the leader: refused before touching the backend, with the leader address.
 	code, m, raw := clusterJSON(t, http.MethodPost, ts.URL+"/v1/sys/cluster/step-down", `{}`, tok)

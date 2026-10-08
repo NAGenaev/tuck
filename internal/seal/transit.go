@@ -54,6 +54,9 @@ func NewTransit(addr, keyName, token, wrappedKeyPath string) *TransitSeal {
 
 func (t *TransitSeal) Type() string { return "transit" }
 
+// WrappedKeyPath is the local file holding the wrapped root key.
+func (t *TransitSeal) WrappedKeyPath() string { return t.wrappedKeyPath }
+
 // Init generates a fresh root key, wraps it via the Transit API, stores the
 // ciphertext locally, and returns the root key in InitResult. Shares is nil
 // (Transit is auto-unseal).

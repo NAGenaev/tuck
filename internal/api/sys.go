@@ -102,6 +102,29 @@ func (s *Server) getReady(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ready": true, "sealed": false})
 }
 
+// getLeader handles GET /v1/sys/leader (unauthenticated).
+// 200 on the active node (or any node in non-HA mode), 429 on a standby,
+// 503 while sealed. Use it as the readinessProbe in HA so a Service routes
+// only to the node that can accept writes -- followers answer writes with 503.
+func (s *Server) getLeader(w http.ResponseWriter, _ *http.Request) {
+	if s.core.Sealed() {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"ready": false, "sealed": true})
+		return
+	}
+	cb, ok := s.cluster()
+	if !ok {
+		writeJSON(w, http.StatusOK, map[string]any{"ha_enabled": false, "is_leader": true})
+		return
+	}
+	if cb.IsLeader() {
+		writeJSON(w, http.StatusOK, map[string]any{"ha_enabled": true, "is_leader": true})
+		return
+	}
+	writeJSON(w, http.StatusTooManyRequests, map[string]any{
+		"ha_enabled": true, "is_leader": false, "leader_addr": cb.LeaderAddr(),
+	})
+}
+
 // getSnapshot handles GET /v1/sys/snapshot (requires root policy).
 // Returns a binary bbolt snapshot suitable for disaster recovery.
 func (s *Server) getSnapshot(w http.ResponseWriter, r *http.Request) {

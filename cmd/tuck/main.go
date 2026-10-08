@@ -360,7 +360,10 @@ func main() {
 
 	c.StartGC(ctx)
 
-	startResult, startErr := c.Start(ctx)
+	if *clusterMode {
+		log.Printf("tuck: cluster mode — followers wait for the leader to initialize the store")
+	}
+	startResult, startErr := c.StartWhenReady(ctx, time.Second)
 	if startErr != nil && !errors.Is(startErr, core.ErrNeedsUnseal) {
 		log.Fatalf("start core: %v", startErr)
 	}

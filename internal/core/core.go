@@ -3,11 +3,13 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path"
 	"sort"
 	"strings"
@@ -33,6 +35,7 @@ import (
 	"github.com/NAGenaev/tuck/internal/mount"
 	"github.com/NAGenaev/tuck/internal/namespace"
 	"github.com/NAGenaev/tuck/internal/physical"
+	physraft "github.com/NAGenaev/tuck/internal/physical/raft"
 	"github.com/NAGenaev/tuck/internal/policy"
 	"github.com/NAGenaev/tuck/internal/seal"
 	"github.com/NAGenaev/tuck/internal/sysconfig"
@@ -53,7 +56,20 @@ var (
 	// shard collection (e.g. ShamirSeal). The server remains running; callers
 	// should poll SealStatus and surface POST /v1/sys/unseal to operators.
 	ErrNeedsUnseal = errors.New("core: seal requires manual unseal — supply shards via /v1/sys/unseal")
+
+	// ErrAwaitingInit is returned by Start on a cluster node that is not the
+	// leader while the store has not been initialized yet: only the leader may
+	// initialize, followers must wait for the initialized state to replicate.
+	ErrAwaitingInit = errors.New("core: cluster node is not the leader and the store is not initialized yet")
 )
+
+// sealMetaKey holds, in the (unencrypted) physical backend, the wrapped root
+// key of a seal that keeps one in a local file (transit). The wrapped key is
+// meaningless without the KMS, and replicating it lets every cluster node
+// unseal with the same material.
+const sealMetaKey = "core/seal-meta"
+
+type wrappedKeySeal interface{ WrappedKeyPath() string }
 
 // SealStatusInfo is returned by Core.SealStatus and exposed via
 // GET /v1/sys/seal-status.
@@ -212,9 +228,15 @@ func (c *Core) Start(ctx context.Context) (*StartResult, error) {
 	}
 
 	if !inited {
+		if cb := c.ClusterBackend(); cb != nil && !cb.IsLeader() {
+			return nil, ErrAwaitingInit
+		}
 		result, err := c.seal.Init()
 		if err != nil {
 			return nil, fmt.Errorf("seal init: %w", err)
+		}
+		if err := c.publishSealMeta(ctx); err != nil {
+			return nil, err
 		}
 
 		if err := c.barrier.InitializeWithSuite(ctx, result.RootKey, c.barrierCipher); err != nil {
@@ -237,6 +259,9 @@ func (c *Core) Start(ctx context.Context) (*StartResult, error) {
 	}
 
 	// Already initialized — unseal.
+	if err := c.syncSealMeta(ctx); err != nil {
+		return nil, err
+	}
 	rootKey, err := c.seal.Unseal()
 	if err != nil {
 		if errors.Is(err, seal.ErrNeedsShards) {
@@ -253,6 +278,72 @@ func (c *Core) Start(ctx context.Context) (*StartResult, error) {
 	_ = c.LoadAuditSinks(ctx)
 	c.registerBuiltinMounts(ctx)
 	return nil, nil
+}
+
+// StartWhenReady is Start for cluster nodes: while this node is a follower of a
+// not-yet-initialized store it waits (polling) for the leader to initialize it
+// instead of failing. On a single node it behaves exactly like Start.
+func (c *Core) StartWhenReady(ctx context.Context, poll time.Duration) (*StartResult, error) {
+	for {
+		res, err := c.Start(ctx)
+		if !errors.Is(err, ErrAwaitingInit) {
+			return res, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(poll):
+		}
+	}
+}
+
+// publishSealMeta stores the seal's wrapped root key in the backend (leader
+// only, cluster mode, seals that keep such a file).
+func (c *Core) publishSealMeta(ctx context.Context) error {
+	ws, ok := c.seal.(wrappedKeySeal)
+	cb := c.ClusterBackend()
+	if !ok || cb == nil || !cb.IsLeader() {
+		return nil
+	}
+	data, err := os.ReadFile(ws.WrappedKeyPath())
+	if err != nil {
+		return fmt.Errorf("read wrapped root key: %w", err)
+	}
+	if err := c.backend.Put(ctx, &physical.Entry{Key: sealMetaKey, Value: data}); err != nil {
+		return fmt.Errorf("replicate wrapped root key: %w", err)
+	}
+	return nil
+}
+
+// syncSealMeta makes the local wrapped-key file match the replicated one, so a
+// follower (or a node that missed a root-key rotation) unseals with the key
+// the cluster currently uses. The leader backfills the replicated copy when an
+// older deployment never published one.
+func (c *Core) syncSealMeta(ctx context.Context) error {
+	ws, ok := c.seal.(wrappedKeySeal)
+	cb := c.ClusterBackend()
+	if !ok || cb == nil {
+		return nil
+	}
+	e, err := c.backend.Get(ctx, sealMetaKey)
+	if err != nil {
+		return fmt.Errorf("read replicated wrapped root key: %w", err)
+	}
+	if e == nil {
+		if cb.IsLeader() {
+			if _, statErr := os.Stat(ws.WrappedKeyPath()); statErr == nil {
+				return c.publishSealMeta(ctx)
+			}
+		}
+		return nil
+	}
+	if cur, readErr := os.ReadFile(ws.WrappedKeyPath()); readErr == nil && bytes.Equal(cur, e.Value) {
+		return nil
+	}
+	if err := os.WriteFile(ws.WrappedKeyPath(), e.Value, 0o600); err != nil {
+		return fmt.Errorf("write wrapped root key: %w", err)
+	}
+	return nil
 }
 
 func (c *Core) registerBuiltinMounts(ctx context.Context) {
@@ -978,6 +1069,11 @@ func (c *Core) ClusterBackend() ClusterBackender {
 // No data re-encryption is needed — only the keyring envelope changes.
 // For ShamirSeal the new shares are returned; for other seals the slice is nil.
 func (c *Core) RotateKey(ctx context.Context) ([]string, error) {
+	// A follower must not mint a new root key: seal.Init overwrites local seal
+	// material and the barrier rewrap would then be refused.
+	if cb := c.ClusterBackend(); cb != nil && !cb.IsLeader() {
+		return nil, physraft.ErrNotLeader
+	}
 	result, err := c.seal.Init()
 	if err != nil {
 		return nil, fmt.Errorf("seal re-init: %w", err)
@@ -987,6 +1083,9 @@ func (c *Core) RotateKey(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("rekey barrier: %w", err)
 	}
 	clear(result.RootKey)
+	if err := c.publishSealMeta(ctx); err != nil {
+		return nil, err
+	}
 	return result.Shares, nil
 }
 

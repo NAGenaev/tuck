@@ -218,6 +218,9 @@ func Open(cfg Config) (*Backend, error) {
 			Address: hraft.ServerAddress(advertise),
 		}}
 		for _, p := range cfg.Peers {
+			if p.ID == cfg.NodeID {
+				continue // the same peer list may be shared by every node
+			}
 			servers = append(servers, hraft.Server{
 				ID:      hraft.ServerID(p.ID),
 				Address: hraft.ServerAddress(p.Addr),

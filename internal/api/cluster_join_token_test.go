@@ -104,8 +104,9 @@ func TestClusterJoinTokenNumUsesEnforced(t *testing.T) {
 // TestClusterJoinTokenNotLeader mirrors TestClusterStepDownErrorMapping's style: a
 // follower refuses to mint and reports the leader's address instead.
 func TestClusterJoinTokenNotLeader(t *testing.T) {
-	fb := &fakeRaft{Backend: physical.NewInMem()}
+	fb := &fakeRaft{Backend: physical.NewInMem(), leader: true} // a follower cannot initialize the store
 	ts, _, tok := serveCore(t, core.New(fb, seal.NewDev(filepath.Join(t.TempDir(), "rootkey"))))
+	fb.leader = false
 	code, m, raw := clusterJSON(t, http.MethodPost, ts.URL+"/v1/sys/cluster/join-token", "", tok)
 	if code != http.StatusServiceUnavailable || m["leader_addr"] != "10.0.0.9:8201" {
 		t.Fatalf("follower mint: %d %s", code, raw)

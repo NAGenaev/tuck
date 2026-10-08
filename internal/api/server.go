@@ -165,6 +165,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /v1/sys/seal-status", s.getSealStatus)
 	mux.HandleFunc("GET /v1/sys/ready", s.getReady)
+	mux.HandleFunc("GET /v1/sys/leader", s.getLeader)
 	mux.HandleFunc("POST /v1/sys/unseal", s.postUnseal)
 	mux.HandleFunc("POST /v1/sys/seal", s.requireToken(s.postSeal))
 	mux.HandleFunc("GET /v1/sys/snapshot", s.requireToken(s.getSnapshot))

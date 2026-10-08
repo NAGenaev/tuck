@@ -9,7 +9,6 @@ const PATHS: Record<string, ReactNode> = {
             <path d="M8 10V7a4 4 0 018 0v3M12 14v3" />
         </>
     ),
-    transit: <path d="M4 8h14l-3-3M20 16H6l3 3" />,
     k8s: (
         <>
             <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
@@ -27,25 +26,6 @@ const PATHS: Record<string, ReactNode> = {
         <>
             <path d="M4 6h16v12H4z" />
             <path d="M8 10h8M8 14h5" />
-        </>
-    ),
-    pki: (
-        <>
-            <path d="M5 4h14v12H5z" />
-            <circle cx="12" cy="10" r="2.5" />
-            <path d="M9 16l-1 5 4-2 4 2-1-5" />
-        </>
-    ),
-    ssh: (
-        <>
-            <path d="M3 5h18v14H3z" />
-            <path d="M7 10l3 2-3 2M12 15h5" />
-        </>
-    ),
-    totp: (
-        <>
-            <circle cx="12" cy="13" r="8" />
-            <path d="M12 8v5l3 2M9 3h6" />
         </>
     ),
     db: (

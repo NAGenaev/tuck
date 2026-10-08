@@ -19,11 +19,6 @@
     { "name": "auth-kubernetes", "description": "Kubernetes ServiceAccount token auth" },
     { "name": "auth-jwt", "description": "JWT / OIDC auth" },
     { "name": "auth-ldap", "description": "LDAP / Active Directory auth" },
-    { "name": "transit", "description": "Encryption-as-a-Service (Transit engine)" },
-    { "name": "pki", "description": "PKI certificate authority" },
-    { "name": "ssh", "description": "SSH certificate signing" },
-    { "name": "totp", "description": "TOTP code management" },
-    { "name": "database", "description": "Database dynamic credentials" },
     { "name": "identity", "description": "Identity — entities, aliases, groups" },
     { "name": "namespaces", "description": "Namespace management" },
     { "name": "cubbyhole", "description": "Per-token private storage" },
@@ -309,28 +304,6 @@
           "totals": { "$ref": "#/components/schemas/KVTotals" }
         }
       },
-      "TransitKey": {
-        "type": "object",
-        "properties": {
-          "name": { "type": "string" },
-          "type": { "type": "string", "enum": ["aes256-gcm96", "chacha20-poly1305", "ed25519", "ecdsa-p256", "rsa-2048", "rsa-4096"] },
-          "exportable": { "type": "boolean" },
-          "allow_plaintext_backup": { "type": "boolean" },
-          "min_decryption_version": { "type": "integer" },
-          "min_encryption_version": { "type": "integer" }
-        }
-      },
-      "DynamicCreds": {
-        "type": "object",
-        "properties": {
-          "lease_id": { "type": "string" },
-          "lease_duration": { "type": "integer" },
-          "access_key": { "type": "string" },
-          "secret_key": { "type": "string" },
-          "username": { "type": "string" },
-          "password": { "type": "string" }
-        }
-      },
       "Entity": {
         "type": "object",
         "properties": {
@@ -406,7 +379,6 @@
         "properties": {
           "engine_backed": { "type": "boolean", "description": "false for a mount-table-only entry: nothing is stored under it, removing it deletes no data" },
           "secrets": { "type": "integer" },
-          "leases": { "type": "integer" },
           "tokens": { "type": "integer" },
           "secrets_kv1": { "type": "integer" },
           "secrets_kv2": { "type": "integer" },
@@ -415,10 +387,7 @@
           "destroyed_versions": { "type": "integer" },
           "hidden_secrets": { "type": "integer", "description": "KV v2 secrets whose metadata the caller may not read; left out of the version figures" },
           "last_write_at": { "type": "string", "format": "date-time" },
-          "truncated": { "type": "boolean", "description": "More secrets than the scan limit; version figures are partial" },
-          "roles": { "type": "integer" },
-          "connections": { "type": "integer" },
-          "issued_certs": { "type": "integer" }
+          "truncated": { "type": "boolean", "description": "More secrets than the scan limit; version figures are partial" }
         }
       },
       "Mount": {
@@ -435,15 +404,6 @@
               "cas_required": { "type": "boolean", "description": "KV v2 only (secret/ mount): every write must carry cas" }
             }
           }
-        }
-      },
-      "Lease": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string" },
-          "path": { "type": "string" },
-          "expires_at": { "type": "string", "format": "date-time" },
-          "renewable": { "type": "boolean" }
         }
       },
       "WrappingInfo": {
@@ -792,44 +752,6 @@
           "200": { "description": "Counts", "content": { "application/json": { "schema": { "type": "object", "properties": { "secrets": { "type": "integer" }, "secrets_kv1": { "type": "integer" }, "secrets_kv2": { "type": "integer" } } } } } },
           "403": { "description": "Caller may not list secret/" }
         }
-      }
-    },
-    "/v1/sys/leases/renew": {
-      "post": {
-        "tags": ["sys"],
-        "summary": "Renew a lease",
-        "operationId": "renewLease",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "lease_id": { "type": "string" }, "increment": { "type": "integer", "description": "Seconds to extend" } } } } } },
-        "responses": {
-          "200": { "description": "Renewed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Lease" } } } },
-          "404": { "description": "Lease not found" }
-        }
-      }
-    },
-    "/v1/sys/leases/{id}": {
-      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "get": {
-        "tags": ["sys"],
-        "summary": "Look up a lease",
-        "operationId": "getLease",
-        "responses": {
-          "200": { "description": "Lease", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Lease" } } } },
-          "404": { "description": "Not found" }
-        }
-      },
-      "delete": {
-        "tags": ["sys"],
-        "summary": "Revoke a lease",
-        "operationId": "revokeLease",
-        "responses": { "204": { "description": "Revoked" } }
-      }
-    },
-    "/v1/sys/leases/": {
-      "get": {
-        "tags": ["sys"],
-        "summary": "List leases (LIST method)",
-        "operationId": "listLeases",
-        "responses": { "200": { "description": "Lease IDs", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
       }
     },
     "/v1/sys/mounts": {
@@ -1462,276 +1384,6 @@
         "operationId": "listLDAPRoles",
         "responses": { "200": { "description": "Role names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
       }
-    },
-    "/v1/transit/keys/{name}": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "get": {
-        "tags": ["transit"],
-        "summary": "Get a transit key",
-        "operationId": "getTransitKey",
-        "responses": { "200": { "description": "Key info", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransitKey" } } } } }
-      },
-      "post": {
-        "tags": ["transit"],
-        "summary": "Create a transit key",
-        "operationId": "createTransitKey",
-        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "type": { "type": "string", "enum": ["aes256-gcm96", "chacha20-poly1305", "ed25519", "ecdsa-p256", "rsa-2048", "rsa-4096"] }, "exportable": { "type": "boolean" } } } } } },
-        "responses": { "204": { "description": "Created" } }
-      },
-      "delete": {
-        "tags": ["transit"],
-        "summary": "Delete a transit key",
-        "operationId": "deleteTransitKey",
-        "responses": { "204": { "description": "Deleted" } }
-      }
-    },
-    "/v1/transit/keys/": {
-      "get": {
-        "tags": ["transit"],
-        "summary": "List transit keys (LIST method)",
-        "operationId": "listTransitKeys",
-        "responses": { "200": { "description": "Key names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
-      }
-    },
-    "/v1/transit/keys/{name}/rotate": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "post": {
-        "tags": ["transit"],
-        "summary": "Rotate a transit key",
-        "operationId": "rotateTransitKey",
-        "responses": { "204": { "description": "Rotated" } }
-      }
-    },
-    "/v1/transit/encrypt/{name}": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "post": {
-        "tags": ["transit"],
-        "summary": "Encrypt plaintext with a transit key",
-        "operationId": "transitEncrypt",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "plaintext": { "type": "string", "description": "Base64-encoded plaintext" } }, "required": ["plaintext"] } } } },
-        "responses": { "200": { "description": "Ciphertext", "content": { "application/json": { "schema": { "type": "object", "properties": { "ciphertext": { "type": "string" } } } } } } }
-      }
-    },
-    "/v1/transit/decrypt/{name}": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "post": {
-        "tags": ["transit"],
-        "summary": "Decrypt ciphertext with a transit key",
-        "operationId": "transitDecrypt",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "ciphertext": { "type": "string" } }, "required": ["ciphertext"] } } } },
-        "responses": { "200": { "description": "Plaintext (base64)", "content": { "application/json": { "schema": { "type": "object", "properties": { "plaintext": { "type": "string" } } } } } } }
-      }
-    },
-    "/v1/transit/sign/{name}": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "post": {
-        "tags": ["transit"],
-        "summary": "Sign data with an asymmetric transit key",
-        "operationId": "transitSign",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "input": { "type": "string", "description": "Base64-encoded data" } } } } } },
-        "responses": { "200": { "description": "Signature", "content": { "application/json": { "schema": { "type": "object", "properties": { "signature": { "type": "string" } } } } } } }
-      }
-    },
-    "/v1/transit/verify/{name}": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "post": {
-        "tags": ["transit"],
-        "summary": "Verify a signature",
-        "operationId": "transitVerify",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "input": { "type": "string" }, "signature": { "type": "string" } } } } } },
-        "responses": { "200": { "description": "Verification result", "content": { "application/json": { "schema": { "type": "object", "properties": { "valid": { "type": "boolean" } } } } } } }
-      }
-    },
-    "/v1/transit/hmac/{name}": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "post": {
-        "tags": ["transit"],
-        "summary": "Generate an HMAC",
-        "operationId": "transitHMAC",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "input": { "type": "string" }, "algorithm": { "type": "string", "enum": ["sha2-256", "sha2-512"] } } } } } },
-        "responses": { "200": { "description": "HMAC", "content": { "application/json": { "schema": { "type": "object", "properties": { "hmac": { "type": "string" } } } } } } }
-      }
-    },
-    "/v1/transit/rewrap/{name}": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "post": {
-        "tags": ["transit"],
-        "summary": "Re-encrypt ciphertext under the latest key version",
-        "operationId": "transitRewrap",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "ciphertext": { "type": "string" } } } } } },
-        "responses": { "200": { "description": "New ciphertext" } }
-      }
-    },
-    "/v1/pki/generate/root": {
-      "post": {
-        "tags": ["pki"],
-        "summary": "Generate a self-signed root CA",
-        "operationId": "pkiGenerateRoot",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "common_name": { "type": "string" }, "ttl": { "type": "string" }, "key_type": { "type": "string", "enum": ["rsa", "ec"] }, "key_bits": { "type": "integer" } } } } } },
-        "responses": { "200": { "description": "CA certificate and private key" } }
-      }
-    },
-    "/v1/pki/import/ca": {
-      "post": {
-        "tags": ["pki"],
-        "summary": "Import an external CA certificate and key",
-        "operationId": "pkiImportCA",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "pem_bundle": { "type": "string" } } } } } },
-        "responses": { "204": { "description": "Imported" } }
-      }
-    },
-    "/v1/pki/ca/pem": {
-      "get": {
-        "tags": ["pki"],
-        "summary": "Get the CA certificate in PEM format",
-        "operationId": "pkiGetCA",
-        "security": [],
-        "responses": { "200": { "description": "PEM certificate", "content": { "application/x-pem-file": {} } } }
-      }
-    },
-    "/v1/pki/roles/{name}": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "get": {
-        "tags": ["pki"],
-        "summary": "Get a PKI role",
-        "operationId": "getPKIRole",
-        "responses": { "200": { "description": "Role" }, "404": { "description": "Not found" } }
-      },
-      "put": {
-        "tags": ["pki"],
-        "summary": "Create or update a PKI role",
-        "operationId": "putPKIRole",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "allowed_domains": { "type": "array", "items": { "type": "string" } }, "allow_subdomains": { "type": "boolean" }, "max_ttl": { "type": "string" }, "key_type": { "type": "string" } } } } } },
-        "responses": { "204": { "description": "Saved" } }
-      },
-      "delete": {
-        "tags": ["pki"],
-        "summary": "Delete a PKI role",
-        "operationId": "deletePKIRole",
-        "responses": { "204": { "description": "Deleted" } }
-      }
-    },
-    "/v1/pki/issue/{role}": {
-      "parameters": [{ "name": "role", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "post": {
-        "tags": ["pki"],
-        "summary": "Issue a certificate",
-        "operationId": "pkiIssue",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "common_name": { "type": "string" }, "alt_names": { "type": "string" }, "ttl": { "type": "string" } }, "required": ["common_name"] } } } },
-        "responses": { "200": { "description": "Certificate, key, CA chain" } }
-      }
-    },
-    "/v1/pki/revoke/{serial}": {
-      "parameters": [{ "name": "serial", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "post": {
-        "tags": ["pki"],
-        "summary": "Revoke a certificate by serial number",
-        "operationId": "pkiRevoke",
-        "responses": { "200": { "description": "Revoked" } }
-      }
-    },
-    "/v1/ssh/generate/ca": {
-      "post": {
-        "tags": ["ssh"],
-        "summary": "Generate an SSH CA key pair",
-        "operationId": "sshGenerateCA",
-        "responses": { "200": { "description": "Public key" } }
-      }
-    },
-    "/v1/ssh/ca/public-key": {
-      "get": {
-        "tags": ["ssh"],
-        "summary": "Get the SSH CA public key",
-        "operationId": "sshGetCAPublicKey",
-        "security": [],
-        "responses": { "200": { "description": "OpenSSH public key", "content": { "text/plain": {} } } }
-      }
-    },
-    "/v1/ssh/roles/{name}": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "get": {
-        "tags": ["ssh"],
-        "summary": "Get an SSH role",
-        "operationId": "getSSHRole",
-        "responses": { "200": { "description": "Role" }, "404": { "description": "Not found" } }
-      },
-      "put": {
-        "tags": ["ssh"],
-        "summary": "Create or update an SSH role",
-        "operationId": "putSSHRole",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "allowed_users": { "type": "string" }, "allowed_extensions": { "type": "string" }, "default_extensions": { "type": "object" }, "ttl": { "type": "string" } } } } } },
-        "responses": { "204": { "description": "Saved" } }
-      },
-      "delete": {
-        "tags": ["ssh"],
-        "summary": "Delete an SSH role",
-        "operationId": "deleteSSHRole",
-        "responses": { "204": { "description": "Deleted" } }
-      }
-    },
-    "/v1/ssh/sign/{role}": {
-      "parameters": [{ "name": "role", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "post": {
-        "tags": ["ssh"],
-        "summary": "Sign a public key and issue an SSH certificate",
-        "operationId": "sshSign",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "public_key": { "type": "string" }, "valid_principals": { "type": "string" }, "ttl": { "type": "string" } }, "required": ["public_key"] } } } },
-        "responses": { "200": { "description": "Signed certificate" } }
-      }
-    },
-    "/v1/totp/keys/{name}": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "get": {
-        "tags": ["totp"],
-        "summary": "Get a TOTP key",
-        "operationId": "getTOTPKey",
-        "responses": { "200": { "description": "TOTP key info" }, "404": { "description": "Not found" } }
-      },
-      "post": {
-        "tags": ["totp"],
-        "summary": "Create a TOTP key",
-        "operationId": "createTOTPKey",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "generate": { "type": "boolean" }, "issuer": { "type": "string" }, "account_name": { "type": "string" }, "period": { "type": "integer" }, "algorithm": { "type": "string", "enum": ["SHA1", "SHA256", "SHA512"] }, "digits": { "type": "integer", "enum": [6, 8] } } } } } },
-        "responses": { "200": { "description": "TOTP key (includes QR URL when generate=true)" } }
-      },
-      "delete": {
-        "tags": ["totp"],
-        "summary": "Delete a TOTP key",
-        "operationId": "deleteTOTPKey",
-        "responses": { "204": { "description": "Deleted" } }
-      }
-    },
-    "/v1/totp/code/{name}": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "get": {
-        "tags": ["totp"],
-        "summary": "Generate a TOTP code",
-        "operationId": "generateTOTPCode",
-        "responses": { "200": { "description": "Current TOTP code", "content": { "application/json": { "schema": { "type": "object", "properties": { "code": { "type": "string" } } } } } } }
-      },
-      "post": {
-        "tags": ["totp"],
-        "summary": "Validate a TOTP code",
-        "operationId": "validateTOTPCode",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "code": { "type": "string" } } } } } },
-        "responses": { "200": { "description": "Valid", "content": { "application/json": { "schema": { "type": "object", "properties": { "valid": { "type": "boolean" } } } } } }, "400": { "description": "Invalid code" } }
-      }
-    },
-    "/v1/database/config/{name}": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "get": { "tags": ["database"], "summary": "Get a database connection config", "operationId": "getDatabaseConfig", "responses": { "200": { "description": "Config" }, "404": { "description": "Not found" } } },
-      "put": { "tags": ["database"], "summary": "Create or update a database connection", "operationId": "putDatabaseConfig", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "plugin_name": { "type": "string", "example": "postgresql-database-plugin" }, "connection_url": { "type": "string" }, "username": { "type": "string" }, "password": { "type": "string" }, "allowed_roles": { "type": "array", "items": { "type": "string" } } } } } } }, "responses": { "204": { "description": "Saved" } } },
-      "delete": { "tags": ["database"], "summary": "Delete a database connection", "operationId": "deleteDatabaseConfig", "responses": { "204": { "description": "Deleted" } } }
-    },
-    "/v1/database/role/{name}": {
-      "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "get": { "tags": ["database"], "summary": "Get a database role", "operationId": "getDatabaseRole", "responses": { "200": { "description": "Role" }, "404": { "description": "Not found" } } },
-      "put": { "tags": ["database"], "summary": "Create or update a database role", "operationId": "putDatabaseRole", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "db_name": { "type": "string" }, "creation_statements": { "type": "array", "items": { "type": "string" } }, "revocation_statements": { "type": "array", "items": { "type": "string" } }, "default_ttl": { "type": "string" }, "max_ttl": { "type": "string" } } } } } }, "responses": { "204": { "description": "Saved" } } },
-      "delete": { "tags": ["database"], "summary": "Delete a database role", "operationId": "deleteDatabaseRole", "responses": { "204": { "description": "Deleted" } } }
-    },
-    "/v1/database/creds/{role}": {
-      "parameters": [{ "name": "role", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "post": { "tags": ["database"], "summary": "Generate database credentials", "operationId": "getDatabaseCreds", "responses": { "200": { "description": "Username and password with lease", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DynamicCreds" } } } } } }
     },
     "/v1/identity/entity": {
       "post": {

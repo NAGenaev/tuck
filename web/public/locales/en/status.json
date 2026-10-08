@@ -94,7 +94,6 @@
   "activity": {
     "eyebrow": "Activity",
     "live": "refresh {{s}}s",
-    "leases": "Active leases",
     "tokens": "Active tokens",
     "sinceOpen": "since opening: {{delta}}",
     "stable": "unchanged since the page was opened",

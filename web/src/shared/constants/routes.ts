@@ -11,8 +11,6 @@ export const ROUTES = {
         TOKENS: '/dashboard/tokens',
         POLICIES: '/dashboard/policies',
         AUTH_METHODS: '/dashboard/auth-methods',
-        DYNAMIC_SECRETS: '/dashboard/dynamic-secrets',
-        CRYPTO_ENGINES: '/dashboard/crypto-engines',
         WRAPPING: '/dashboard/wrapping',
         NAMESPACES: '/dashboard/namespaces',
         TOKEN_ROLES: '/dashboard/token-roles',

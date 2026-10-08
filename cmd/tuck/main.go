@@ -76,9 +76,8 @@ func main() {
 	clusterLabelLeader := flag.Bool("cluster-label-leader", false, "Kubernetes: label this pod tuck.io/leader=true|false by Raft role so a Service can select the leader (needs POD_NAMESPACE, POD_NAME and RBAC pods/patch)")
 	clusterPeers     := flag.String("cluster-peers", "", "comma-separated bootstrap peers: id=raftAddr,... (used with --cluster-bootstrap)")
 
-	// Barrier cipher + experimental engines
+	// Barrier cipher
 	barrierCipher := flag.String("barrier-cipher", "", "at-rest cipher suite for a NEW store: aes-256-gcm (default) | gost-kuznyechik-mgm; ignored for an existing store")
-	enableEngines := flag.String("enable-engine", "", "comma-separated experimental engines to enable: pki,ssh,totp (all off by default)")
 
 	requireMlock := flag.Bool("require-mlock", false, "refuse to start unless process memory can be locked (no swap); Linux only")
 
@@ -179,7 +178,6 @@ func main() {
 
 		apply("otel-endpoint", cfg.Telemetry.OtelEndpoint)
 		apply("barrier-cipher", cfg.Barrier.Cipher)
-		apply("enable-engine", strings.Join(cfg.EnableEngines, ","))
 		applyBool("require-mlock", cfg.RequireMlock)
 
 		log.Printf("tuck: loaded config from %q", resolvedCfgPath)
@@ -407,11 +405,6 @@ func main() {
 
 	// --- API server + rate limiters ---
 	apiSrv := api.New(c)
-	engines := splitList(*enableEngines)
-	apiSrv.RestrictEngines(engines)
-	if len(engines) > 0 {
-		log.Printf("tuck: WARNING experimental engines enabled: %s (outside the supported core scope)", strings.Join(engines, ","))
-	}
 	// Restore barrier-persisted rate-limit config when the barrier is already
 	// open (dev seal, auto-unseal). Shamir-sealed servers restore in postUnseal.
 	if !errors.Is(startErr, core.ErrNeedsUnseal) {

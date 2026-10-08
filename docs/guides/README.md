@@ -31,11 +31,6 @@ $env:TUCK_TOKEN = "tuck_..."                    # root или scoped token
 | CI/CD: машина-машина (AppRole) | [10 — AppRole](10-approle.md) |
 | Логин через OIDC / JWT | [11 — JWT / OIDC](11-jwt-oidc.md) |
 | Логин через LDAP / Active Directory | [12 — LDAP](12-ldap.md) |
-| Временные креды PostgreSQL/MySQL | [13 — Database dynamic](13-dynamic-database.md) |
-| Выпустить TLS-сертификат | [15 — PKI](15-pki.md) |
-| Шифровать данные без выдачи ключа | [16 — Transit](16-transit.md) |
-| SSH-сертификат через CA | [17 — SSH](17-ssh.md) |
-| 2FA / TOTP | [18 — TOTP](18-totp.md) |
 | Бэкап и восстановление | [19 — Backup / restore](19-backup-restore.md) |
 | HA-кластер Raft (3 ноды) | [20 — Raft HA](20-ha-raft.md) |
 | Безопасно передать секрет одноразовым токеном | [21 — Response Wrapping](21-response-wrapping.md) |
@@ -52,7 +47,6 @@ $env:TUCK_TOKEN = "tuck_..."                    # root или scoped token
 - [01 Первый секрет](01-pervyy-sekret.md)
 - [02 Политики и токены](02-politiki-i-dostup.md)
 - [08 Webhook injector](08-webhook-injector.md)
-- [16 Transit](16-transit.md)
 
 ### DevOps / Platform Engineer
 - [06 Helm в K8s](06-kubernetes-helm.md)
@@ -66,8 +60,7 @@ $env:TUCK_TOKEN = "tuck_..."                    # root или scoped token
 - [10 AppRole](10-approle.md) · [11 JWT](11-jwt-oidc.md) · [12 LDAP](12-ldap.md)
 - [21 Response Wrapping](21-response-wrapping.md)
 
-### SRE / DBA
-- [13 Database dynamic](13-dynamic-database.md)
+### SRE
 - [19 Backup / restore](19-backup-restore.md)
 
 ---

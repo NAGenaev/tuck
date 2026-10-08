@@ -2,9 +2,7 @@ package api
 
 import (
 	"bytes"
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -568,108 +566,6 @@ func TestChildTokenRevocationCascade(t *testing.T) {
 	}
 }
 
-// TestPKIFullFlow covers the PKI engine: generate a root CA, define a role,
-// issue a certificate, verify it parses, then revoke it and check the CRL.
-func TestPKIFullFlow(t *testing.T) {
-	ts, _, root := newTestServer(t)
-
-	// Generate root CA.
-	caPayload := mustJSON(map[string]any{
-		"common_name": "tuck-test-ca",
-		"ttl":         "87600h",
-		"key_type":    "ec",
-		"key_bits":    256,
-	})
-	status, body := doJSON(t, ts, http.MethodPost, "/v1/pki/generate/root", caPayload, root)
-	if status != http.StatusOK {
-		t.Fatalf("generate root CA: %d %s", status, body)
-	}
-
-	// GET /v1/pki/ca/pem — returns JSON {"certificate":"-----BEGIN CERTIFICATE-----\n..."}.
-	status, caBody := doJSON(t, ts, http.MethodGet, "/v1/pki/ca/pem", "", "")
-	if status != http.StatusOK {
-		t.Fatalf("get CA PEM: %d %s", status, caBody)
-	}
-	caPEMStr := jsonField(t, caBody, "certificate")
-	block, _ := pem.Decode([]byte(caPEMStr))
-	if block == nil || block.Type != "CERTIFICATE" {
-		t.Fatalf("CA PEM is not a CERTIFICATE block; got: %s", caPEMStr[:min(len(caPEMStr), 100)])
-	}
-	caCert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		t.Fatalf("parse CA cert: %v", err)
-	}
-	if caCert.Subject.CommonName != "tuck-test-ca" {
-		t.Errorf("CA CN = %q, want tuck-test-ca", caCert.Subject.CommonName)
-	}
-
-	// Create a PKI role.
-	rolePayload := mustJSON(map[string]any{
-		"allowed_domains":  []string{"example.com"},
-		"allow_subdomains": true,
-		"max_ttl":          "8760h",
-	})
-	status, body = doJSON(t, ts, http.MethodPut, "/v1/pki/roles/web", rolePayload, root)
-	if status != http.StatusOK {
-		t.Fatalf("create PKI role: %d %s", status, body)
-	}
-
-	// Issue a certificate.
-	issuePayload := mustJSON(map[string]any{
-		"common_name": "app.example.com",
-		"ttl":         "24h",
-	})
-	status, body = doJSON(t, ts, http.MethodPost, "/v1/pki/issue/web", issuePayload, root)
-	if status != http.StatusOK {
-		t.Fatalf("issue cert: %d %s", status, body)
-	}
-	var issueResp struct {
-		Certificate string `json:"certificate"`
-		Serial      string `json:"serial"`
-	}
-	if err := json.Unmarshal(body, &issueResp); err != nil || issueResp.Certificate == "" {
-		t.Fatalf("parse issue response: %v; body: %s", err, body)
-	}
-
-	// Parse the issued cert.
-	certBlock, _ := pem.Decode([]byte(issueResp.Certificate))
-	if certBlock == nil {
-		t.Fatalf("issued cert is not PEM")
-	}
-	issuedCert, err := x509.ParseCertificate(certBlock.Bytes)
-	if err != nil {
-		t.Fatalf("parse issued cert: %v", err)
-	}
-	if issuedCert.Subject.CommonName != "app.example.com" {
-		t.Errorf("issued cert CN = %q, want app.example.com", issuedCert.Subject.CommonName)
-	}
-
-	// Revoke the certificate.
-	status, body = doJSON(t, ts, http.MethodPost, "/v1/pki/revoke/"+issueResp.Serial, "", root)
-	if status != http.StatusOK {
-		t.Fatalf("revoke cert: %d %s", status, body)
-	}
-
-	// CRL must now be non-empty. Returns JSON {"crl":"-----BEGIN X509 CRL-----\n..."}.
-	status, crlBody := doJSON(t, ts, http.MethodGet, "/v1/pki/crl/pem", "", "")
-	if status != http.StatusOK {
-		t.Fatalf("get CRL: %d %s", status, crlBody)
-	}
-	crlPEMStr := jsonField(t, crlBody, "crl")
-	crlBlock, _ := pem.Decode([]byte(crlPEMStr))
-	if crlBlock == nil {
-		t.Fatalf("CRL is not PEM; got: %s", crlPEMStr[:min(len(crlPEMStr), 100)])
-	}
-	crl, err := x509.ParseRevocationList(crlBlock.Bytes)
-	if err != nil {
-		t.Fatalf("parse CRL: %v", err)
-	}
-	if len(crl.RevokedCertificateEntries) == 0 {
-		t.Error("CRL has no revoked entries after revocation")
-	}
-}
-
-// TestKVv2MetadataOps verifies that KV v2 metadata can be read and updated.
 func TestKVv2MetadataOps(t *testing.T) {
 	ts, _, root := newTestServer(t)
 

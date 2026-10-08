@@ -35,7 +35,6 @@ type Server struct {
 	audit        audit.Loggable
 	ipLimiter    *ratelimit.Limiter
 	tokenLimiter *ratelimit.Limiter
-	engines      map[string]bool // nil = experimental-engine gate off
 }
 
 // New returns an HTTP server wired to the core's audit Dispatcher.
@@ -148,12 +147,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/sys/config", s.requireToken(s.getSysConfig))
 	mux.HandleFunc("PUT /v1/sys/config", s.requireToken(s.putSysConfig))
 
-	// Unified lease management — GET/DELETE/LIST/renew
-	mux.HandleFunc("POST /v1/sys/leases/renew", s.requireToken(s.renewLease))
-	mux.HandleFunc("GET /v1/sys/leases/{id...}", s.requireToken(s.getLease))
-	mux.HandleFunc("DELETE /v1/sys/leases/{id...}", s.requireToken(s.revokeLease))
-	mux.HandleFunc("LIST /v1/sys/leases/", s.requireToken(s.listLeases))
-
 	// Mount table — list, create, delete secret engine mounts
 	mux.HandleFunc("GET /v1/sys/mounts", s.requireToken(s.listMounts))
 	mux.HandleFunc("POST /v1/sys/mounts/{path...}", s.requireToken(s.createMount))
@@ -234,39 +227,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/auth/jwt/role/{name}", s.requireToken(s.deleteJWTRole))
 	s.registerListCompat(mux, "/v1/auth/jwt/role/", s.listJWTRoles)
 
-	// TOTP secrets engine — store and validate time-based OTP codes
-	mux.HandleFunc("POST /v1/totp/keys/{name}", s.requireToken(s.totpCreateKey))
-	mux.HandleFunc("GET /v1/totp/keys/{name}", s.requireToken(s.totpGetKey))
-	mux.HandleFunc("DELETE /v1/totp/keys/{name}", s.requireToken(s.totpDeleteKey))
-	s.registerListCompat(mux, "/v1/totp/keys/", s.totpListKeys)
-	mux.HandleFunc("GET /v1/totp/code/{name}", s.requireToken(s.totpGenerateCode))
-	mux.HandleFunc("POST /v1/totp/code/{name}", s.requireToken(s.totpValidateCode))
-
-	// SSH secrets engine — CA mode (signed SSH certificates)
-	// CA public key is unauthenticated so hosts can fetch it for TrustedUserCAKeys.
-	mux.HandleFunc("POST /v1/ssh/generate/ca", s.requireToken(s.sshGenerateCA))
-	mux.HandleFunc("POST /v1/ssh/import/ca", s.requireToken(s.sshImportCA))
-	mux.HandleFunc("GET /v1/ssh/ca/public-key", s.sshGetCAPublicKey)
-	mux.HandleFunc("PUT /v1/ssh/roles/{name}", s.requireToken(s.sshPutRole))
-	mux.HandleFunc("GET /v1/ssh/roles/{name}", s.requireToken(s.sshGetRole))
-	mux.HandleFunc("DELETE /v1/ssh/roles/{name}", s.requireToken(s.sshDeleteRole))
-	s.registerListCompat(mux, "/v1/ssh/roles/", s.sshListRoles)
-	mux.HandleFunc("POST /v1/ssh/sign/{role}", s.requireToken(s.sshSign))
-
-	// Transit secrets engine — encryption-as-a-service
-	mux.HandleFunc("POST /v1/transit/keys/{name}", s.requireToken(s.transitCreateKey))
-	mux.HandleFunc("GET /v1/transit/keys/{name}", s.requireToken(s.transitGetKey))
-	mux.HandleFunc("DELETE /v1/transit/keys/{name}", s.requireToken(s.transitDeleteKey))
-	s.registerListCompat(mux, "/v1/transit/keys/", s.transitListKeys)
-	mux.HandleFunc("POST /v1/transit/keys/{name}/rotate", s.requireToken(s.transitRotate))
-	mux.HandleFunc("POST /v1/transit/keys/{name}/config", s.requireToken(s.transitUpdateKey))
-	mux.HandleFunc("POST /v1/transit/encrypt/{name}", s.requireToken(s.transitEncrypt))
-	mux.HandleFunc("POST /v1/transit/decrypt/{name}", s.requireToken(s.transitDecrypt))
-	mux.HandleFunc("POST /v1/transit/rewrap/{name}", s.requireToken(s.transitRewrap))
-	mux.HandleFunc("POST /v1/transit/sign/{name}", s.requireToken(s.transitSign))
-	mux.HandleFunc("POST /v1/transit/verify/{name}", s.requireToken(s.transitVerify))
-	mux.HandleFunc("POST /v1/transit/hmac/{name}", s.requireToken(s.transitHMAC))
-
 	// LDAP / Active Directory auth — login is unauthenticated; config and role management require a token
 	mux.HandleFunc("POST /v1/auth/ldap/login", s.loginLDAP)
 	mux.HandleFunc("GET /v1/auth/ldap/config", s.requireToken(s.getLDAPConfig))
@@ -285,35 +245,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/auth/approle/role/{name}/secret-id", s.requireToken(s.generateSecretID))
 	mux.HandleFunc("GET /v1/auth/approle/role/{name}/secret-id/{id}", s.requireToken(s.lookupSecretID))
 	mux.HandleFunc("DELETE /v1/auth/approle/role/{name}/secret-id/{id}", s.requireToken(s.destroySecretID))
-
-	// Dynamic secrets: database engine
-	mux.HandleFunc("PUT /v1/database/config/{name}", s.requireToken(s.putDBConfig))
-	mux.HandleFunc("GET /v1/database/config/{name}", s.requireToken(s.getDBConfig))
-	mux.HandleFunc("DELETE /v1/database/config/{name}", s.requireToken(s.deleteDBConfig))
-	s.registerListCompat(mux, "/v1/database/config/", s.listDBConfigs)
-	mux.HandleFunc("PUT /v1/database/role/{name}", s.requireToken(s.putDBRole))
-	mux.HandleFunc("GET /v1/database/role/{name}", s.requireToken(s.getDBRole))
-	mux.HandleFunc("DELETE /v1/database/role/{name}", s.requireToken(s.deleteDBRole))
-	s.registerListCompat(mux, "/v1/database/role/", s.listDBRoles)
-	mux.HandleFunc("POST /v1/database/creds/{role}", s.requireToken(s.generateDBCreds))
-	mux.HandleFunc("GET /v1/database/lease/{id}", s.requireToken(s.getDBLease))
-	mux.HandleFunc("DELETE /v1/database/lease/{id}", s.requireToken(s.revokeDBLease))
-	s.registerListCompat(mux, "/v1/database/lease/", s.listDBLeases)
-
-	// PKI secrets engine
-	// CA setup and CRL are unauthenticated so clients can verify certs without a token.
-	mux.HandleFunc("POST /v1/pki/generate/root", s.requireToken(s.pkiGenerateRoot))
-	mux.HandleFunc("POST /v1/pki/import/ca", s.requireToken(s.pkiImportCA))
-	mux.HandleFunc("GET /v1/pki/ca/pem", s.pkiGetCACert)
-	mux.HandleFunc("GET /v1/pki/crl/pem", s.pkiGetCRL)
-	mux.HandleFunc("PUT /v1/pki/roles/{name}", s.requireToken(s.pkiPutRole))
-	mux.HandleFunc("GET /v1/pki/roles/{name}", s.requireToken(s.pkiGetRole))
-	mux.HandleFunc("DELETE /v1/pki/roles/{name}", s.requireToken(s.pkiDeleteRole))
-	s.registerListCompat(mux, "/v1/pki/roles/", s.pkiListRoles)
-	mux.HandleFunc("POST /v1/pki/issue/{role}", s.requireToken(s.pkiIssueCert))
-	mux.HandleFunc("POST /v1/pki/revoke/{serial}", s.requireToken(s.pkiRevokeCert))
-	mux.HandleFunc("GET /v1/pki/certs/{serial}", s.requireToken(s.pkiGetCert))
-	s.registerListCompat(mux, "/v1/pki/certs/", s.pkiListCerts)
 
 	// KV v2 — versioned secrets
 	mux.HandleFunc("PUT /v2/secret/{path...}", s.requireToken(s.v2WriteSecret))
@@ -374,7 +305,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sys/cluster/snapshot", s.requireToken(s.postClusterSnapshot))
 	mux.HandleFunc("GET /v1/sys/cluster/snapshot/{id}", s.requireToken(s.getClusterSnapshot))
 
-	h := s.engineGate(mux)
+	h := http.Handler(mux)
 	h = s.tokenLimiter.TokenMiddleware(h)
 	h = s.ipLimiter.Middleware(h)
 	return audit.Middleware(s.audit, h)

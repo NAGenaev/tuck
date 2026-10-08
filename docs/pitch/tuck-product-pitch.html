@@ -99,7 +99,6 @@
   --shadow: 0 1px 2px rgba(10, 20, 18, 0.05), 0 16px 40px -20px rgba(10, 20, 18, 0.18);
 }
 
-
 * { box-sizing: border-box; }
 
 html, body {
@@ -440,8 +439,8 @@ code {
     <p class="eyebrow"><span class="sq"></span>Tuck · предложение для финансового контура</p>
     <h1 class="headline">Секреты банка не должны жить в git-истории вечно</h1>
     <p class="hero-sub">
-      <b>Tuck</b> — открытый, self-hosted secrets manager для Kubernetes: динамические
-      credentials, шифрование как сервис и единый аудит на все ваши кластеры — без
+      <b>Tuck</b> — открытый, self-hosted secrets manager для Kubernetes: синхронизация
+      секретов в Kubernetes Secret, tmpfs-инъекция без etcd и единый аудит на все ваши кластеры — без
       AES-ключа, который есть у каждого пайплайна.
     </p>
 
@@ -547,30 +546,6 @@ code {
 
     <div class="fgroup">
       <div class="fgroup-head">
-        <div class="icon-wrap"><svg class="icon"><use href="#i-key"/></svg></div>
-        <h3>Динамические секреты</h3>
-      </div>
-      <div class="feat-grid">
-        <div class="feat"><div class="t">PostgreSQL / MySQL</div><div class="d">Короткоживущий credential по запросу, а не статичный пароль в манифесте.</div></div>
-        <div class="feat"><div class="t">Реестр lease</div><div class="d">Принудительный revoke по API для любого выданного credential — без ожидания TTL.</div></div>
-      </div>
-    </div>
-
-    <div class="fgroup">
-      <div class="fgroup-head">
-        <div class="icon-wrap"><svg class="icon"><use href="#i-cpu"/></svg></div>
-        <h3>Криптография как сервис</h3>
-      </div>
-      <div class="feat-grid">
-        <div class="feat"><div class="t">PKI</div><div class="d">Корневой CA внутри Tuck, выпуск и отзыв сертификатов по роли.</div></div>
-        <div class="feat"><div class="t">Transit</div><div class="d">Encrypt / decrypt / sign / verify — ключ никогда не покидает Tuck.</div></div>
-        <div class="feat"><div class="t">SSH CA</div><div class="d">Подписанные SSH-сертификаты с TTL вместо статичных приватных ключей на серверах.</div></div>
-        <div class="feat"><div class="t">TOTP</div><div class="d">Выпуск и проверка одноразовых кодов как отдельный сервисный движок.</div></div>
-      </div>
-    </div>
-
-    <div class="fgroup">
-      <div class="fgroup-head">
         <div class="icon-wrap"><svg class="icon"><use href="#i-badge"/></svg></div>
         <h3>Идентификация и доступ</h3>
       </div>
@@ -618,8 +593,6 @@ code {
         <thead>
           <tr>
             <th class="rowlabel">Решение</th>
-            <th>Динамические<br>секреты</th>
-            <th>Крипто-сервисы<br>(PKI/Transit/SSH/TOTP)</th>
             <th>Мульти-<br>кластерность</th>
             <th>Audit<br>log</th>
             <th>Данные<br>в вашем контуре</th>
@@ -633,13 +606,9 @@ code {
             <td><span class="mark y">✓</span></td>
             <td><span class="mark y">✓</span></td>
             <td><span class="mark y">✓</span></td>
-            <td><span class="mark y">✓</span></td>
-            <td><span class="mark y">✓</span></td>
           </tr>
           <tr>
             <td class="rowlabel">HashiCorp Vault</td>
-            <td><span class="mark y">✓</span></td>
-            <td><span class="mark y">✓</span></td>
             <td><span class="mark p">◐</span></td>
             <td><span class="mark y">✓</span></td>
             <td><span class="mark y">✓</span></td>
@@ -649,15 +618,11 @@ code {
             <td class="rowlabel">Sealed Secrets</td>
             <td><span class="mark n">✕</span></td>
             <td><span class="mark n">✕</span></td>
-            <td><span class="mark n">✕</span></td>
-            <td><span class="mark n">✕</span></td>
             <td><span class="mark y">✓</span></td>
             <td><span class="mark y">✓</span></td>
           </tr>
           <tr>
             <td class="rowlabel">External Secrets Operator</td>
-            <td><span class="mark p">◐</span></td>
-            <td><span class="mark n">✕</span></td>
             <td><span class="mark p">◐</span></td>
             <td><span class="mark p">◐</span></td>
             <td><span class="mark p">◐</span></td>
@@ -666,16 +631,12 @@ code {
           <tr>
             <td class="rowlabel">Cloud KMS / Secrets Manager</td>
             <td><span class="mark p">◐</span></td>
-            <td><span class="mark p">◐</span></td>
-            <td><span class="mark p">◐</span></td>
             <td><span class="mark y">✓</span></td>
             <td><span class="mark n">✕</span></td>
             <td><span class="mark n">✕</span></td>
           </tr>
           <tr>
             <td class="rowlabel">Git + AES (как сейчас)</td>
-            <td><span class="mark n">✕</span></td>
-            <td><span class="mark n">✕</span></td>
             <td><span class="mark n">✕</span></td>
             <td><span class="mark n">✕</span></td>
             <td><span class="mark y">✓</span></td>
@@ -750,8 +711,8 @@ code {
     <p class="lead" style="margin-top:22px;">
       Для людей — вход через уже существующий LDAP/AD или OIDC. Для workload'ов —
       Kubernetes ServiceAccount с проверкой через TokenReview, без единого статичного
-      секрета на весь кластер. Каждый путь в KV и каждая роль на выдачу динамических
-      credentials — под отдельной политикой.
+      секрета на весь кластер. Каждый путь в KV и каждая роль —
+      под отдельной политикой.
     </p>
   </div>
 </section>
@@ -773,8 +734,8 @@ code {
       </div>
       <div class="mig-phase">
         <div class="ph">Фаза 3</div>
-        <h3>Динамические credentials</h3>
-        <p>Статичные пароли к БД заменяются движком Database — credential выдаётся на TTL и отзывается автоматически.</p>
+        <h3>Оператор и инжектор</h3>
+        <p>Секреты доставляются в поды оператором TuckSecret, webhook-инжектором (tmpfs, минуя etcd) или CSI-провайдером; ротация подхватывается автоматически.</p>
       </div>
     </div>
   </div>

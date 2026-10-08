@@ -330,10 +330,6 @@
     --c: var(--violet);
 }
 
-.unit.crypto {
-    --c: var(--mint);
-}
-
 .unit:hover {
     border-color: var(--line2);
     transform: translateX(3px);
@@ -1302,10 +1298,6 @@
     --c: var(--ice);
 }
 
-.card.crypto {
-    --c: var(--mint);
-}
-
 .card.custom {
     --c: var(--violet);
 }
@@ -1373,21 +1365,6 @@
     border-radius: 50%;
     background: var(--mint);
     box-shadow: 0 0 10px var(--mint);
-}
-
-.card.exp {
-    background:
-        repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.015) 0 8px, transparent 8px 16px), var(--vault);
-}
-
-.card.exp.sel::after {
-    display: none;
-}
-
-.card .expPill {
-    position: absolute;
-    right: 12px;
-    top: 12px;
 }
 
 /* patch slip */
@@ -1487,24 +1464,6 @@
     background: var(--void);
     border: 2px solid var(--brass);
     box-shadow: 0 0 12px var(--brass);
-}
-
-.cmdRow {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.cmdRow code {
-    flex: 1;
-    min-width: 0;
-    overflow-x: auto;
-    white-space: nowrap;
-    font: 500 12.5px var(--mono);
-    color: var(--bone);
-    border: 1px solid var(--line2);
-    padding: 10px 12px;
-    background: var(--void);
 }
 
 /* ---------- tune drawer / unmount ---------- */

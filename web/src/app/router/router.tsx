@@ -13,8 +13,6 @@ import { NotFoundPage } from '@pages/not-found/not-found.page'
 import { AuditSinksPage } from '@pages/dashboard/audit-sinks/audit-sinks.page'
 import { AuthMethodsPage } from '@pages/dashboard/auth-methods/auth-methods.page'
 import { ClusterPage } from '@pages/dashboard/cluster/cluster.page'
-import { CryptoEnginesPage } from '@pages/dashboard/crypto-engines/crypto-engines.page'
-import { DynamicSecretsPage } from '@pages/dashboard/dynamic-secrets/dynamic-secrets.page'
 import { KV1Page } from '@pages/dashboard/kv1/kv1.page'
 import { KV2Page } from '@pages/dashboard/kv2/kv2.page'
 import { MountsPage } from '@pages/dashboard/mounts/mounts.page'
@@ -46,8 +44,6 @@ const router = createBrowserRouter(
                         { path: ROUTES.DASHBOARD.TOKENS, element: <TokensPage /> },
                         { path: ROUTES.DASHBOARD.POLICIES, element: <PoliciesPage /> },
                         { path: ROUTES.DASHBOARD.AUTH_METHODS, element: <AuthMethodsPage /> },
-                        { path: ROUTES.DASHBOARD.DYNAMIC_SECRETS, element: <DynamicSecretsPage /> },
-                        { path: ROUTES.DASHBOARD.CRYPTO_ENGINES, element: <CryptoEnginesPage /> },
                         { path: ROUTES.DASHBOARD.WRAPPING, element: <WrappingPage /> },
                         { path: ROUTES.DASHBOARD.NAMESPACES, element: <NamespacesPage /> },
                         { path: ROUTES.DASHBOARD.TOKEN_ROLES, element: <TokenRolesPage /> },

@@ -30,18 +30,18 @@ func (r *MountResource) Metadata(_ context.Context, req resource.MetadataRequest
 
 func (r *MountResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Mounts a secret engine at a given path. Both path and type are immutable; changing either forces replacement.",
+		Description: "Mounts a KV secret engine at a given path. Both path and type are immutable; changing either forces replacement.",
 		Attributes: map[string]schema.Attribute{
 			"path": schema.StringAttribute{
 				Required:    true,
-				Description: "Mount path (e.g. \"transit/\", \"pki/\"). Must end with /.",
+				Description: "Mount path (e.g. \"team-a-kv/\"). Must end with /.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"type": schema.StringAttribute{
 				Required:    true,
-				Description: "Engine type: kv, transit, pki, database, ssh, totp.",
+				Description: "Engine type: kv.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},

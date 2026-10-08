@@ -232,7 +232,6 @@ type mountStats struct {
 
 	// Impact of removing the mount.
 	Secrets *int `json:"secrets,omitempty"`
-	Leases  *int `json:"leases,omitempty"`
 	Tokens  *int `json:"tokens,omitempty"`
 
 	// KV engine detail.
@@ -244,18 +243,13 @@ type mountStats struct {
 	HiddenSecrets     *int       `json:"hidden_secrets,omitempty"`
 	LastWriteAt       *time.Time `json:"last_write_at,omitempty"`
 	Truncated         bool       `json:"truncated,omitempty"`
-
-	// Dynamic engine detail.
-	Roles       *int `json:"roles,omitempty"`
-	Connections *int `json:"connections,omitempty"`
-	Certs       *int `json:"issued_certs,omitempty"`
 }
 
 // mountStatsFor computes the counters of entry e for the caller.
 func (s *Server) mountStatsFor(ctx context.Context, e *mount.Entry) (*mountStats, error) {
 	if !e.Builtin {
 		// Table-only mount: nothing is stored under it, nothing depends on it.
-		return &mountStats{Secrets: intp(0), Leases: intp(0), Tokens: intp(0)}, nil
+		return &mountStats{Secrets: intp(0), Tokens: intp(0)}, nil
 	}
 	canList, err := s.core.CapabilityChecker(ctx, tokenFromCtx(ctx), policy.CapList)
 	if err != nil {
@@ -291,31 +285,6 @@ func (s *Server) mountStatsFor(ctx context.Context, e *mount.Entry) (*mountStats
 			st.LastWriteAt = &t
 		}
 		st.Truncated = ks.Truncated
-	case "database/":
-		du, err := s.core.DatabaseUsage(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if canList("database/lease") {
-			st.Leases = intp(du.ActiveLeases)
-		}
-		if canList("database/role") {
-			st.Roles = intp(du.Roles)
-		}
-		if canList("database/config") {
-			st.Connections = intp(du.Connections)
-		}
-	case "pki/":
-		pu, err := s.core.PKIUsage(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if canList("pki/roles") {
-			st.Roles = intp(pu.Roles)
-		}
-		if canList("pki/certs") {
-			st.Certs = intp(pu.Issued)
-		}
 	case "auth/":
 		if canList("auth/token") {
 			counts, trc, err := s.core.TokenCounts(ctx)

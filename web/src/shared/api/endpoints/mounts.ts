@@ -37,7 +37,6 @@ export interface MountStats {
     /** false for a mount-table-only entry: nothing is stored under it */
     engine_backed: boolean
     secrets?: number
-    leases?: number
     tokens?: number
     secrets_kv1?: number
     secrets_kv2?: number
@@ -48,8 +47,6 @@ export interface MountStats {
     last_write_at?: string
     truncated?: boolean
     roles?: number
-    connections?: number
-    issued_certs?: number
 }
 
 export interface MountDetails {

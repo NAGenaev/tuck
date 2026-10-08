@@ -8,7 +8,7 @@ import { createMount, type MountEntry } from '@shared/api/endpoints/mounts'
 import { CopyButton, cx, Icon, Modal, toast } from '@shared/ui/kit'
 import { Eyebrow, Pill } from '@shared/ui/tuck/tuck'
 
-import { CATALOG, isExperimental, normPath, PATH_RE, serverMessage, TYPE_RE, withSlash } from '../lib'
+import { CATALOG, normPath, PATH_RE, serverMessage, TYPE_RE, withSlash } from '../lib'
 import styles from '../mounts.module.css'
 import { TypeIcon } from './type-icon'
 
@@ -25,7 +25,6 @@ const MAX_VERSIONS_LIMIT = 1000
 function cardKind(id: string, auth?: boolean): string | undefined {
     if (id === CUSTOM) return styles.custom
     if (auth) return styles.auth
-    if (['pki', 'ssh', 'totp', 'transit'].includes(id)) return styles.crypto
     return undefined
 }
 
@@ -125,7 +124,6 @@ export function CreateWizard({
     }
 
     const cards = [...CATALOG.map((c) => ({ auth: c.auth, icon: c.icon, id: c.id })), { icon: 'plug', id: CUSTOM }]
-    const expType = isExperimental(type) ? type : ''
 
     return (
         <Modal
@@ -176,15 +174,13 @@ export function CreateWizard({
                         <p className={styles.intro}>{t('wizard.intro')}</p>
                         <div aria-label={t('wizard.catalogLabel')} className={styles.cat} role="listbox">
                             {cards.map((c) => {
-                                const exp = isExperimental(c.id)
                                 return (
                                     <button
                                         aria-selected={typeId === c.id}
                                         className={cx(
                                             styles.card,
                                             cardKind(c.id, 'auth' in c ? c.auth : undefined),
-                                            typeId === c.id && styles.sel,
-                                            exp && styles.exp
+                                            typeId === c.id && styles.sel
                                         )}
                                         key={c.id}
                                         onClick={() => pick(c.id)}
@@ -194,13 +190,6 @@ export function CreateWizard({
                                         <span className={styles.ico}>
                                             <TypeIcon name={c.icon} />
                                         </span>
-                                        {exp && (
-                                            <span className={styles.expPill}>
-                                                <Pill size="sm" tone="r">
-                                                    {t('wizard.expPill')}
-                                                </Pill>
-                                            </span>
-                                        )}
                                         <h4>{t(`wizard.types.${c.id}.name`)}</h4>
                                         <p>{t(`wizard.types.${c.id}.desc`)}</p>
                                         <span className={styles.tg}>{t(`wizard.types.${c.id}.tag`)}</span>
@@ -230,7 +219,6 @@ export function CreateWizard({
                                 )}
                             </div>
                         )}
-                        {expType && <ExperimentalNote type={expType} />}
                     </>
                 )}
 
@@ -361,7 +349,6 @@ export function CreateWizard({
                                 </span>
                             </pre>
                         </div>
-                        {expType && <ExperimentalNote type={expType} />}
                         {serverErr && <div className={styles.err}>{serverErr}</div>}
                     </>
                 )}
@@ -370,21 +357,3 @@ export function CreateWizard({
     )
 }
 
-function ExperimentalNote({ type }: { type: string }) {
-    const { t } = useTranslation('mounts')
-    const cmd = `tuck --enable-engine=${type}`
-    return (
-        <div style={{ marginTop: 18 }}>
-            <div className={styles.callout}>
-                <Icon name="lock" size={18} />
-                <div>
-                    <b>{t('wizard.expTitle', { type })}</b> {t('wizard.expText')}
-                </div>
-            </div>
-            <div className={styles.cmdRow}>
-                <code>{cmd}</code>
-                <CopyButton size={36} value={cmd} />
-            </div>
-        </div>
-    )
-}

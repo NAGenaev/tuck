@@ -11,8 +11,8 @@
 | Токен привязан к namespace, в котором выдан (был обход через заголовок `X-Tuck-Namespace`) | ✅ |
 | Логины Kubernetes/AppRole/JWT/LDAP привязываются к namespace через `tuck_namespace` роли | ✅ |
 | Оператор: несколько ключей в Secret, merge вместо перезаписи, изоляция путей по namespace | ✅ |
-| ACL политик действует для Transit/PKI/SSH/TOTP/Database/облаков/namespaces/cluster/approle/jwt/ldap/identity | ✅ |
-| Экспериментальные движки (PKI/SSH/TOTP) выключены по умолчанию | ✅ |
+| ACL политик действует для namespaces/cluster/approle/jwt/ldap/identity | ✅ |
+| Движки PKI/Transit/SSH/TOTP, динамические секреты БД и leases удалены целиком (пилот = K8s-сценарий; флаг `--enable-engine` убран) | ✅ |
 | Удалено вне области пилота: облачные seal (AWS/GCP/Azure), облачные динамические движки, GitHub-логин, плагины, репликация (−8158 строк Go) | ✅ |
 | Горячая перезагрузка TLS-сертификата сервера; наборы ECDHE с RSA | ✅ |
 | Mutual TLS на Raft-транспорте (опционально, `--cluster-tls-*`) | ✅ |
@@ -37,7 +37,7 @@
 | C3 | Шифрование **путей** записей в backend (детерминированное, обратимое; [11 §1.1](11-barrier-and-ciphers.md)) | P1 | ✅ |
 | C4 | Seal через PKCS#11 / HSM, поддержка сертифицированного СКЗИ как `Suite` | P1 | ⏸ отложено |
 | C5 | `mlock`: единое поведение — предупреждение либо отказ запуска (`--require-mlock` / `require_mlock`), на Linux ещё отключаются core dump | P2 | ✅ |
-| C6 | ГОСТ в Transit: ключ `kuznyechik-mgm` (encrypt/decrypt/rewrap), HMAC на Стрибоге (`streebog-256/512`). ГОСТ Р 34.10 (подпись) не реализован | P2 | ⏸ отложено |
+| C6 | ~~ГОСТ в Transit~~ — движок Transit удалён, задача снята. ГОСТ Р 34.10 (подпись) не реализован | — | ❌ снято |
 | C7 | Шифр барьера в `GET /v1/sys/seal-status` (`barrier_cipher`) | P2 | ✅ |
 
 ## 3. Доставка секретов в кластеры
@@ -55,9 +55,9 @@
 
 | # | Задача | Приоритет | Статус |
 |---|---|---|---|
-| S1 | Судьба движков: облачные (AWS/GCP/Azure) удалены; PKI/SSH/TOTP остаются experimental (выключены по умолчанию). Для УЦ — интеграция с cert-manager / корпоративным PKI / HSM | P1 | 🟡 |
-| S2 | Явно описать, что Tuck — не замена корпоративному УЦ — [11 §4](11-barrier-and-ciphers.md) | P1 | ✅ |
-| S3 | Фокус пилота: KV + Kubernetes auth + оператор TuckSecret + аудит — [11 §4.1](11-barrier-and-ciphers.md) | P0 | ✅ |
+| S1 | Судьба движков: облачные (AWS/GCP/Azure), PKI, Transit, SSH, TOTP и Database удалены. Для УЦ — интеграция с cert-manager / корпоративным PKI / HSM на стороне банка | P1 | ✅ |
+| S2 | Tuck не заменяет корпоративный УЦ: PKI-движок удалён — [11 §4](11-barrier-and-ciphers.md) | P1 | ✅ |
+| S3 | Фокус пилота: KV + Kubernetes auth + оператор TuckSecret + аудит — [11 §4](11-barrier-and-ciphers.md) | P0 | ✅ |
 
 ## 5. Зрелость и доверие
 
@@ -73,7 +73,7 @@
 ## 6. План пилота
 
 1. Один сегмент банка, один Tuck на сегмент (не общий на все кластеры).
-2. Только KV v2 + Kubernetes auth + оператор TuckSecret (`--enforce-namespace-paths`); экспериментальные движки выключены.
+2. Только KV v2 + Kubernetes auth + оператор TuckSecret (`--enforce-namespace-paths`); других движков в Tuck нет.
 3. Миграция: секреты из Git (ansible-vault) → Tuck разовой загрузкой, затем `TuckSecret` вместо подстановки в Helm values.
 4. Шифр барьера — по решению ИБ (§1): `aes-256-gcm`, несертифицированный `gost-kuznyechik-mgm`, либо сертифицированный СКЗИ через `RegisterSuite`.
 5. Критерии выхода: независимый аудит (M1), отработанный аварийный сценарий (unseal, восстановление из бэкапа), согласованный SLA.

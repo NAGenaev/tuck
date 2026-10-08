@@ -13,7 +13,6 @@ package main
 import (
 	"bytes"
 	"crypto/tls"
-	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -329,142 +328,6 @@ func cmdTokenRenewSelf(c *client, ttl string) {
 		fatalf("request: %v", err)
 	}
 	printJSON(mustJSON(resp, 200))
-}
-
-// ---- dynamic credentials ----
-
-func cmdDynCreds(c *client, engine, role string) {
-	resp, err := c.do("POST", "/v1/"+engine+"/creds/"+role, nil)
-	if err != nil {
-		fatalf("request: %v", err)
-	}
-	printJSON(mustJSON(resp, 200))
-}
-
-// ---- pki ----
-
-func cmdPKIIssue(c *client, role, cn, ttl string, altNames []string) {
-	body := map[string]any{"common_name": cn}
-	if ttl != "" {
-		body["ttl"] = ttl
-	}
-	if len(altNames) > 0 {
-		body["alt_names"] = strings.Join(altNames, ",")
-	}
-	resp, err := c.do("POST", "/v1/pki/issue/"+role, body)
-	if err != nil {
-		fatalf("request: %v", err)
-	}
-	result := mustJSON(resp, 200)
-	if cert, ok := result["certificate"].(string); ok {
-		fmt.Print(cert)
-		return
-	}
-	printJSON(result)
-}
-
-func cmdPKIRevoke(c *client, serial string) {
-	resp, err := c.do("POST", "/v1/pki/revoke/"+serial, nil)
-	if err != nil {
-		fatalf("request: %v", err)
-	}
-	printJSON(mustJSON(resp, 200))
-}
-
-// ---- transit ----
-
-func cmdTransitEncrypt(c *client, key, plaintext string) {
-	if plaintext == "-" {
-		data, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			fatalf("read stdin: %v", err)
-		}
-		plaintext = string(data)
-	}
-	b64 := base64.StdEncoding.EncodeToString([]byte(plaintext))
-	resp, err := c.do("POST", "/v1/transit/encrypt/"+key, map[string]string{"plaintext": b64})
-	if err != nil {
-		fatalf("request: %v", err)
-	}
-	result := mustJSON(resp, 200)
-	if ct, ok := result["ciphertext"].(string); ok {
-		fmt.Println(ct)
-		return
-	}
-	printJSON(result)
-}
-
-func cmdTransitDecrypt(c *client, key, ciphertext string) {
-	if ciphertext == "-" {
-		data, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			fatalf("read stdin: %v", err)
-		}
-		ciphertext = strings.TrimSpace(string(data))
-	}
-	resp, err := c.do("POST", "/v1/transit/decrypt/"+key, map[string]string{"ciphertext": ciphertext})
-	if err != nil {
-		fatalf("request: %v", err)
-	}
-	result := mustJSON(resp, 200)
-	if pt, ok := result["plaintext"].(string); ok {
-		decoded, err := base64.StdEncoding.DecodeString(pt)
-		if err != nil {
-			fmt.Println(pt)
-			return
-		}
-		fmt.Print(string(decoded))
-		return
-	}
-	printJSON(result)
-}
-
-// ---- ssh ----
-
-func cmdSSHSign(c *client, role, pubkeyPath, ttl string) {
-	var pubkey string
-	if pubkeyPath == "-" {
-		data, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			fatalf("read stdin: %v", err)
-		}
-		pubkey = strings.TrimSpace(string(data))
-	} else {
-		data, err := os.ReadFile(pubkeyPath) // #nosec G304 — user-supplied public key file path in CLI tool
-		if err != nil {
-			fatalf("read pubkey file %q: %v", pubkeyPath, err)
-		}
-		pubkey = strings.TrimSpace(string(data))
-	}
-	body := map[string]string{"public_key": pubkey}
-	if ttl != "" {
-		body["ttl"] = ttl
-	}
-	resp, err := c.do("POST", "/v1/ssh/sign/"+role, body)
-	if err != nil {
-		fatalf("request: %v", err)
-	}
-	result := mustJSON(resp, 200)
-	if cert, ok := result["signed_key"].(string); ok {
-		fmt.Print(cert)
-		return
-	}
-	printJSON(result)
-}
-
-// ---- totp ----
-
-func cmdTOTPCode(c *client, key string) {
-	resp, err := c.do("GET", "/v1/totp/code/"+key, nil)
-	if err != nil {
-		fatalf("request: %v", err)
-	}
-	result := mustJSON(resp, 200)
-	if code, ok := result["code"].(string); ok {
-		fmt.Println(code)
-		return
-	}
-	printJSON(result)
 }
 
 // ---- auth logins ----
@@ -1085,23 +948,6 @@ Policies:
   policy delete <name>
   policy list
 
-Dynamic credentials:
-  db creds <role>                     Get DB credentials
-
-PKI:
-  pki issue <role> --cn=<name> [--ttl=720h] [--alt-name=x ...]
-  pki revoke <serial>
-
-Transit (encryption-as-a-service):
-  transit encrypt <key> <plaintext|-stdin>
-  transit decrypt <key> <ciphertext|-stdin>
-
-SSH certificates:
-  ssh sign <role> <pubkey-file|-stdin> [--ttl=30m]
-
-TOTP:
-  totp code <key>                     Get current OTP code
-
 Auth logins:
   auth approle login --role-id=... --secret-id=...
   auth ldap login --username=... --password=...
@@ -1514,77 +1360,6 @@ func main() {
 		default:
 			fatalf("unknown policy subcommand %q", args[1])
 		}
-
-	case "db":
-		if len(args) < 3 || args[1] != "creds" {
-			fatalf("usage: db creds <role>")
-		}
-		cmdDynCreds(c, "database", args[2])
-
-	case "pki":
-		if len(args) < 2 {
-			fatalf("pki requires a subcommand: issue, revoke")
-		}
-		switch args[1] {
-		case "issue":
-			fs := flag.NewFlagSet("pki issue", flag.ExitOnError)
-			cn := fs.String("cn", "", "common name (required)")
-			ttl := fs.String("ttl", "", "certificate TTL e.g. 720h")
-			var altNames multiFlag
-			fs.Var(&altNames, "alt-name", "SAN (may be repeated)")
-			_ = fs.Parse(args[3:])
-			if len(args) < 3 {
-				fatalf("pki issue requires a role name")
-			}
-			if *cn == "" {
-				fatalf("pki issue requires --cn=<common-name>")
-			}
-			cmdPKIIssue(c, args[2], *cn, *ttl, []string(altNames))
-		case "revoke":
-			if len(args) < 3 {
-				fatalf("pki revoke requires a serial number")
-			}
-			cmdPKIRevoke(c, args[2])
-		default:
-			fatalf("unknown pki subcommand %q", args[1])
-		}
-
-	case "transit":
-		if len(args) < 2 {
-			fatalf("transit requires a subcommand: encrypt, decrypt")
-		}
-		switch args[1] {
-		case "encrypt":
-			if len(args) < 4 {
-				fatalf("transit encrypt requires a key and plaintext (or '-' for stdin)")
-			}
-			cmdTransitEncrypt(c, args[2], args[3])
-		case "decrypt":
-			if len(args) < 4 {
-				fatalf("transit decrypt requires a key and ciphertext (or '-' for stdin)")
-			}
-			cmdTransitDecrypt(c, args[2], args[3])
-		default:
-			fatalf("unknown transit subcommand %q", args[1])
-		}
-
-	case "ssh":
-		if len(args) < 2 || args[1] != "sign" {
-			fatalf("usage: ssh sign <role> <pubkey-file|-stdin> [--ttl=30m]")
-		}
-		fs := flag.NewFlagSet("ssh sign", flag.ExitOnError)
-		ttl := fs.String("ttl", "", "certificate TTL e.g. 30m")
-		_ = fs.Parse(args[4:])
-		if len(args) < 4 {
-			fatalf("ssh sign requires a role and pubkey file")
-		}
-		cmdSSHSign(c, args[2], args[3], *ttl)
-
-	case "totp":
-		if len(args) < 3 || args[1] != "code" {
-			fatalf("usage: totp code <key>")
-		}
-		cmdTOTPCode(c, args[2])
 
 	case "auth":
 		if len(args) < 3 {

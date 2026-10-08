@@ -4,7 +4,7 @@
 
 ## Цель
 
-Развернуть Tuck для пилота в одном сегменте: **KV v2 + Kubernetes auth + оператор `TuckSecret` + аудит**. Всё остальное (динамические секреты, PKI, SSH, TOTP) в пилот не входит и остаётся выключенным ([11 §4.1](../11-barrier-and-ciphers.md)).
+Развернуть Tuck для пилота в одном сегменте: **KV v2 + Kubernetes auth + оператор `TuckSecret` + аудит**. Других движков (PKI, Transit, SSH, TOTP, динамические секреты БД) в Tuck нет — они удалены ([11 §4](../11-barrier-and-ciphers.md)).
 
 ## Топология
 
@@ -44,7 +44,6 @@ kubernetes:
   ca_file: /etc/tuck/k8s-a.ca
   clusters:
     - {name: seg-b, api: https://k8s-b.example:6443, token_file: /etc/tuck/k8s-b.token, ca_file: /etc/tuck/k8s-b.ca}
-# экспериментальные движки (enable_engines) не включать
 ```
 
 Аудит: `tuck server --config /etc/tuck/tuck.yaml --audit-log /var/log/tuck/audit.log`. Файл ротируется (`--audit-max-size`, `--audit-max-backups`); для SIEM заберите его агентом сбора логов.
@@ -107,7 +106,7 @@ curl -XPUT "$env:TUCK_ADDR/v1/auth/kubernetes/role/tuck/tuck-operator" -H "X-Tuc
 - [ ] аудит пишется и доходит до SIEM
 - [ ] бэкап и восстановление отработаны, доли Shamir розданы
 - [ ] `--require-mlock` включён, swap на узле отключён
-- [ ] экспериментальные движки выключены (`GET /v1/pki/ca/pem` → 404)
+- [ ] `GET /v1/pki/ca/pem` → 404 (движков PKI/Transit/SSH/TOTP/Database в сборке нет)
 
 ## Что пилот не покрывает
 

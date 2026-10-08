@@ -27,7 +27,6 @@ var (
 var (
 	SealedGauge       atomic.Int32 // 0 = unsealed, 1 = sealed
 	ActiveTokensGauge atomic.Int64 // live (non-expired, non-revoked) tokens
-	LeaseCountGauge   atomic.Int64 // active dynamic-secret leases
 )
 
 // Inc2xx increments 2xx counter and total.
@@ -56,9 +55,6 @@ func IncAuditSinkError() { AuditSinkErrors.Add(1) }
 
 // SetActiveTokens sets the active token gauge.
 func SetActiveTokens(n int64) { ActiveTokensGauge.Store(n) }
-
-// SetLeaseCount sets the active lease gauge.
-func SetLeaseCount(n int64) { LeaseCountGauge.Store(n) }
 
 // UptimeSeconds returns seconds elapsed since process start.
 func UptimeSeconds() float64 { return time.Since(startTime).Seconds() }
@@ -97,10 +93,6 @@ func Handler() http.HandlerFunc {
 		fmt.Fprintf(w, "# HELP tuck_active_tokens Active (non-expired) token count\n")
 		fmt.Fprintf(w, "# TYPE tuck_active_tokens gauge\n")
 		fmt.Fprintf(w, "tuck_active_tokens %d\n", ActiveTokensGauge.Load())
-
-		fmt.Fprintf(w, "# HELP tuck_lease_count Active dynamic-secret lease count\n")
-		fmt.Fprintf(w, "# TYPE tuck_lease_count gauge\n")
-		fmt.Fprintf(w, "tuck_lease_count %d\n", LeaseCountGauge.Load())
 
 		fmt.Fprintf(w, "# HELP tuck_audit_sink_errors_total Cumulative errors across all audit sinks\n")
 		fmt.Fprintf(w, "# TYPE tuck_audit_sink_errors_total counter\n")

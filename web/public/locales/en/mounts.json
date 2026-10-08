@@ -32,9 +32,7 @@
     "tune": "Tune {{path}}",
     "unmount": "Unmount {{path}}",
     "builtinLocked": "Built-in mount: cannot be unmounted",
-    "copyAccessor": "Copy accessor",
-    "experimental": "exp.",
-    "experimentalHint": "Experimental engine: off by default, needs the --enable-engine flag"
+    "copyAccessor": "Copy accessor"
   },
   "detail": {
     "accessor": "Accessor",
@@ -54,9 +52,6 @@
       "deletedVersions": "Deleted versions",
       "destroyedVersions": "Destroyed versions",
       "roles": "Roles",
-      "connections": "Connections",
-      "issuedCerts": "Issued certificates",
-      "leases": "Active leases",
       "tokens": "Tokens"
     },
     "lastWrite": "Last write",
@@ -117,16 +112,6 @@
         "desc": "Key-value store for application secrets.",
         "tag": "secrets"
       },
-      "transit": {
-        "name": "Transit",
-        "desc": "Encryption as a service: the app never sees the key.",
-        "tag": "stores no data"
-      },
-      "database": {
-        "name": "Database",
-        "desc": "Dynamic credentials for databases.",
-        "tag": "dynamic secrets"
-      },
       "kubernetes": {
         "name": "Kubernetes",
         "desc": "ServiceAccount login through TokenReview.",
@@ -142,30 +127,12 @@
         "desc": "Login with a JWT from the corporate identity provider.",
         "tag": "auth · SSO"
       },
-      "pki": {
-        "name": "PKI",
-        "desc": "Certificates from your own CA for internal use (mTLS, tests).",
-        "tag": "experimental"
-      },
-      "ssh": {
-        "name": "SSH",
-        "desc": "Signed SSH certificates for host access.",
-        "tag": "experimental"
-      },
-      "totp": {
-        "name": "TOTP",
-        "desc": "Generate and verify one-time codes (RFC 6238).",
-        "tag": "experimental"
-      },
       "custom": {
         "name": "Other type",
         "desc": "Any other type the server understands.",
         "tag": "manual"
       }
     },
-    "expPill": "off",
-    "expTitle": "The {{type}}/ engine is off by default.",
-    "expText": "This is an experimental subsystem. You can register the mount, but its API answers 404 until the server is started with the flag:",
     "customType": "Engine type",
     "customTypePlaceholder": "e.g. kv",
     "customTypeHint": "Lowercase latin letters, digits, \"-\" and \"_\".",
@@ -227,7 +194,6 @@
     "tableOnly": "This is a mount-table entry without an engine: no data or leases live under it, only the entry is removed.",
     "impact": {
       "secrets": "Secrets",
-      "leases": "Leases",
       "tokens": "Tokens"
     }
   },

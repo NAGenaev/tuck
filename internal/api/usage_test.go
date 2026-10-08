@@ -318,7 +318,6 @@ func TestMountStats(t *testing.T) {
 			DeletedVersions   *int   `json:"deleted_versions"`
 			DestroyedVersions *int   `json:"destroyed_versions"`
 			LastWriteAt       string `json:"last_write_at"`
-			Leases            *int   `json:"leases"`
 			Tokens            *int   `json:"tokens"`
 		} `json:"stats"`
 	}
@@ -346,7 +345,7 @@ func TestMountStats(t *testing.T) {
 	if err := json.Unmarshal([]byte(b), &tune); err != nil {
 		t.Fatal(err)
 	}
-	if tune.Stats.EngineBacked || tune.Stats.Secrets == nil || *tune.Stats.Secrets != 0 || *tune.Stats.Leases != 0 || *tune.Stats.Tokens != 0 {
+	if tune.Stats.EngineBacked || tune.Stats.Secrets == nil || *tune.Stats.Secrets != 0 || *tune.Stats.Tokens != 0 {
 		t.Fatalf("custom mount stats = %s", b)
 	}
 

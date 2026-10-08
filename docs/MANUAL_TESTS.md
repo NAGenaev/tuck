@@ -20,21 +20,16 @@
 | 9 | [JWT — JWT/OIDC аутентификация](#9-jwt-oidc) | JWT-1…JWT-3 |
 | 10 | [LDAP — LDAP/AD аутентификация](#10-ldap) | LDAP-1…LDAP-3 |
 | 11 | [K8S — Kubernetes аутентификация](#11-kubernetes-auth) | K8S-1…K8S-2 |
-| 12 | [TRANSIT — Шифрование как сервис](#12-transit) | TR-1…TR-8 |
-| 13 | [PKI — Центр сертификации](#13-pki) | PKI-1…PKI-5 |
-| 14 | [SSH — Подпись SSH-ключей](#14-ssh) | SSH-1…SSH-4 |
-| 15 | [TOTP — Двухфакторная аутентификация](#15-totp) | TOTP-1…TOTP-4 |
-| 16 | [SHAMIR — Ручное распечатывание](#16-shamir-seal) | SH-1…SH-3 |
-| 17 | [BACKUP — Backup и Restore](#17-backup--restore) | BAK-1…BAK-2 |
-| 18 | [METRICS — Prometheus-метрики](#18-metrics) | MET-1…MET-2 |
-| 19 | [NAMESPACE — Изоляция пространств](#19-namespaces) | NS-1…NS-2 |
-| 20 | [DYNAMIC DB — Динамические секреты БД](#20-dynamic-secrets--database) | DB-1…DB-2 |
-| 21 | [MULTI-CLUSTER — Несколько кластеров Kubernetes](#21-несколько-кластеров-kubernetes) | MC-1…MC-2 |
-| 22 | [NS-BINDING — Привязка токена к namespace](#22-привязка-токена-к-namespace) | NSB-1…NSB-2 |
-| 23 | [BARRIER — Шифр, ротация DEK, шифрование путей](#23-шифр-барьера-ротация-dek-шифрование-путей) | BR-1…BR-3 |
-| 24 | [TLS — Горячая перезагрузка сертификата](#24-tls-горячая-перезагрузка-сертификата) | — |
-| 25 | [RAFT mTLS — Защита транспорта Raft](#25-raft-mutual-tls-между-узлами) | — |
-| 26 | [MLOCK — Защита памяти](#26-защита-памяти) | — |
+| 12 | [SHAMIR — Ручное распечатывание](#12-shamir-seal) | SH-1…SH-3 |
+| 13 | [BACKUP — Backup и Restore](#13-backup--restore) | BAK-1…BAK-2 |
+| 14 | [METRICS — Prometheus-метрики](#14-metrics) | MET-1…MET-2 |
+| 15 | [NAMESPACE — Изоляция пространств](#15-namespaces) | NS-1…NS-2 |
+| 16 | [MULTI-CLUSTER — Несколько кластеров Kubernetes](#16-несколько-кластеров-kubernetes) | MC-1…MC-2 |
+| 17 | [NS-BINDING — Привязка токена к namespace](#17-привязка-токена-к-namespace) | NSB-1…NSB-2 |
+| 18 | [BARRIER — Шифр, ротация DEK, шифрование путей](#18-шифр-барьера-ротация-dek-шифрование-путей) | BR-1…BR-3 |
+| 19 | [TLS — Горячая перезагрузка сертификата](#19-tls-горячая-перезагрузка-сертификата) | — |
+| 20 | [RAFT mTLS — Защита транспорта Raft](#20-raft-mutual-tls-между-узлами) | — |
+| 21 | [MLOCK — Защита памяти](#21-защита-памяти) | — |
 
 ---
 
@@ -687,299 +682,7 @@ curl.exe -s -XPOST "$env:TUCK_ADDR/v1/auth/kubernetes/login" `
 
 ---
 
-## 12. Transit
-
-Encryption-as-a-service. Tuck управляет ключами — данные шифруются/расшифровываются на сервере, в хранилище попадает только шифртекст.
-
-### TR-1: Создание ключа (AES-256)
-
-```powershell
-curl.exe -s -XPUT "$env:TUCK_ADDR/v1/transit/keys/mykey" `
-    -H "X-Tuck-Token: $env:TUCK_TOKEN" `
-    -H "Content-Type: application/json" `
-    -d '{"type":"aes256-gcm96"}'
-```
-
-**Ожидается:** HTTP 204.
-
-### TR-2: Шифрование данных
-
-```powershell
-# plaintext должен быть в base64url (без padding)
-$plain = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("Hello, World!")).TrimEnd('=').Replace('+','-').Replace('/','_')
-
-$r = Invoke-RestMethod -Method POST "$env:TUCK_ADDR/v1/transit/encrypt/mykey" `
-    -Headers @{"X-Tuck-Token"=$env:TUCK_TOKEN} `
-    -Body "{`"plaintext`":`"$plain`"}" `
-    -ContentType application/json
-$cipher = $r.ciphertext
-Write-Host "ciphertext: $cipher"
-```
-
-**Ожидается:** `vault:v1:...` (формат ciphertext).
-
-### TR-3: Расшифровка
-
-```powershell
-$r = Invoke-RestMethod -Method POST "$env:TUCK_ADDR/v1/transit/decrypt/mykey" `
-    -Headers @{"X-Tuck-Token"=$env:TUCK_TOKEN} `
-    -Body "{`"ciphertext`":`"$cipher`"}" `
-    -ContentType application/json
-
-# Декодировать plaintext из base64url
-$decoded = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($r.plaintext.Replace('-','+').Replace('_','/')))
-Write-Host "plaintext: $decoded"
-```
-
-**Ожидается:** `Hello, World!`.
-
-### TR-4: Ротация ключа
-
-```powershell
-curl.exe -s -XPOST "$env:TUCK_ADDR/v1/transit/keys/mykey/rotate" `
-    -H "X-Tuck-Token: $env:TUCK_TOKEN"
-```
-
-**Ожидается:** HTTP 204. Новые шифрования используют v2, старый ciphertext (v1) всё ещё расшифровывается.
-
-### TR-5: Rewrap (перешифрование к новой версии ключа)
-
-```powershell
-$r = Invoke-RestMethod -Method POST "$env:TUCK_ADDR/v1/transit/rewrap/mykey" `
-    -Headers @{"X-Tuck-Token"=$env:TUCK_TOKEN} `
-    -Body "{`"ciphertext`":`"$cipher`"}" `
-    -ContentType application/json
-Write-Host "new ciphertext: $($r.ciphertext)"
-```
-
-**Ожидается:** `vault:v2:...` — тот же plaintext, новая версия ключа.
-
-### TR-6: Подпись данных (ECDSA-P256)
-
-```powershell
-curl.exe -s -XPUT "$env:TUCK_ADDR/v1/transit/keys/sigkey" `
-    -H "X-Tuck-Token: $env:TUCK_TOKEN" `
-    -H "Content-Type: application/json" `
-    -d '{"type":"ecdsa-p256"}'
-
-$input = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("data-to-sign")).TrimEnd('=').Replace('+','-').Replace('/','_')
-
-$sig = Invoke-RestMethod -Method POST "$env:TUCK_ADDR/v1/transit/sign/sigkey" `
-    -Headers @{"X-Tuck-Token"=$env:TUCK_TOKEN} `
-    -Body "{`"input`":`"$input`"}" `
-    -ContentType application/json
-Write-Host "signature: $($sig.signature)"
-```
-
-### TR-7: Верификация подписи
-
-```powershell
-$v = Invoke-RestMethod -Method POST "$env:TUCK_ADDR/v1/transit/verify/sigkey" `
-    -Headers @{"X-Tuck-Token"=$env:TUCK_TOKEN} `
-    -Body "{`"input`":`"$input`",`"signature`":`"$($sig.signature)`"}" `
-    -ContentType application/json
-Write-Host "valid: $($v.valid)"
-```
-
-**Ожидается:** `"valid": true`.
-
-### TR-8: HMAC
-
-```powershell
-$r = Invoke-RestMethod -Method POST "$env:TUCK_ADDR/v1/transit/hmac/mykey" `
-    -Headers @{"X-Tuck-Token"=$env:TUCK_TOKEN} `
-    -Body "{`"input`":`"$input`"}" `
-    -ContentType application/json
-Write-Host "hmac: $($r.hmac)"
-```
-
-**Ожидается:** `vault:v1:hmac-sha256:...`.
-
----
-
-## 13. PKI
-
-Встроенный центр сертификации для выпуска TLS-сертификатов.
-
-### PKI-1: Генерация Root CA
-
-```powershell
-$ca = Invoke-RestMethod -Method POST "$env:TUCK_ADDR/v1/pki/root/generate" `
-    -Headers @{"X-Tuck-Token"=$env:TUCK_TOKEN} `
-    -Body '{"common_name":"Tuck Root CA","ttl":"87600h"}' `
-    -ContentType application/json
-Write-Host "CA cert:"
-Write-Host $ca.certificate
-```
-
-**Ожидается:** PEM-сертификат Root CA.
-
-### PKI-2: Создание роли для выпуска сертификатов
-
-```powershell
-curl.exe -s -XPUT "$env:TUCK_ADDR/v1/pki/roles/web-server" `
-    -H "X-Tuck-Token: $env:TUCK_TOKEN" `
-    -H "Content-Type: application/json" `
-    -d '{"allowed_domains":["example.com","*.example.com"],"allow_subdomains":true,"ttl":"720h"}'
-```
-
-### PKI-3: Выпуск сертификата
-
-```powershell
-$cert = Invoke-RestMethod -Method POST "$env:TUCK_ADDR/v1/pki/issue/web-server" `
-    -Headers @{"X-Tuck-Token"=$env:TUCK_TOKEN} `
-    -Body '{"common_name":"api.example.com","ttl":"24h"}' `
-    -ContentType application/json
-
-Write-Host "Certificate:"
-Write-Host $cert.certificate
-Write-Host "Private key:"
-Write-Host $cert.private_key
-```
-
-**Ожидается:** PEM certificate + private key. Проверьте цепочку через:
-```powershell
-$cert.certificate | openssl verify -CAfile <(Write-Output $ca.certificate)
-```
-
-### PKI-4: Отзыв сертификата
-
-```powershell
-curl.exe -s -XPOST "$env:TUCK_ADDR/v1/pki/revoke" `
-    -H "X-Tuck-Token: $env:TUCK_TOKEN" `
-    -H "Content-Type: application/json" `
-    -d "{`"serial_number`":`"$($cert.serial_number)`"}"
-```
-
-**Ожидается:** `{ "revocation_time": ... }`.
-
-### PKI-5: CRL (список отозванных сертификатов)
-
-```powershell
-# CRL доступен без авторизации (как у настоящих CA)
-Invoke-RestMethod "$env:TUCK_ADDR/v1/pki/crl" -Headers @{"X-Tuck-Token"=$env:TUCK_TOKEN}
-```
-
-**Ожидается:** список серийных номеров отозванных сертификатов.
-
----
-
-## 14. SSH
-
-Tuck действует как SSH Certificate Authority. Подписывает публичные SSH-ключи — не нужно распространять authorized_keys.
-
-### SSH-1: Генерация CA
-
-```powershell
-$caKey = Invoke-RestMethod -Method POST "$env:TUCK_ADDR/v1/ssh/ca/generate" `
-    -Headers @{"X-Tuck-Token"=$env:TUCK_TOKEN} `
-    -Body '{"key_type":"ed25519"}' `
-    -ContentType application/json
-Write-Host "SSH CA public key:"
-Write-Host $caKey.public_key
-```
-
-**Ожидается:** публичный ключ в формате `ssh-ed25519 AAAA...`.
-
-### SSH-2: Просмотр CA публичного ключа
-
-```powershell
-# Этот endpoint открыт (для настройки TrustedUserCAKeys на серверах)
-Invoke-RestMethod "$env:TUCK_ADDR/v1/ssh/ca/public-key"
-```
-
-### SSH-3: Создание роли
-
-```powershell
-curl.exe -s -XPUT "$env:TUCK_ADDR/v1/ssh/roles/developers" `
-    -H "X-Tuck-Token: $env:TUCK_TOKEN" `
-    -H "Content-Type: application/json" `
-    -d '{
-      "key_type": "ca",
-      "allowed_users": "ubuntu,ec2-user",
-      "default_extensions": {"permit-pty":"","permit-port-forwarding":""},
-      "ttl": "12h"
-    }'
-```
-
-### SSH-4: Подпись пользовательского ключа
-
-```powershell
-# Сгенерируйте ключ (если нет)
-ssh-keygen -t ed25519 -f $env:USERPROFILE\.ssh\test_key -N ""
-$pubKey = Get-Content "$env:USERPROFILE\.ssh\test_key.pub"
-
-# Подпишите
-$signed = Invoke-RestMethod -Method POST "$env:TUCK_ADDR/v1/ssh/sign/developers" `
-    -Headers @{"X-Tuck-Token"=$env:TUCK_TOKEN} `
-    -Body "{`"public_key`":`"$pubKey`",`"valid_principals`":`"ubuntu`"}" `
-    -ContentType application/json
-
-Write-Host "Signed cert:"
-Write-Host $signed.signed_key
-
-# Проверьте сертификат
-$signed.signed_key | Out-File -Encoding ascii "$env:USERPROFILE\.ssh\test_key-cert.pub"
-ssh-keygen -Lf "$env:USERPROFILE\.ssh\test_key-cert.pub"
-```
-
-**Ожидается:** `ssh-ed25519-cert-v01@openssh.com ...` с указанными principals и TTL.
-
----
-
-## 15. TOTP
-
-Time-based One-Time Password (RFC 6238 / Google Authenticator). Tuck может выступать как сервер TOTP.
-
-### TOTP-1: Создание TOTP-ключа
-
-```powershell
-$key = Invoke-RestMethod -Method POST "$env:TUCK_ADDR/v1/totp/keys/myuser" `
-    -Headers @{"X-Tuck-Token"=$env:TUCK_TOKEN} `
-    -Body '{"generate":true,"issuer":"Tuck","account_name":"alice@example.com"}' `
-    -ContentType application/json
-
-Write-Host "Secret: $($key.secret)"
-Write-Host "QR URL: $($key.url)"
-```
-
-**Ожидается:** base32 secret + `otpauth://totp/...` URL (откройте в Google Authenticator или Authy).
-
-### TOTP-2: Генерация кода
-
-```powershell
-$code = Invoke-RestMethod -Method POST "$env:TUCK_ADDR/v1/totp/code/myuser" `
-    -Headers @{"X-Tuck-Token"=$env:TUCK_TOKEN}
-Write-Host "TOTP code: $($code.code)"
-```
-
-**Ожидается:** 6-значный код, совпадающий с тем, что показывает аутентификатор.
-
-### TOTP-3: Валидация кода
-
-```powershell
-$valid = Invoke-RestMethod -Method POST "$env:TUCK_ADDR/v1/totp/validate/myuser" `
-    -Headers @{"X-Tuck-Token"=$env:TUCK_TOKEN} `
-    -Body "{`"code`":`"$($code.code)`"}" `
-    -ContentType application/json
-Write-Host "valid: $($valid.valid)"
-```
-
-**Ожидается:** `"valid": true`. Один код действителен 30 секунд и только один раз.
-
-### TOTP-4: Импорт существующего секрета
-
-```powershell
-# Если у вас уже есть TOTP-секрет (например, из существующего сервиса)
-curl.exe -s -XPOST "$env:TUCK_ADDR/v1/totp/keys/existing" `
-    -H "X-Tuck-Token: $env:TUCK_TOKEN" `
-    -H "Content-Type: application/json" `
-    -d '{"key":"JBSWY3DPEHPK3PXP","issuer":"MyApp","account_name":"user@example.com"}'
-```
-
----
-
-## 16. Shamir Seal
+## 12. Shamir Seal
 
 Распределённое ручное распечатывание: ключ разделён на `n` частей, для открытия нужны любые `k`.
 
@@ -1036,7 +739,7 @@ curl.exe -s "$env:TUCK_ADDR/v1/secret/test" -H "X-Tuck-Token: $env:TUCK_TOKEN"
 
 ---
 
-## 17. Backup / Restore
+## 13. Backup / Restore
 
 ### BAK-1: Создание snapshot
 
@@ -1068,7 +771,7 @@ Invoke-RestMethod "$env:TUCK_ADDR/v1/secret/myapp/db" `
 
 ---
 
-## 18. Metrics
+## 14. Metrics
 
 ### MET-1: Prometheus метрики
 
@@ -1097,7 +800,7 @@ Invoke-RestMethod http://localhost:8200/metrics
 
 ---
 
-## 19. Namespaces
+## 15. Namespaces
 
 Изоляция данных и политик внутри одного инстанса Tuck.
 
@@ -1129,59 +832,7 @@ curl.exe -s "$env:TUCK_ADDR/v1/secret/data" `
 
 ---
 
-## 20. Dynamic Secrets — Database
-
-Требует: работающая БД (PostgreSQL, MySQL, MongoDB и т.д.).
-
-### Запуск тестовой PostgreSQL (Docker)
-
-```powershell
-docker run -d --name pgtest -p 5432:5432 `
-    -e POSTGRES_PASSWORD=tuck123 postgres:15
-```
-
-### DB-1: Настройка подключения
-
-```powershell
-curl.exe -s -XPUT "$env:TUCK_ADDR/v1/database/config/mydb" `
-    -H "X-Tuck-Token: $env:TUCK_TOKEN" `
-    -H "Content-Type: application/json" `
-    -d '{
-      "plugin_name": "postgresql-database-plugin",
-      "connection_url": "postgresql://postgres:tuck123@localhost:5432/postgres?sslmode=disable",
-      "allowed_roles": ["readonly"]
-    }'
-```
-
-### DB-2: Создание роли и получение учётных данных
-
-```powershell
-# Создать роль
-curl.exe -s -XPUT "$env:TUCK_ADDR/v1/database/roles/readonly" `
-    -H "X-Tuck-Token: $env:TUCK_TOKEN" `
-    -H "Content-Type: application/json" `
-    -d '{
-      "db_name": "mydb",
-      "creation_statements": ["CREATE USER \"{{name}}\" WITH PASSWORD '\''{{password}}'\'' VALID UNTIL '\''{{expiration}}'\'';"],
-      "default_ttl": "1h",
-      "max_ttl": "24h"
-    }'
-
-# Получить динамические учётные данные
-$creds = Invoke-RestMethod "$env:TUCK_ADDR/v1/database/creds/readonly" `
-    -Headers @{"X-Tuck-Token"=$env:TUCK_TOKEN}
-Write-Host "username: $($creds.username)"
-Write-Host "password: $($creds.password)"
-
-# Проверьте что пользователь создан в PostgreSQL
-psql -h localhost -U "$($creds.username)" -W -c "\du" postgres
-```
-
-**Ожидается:** временный пользователь с уникальным именем и паролем. После истечения TTL — автоматически удаляется.
-
----
-
-## 21. Несколько кластеров Kubernetes
+## 16. Несколько кластеров Kubernetes
 
 Требует: два кластера (или один кластер, зарегистрированный под двумя именами) и ServiceAccount-токен рецензента для каждого.
 
@@ -1221,7 +872,7 @@ curl.exe -s -XPOST "$env:TUCK_ADDR/v1/auth/kubernetes/login" -H "Content-Type: a
 
 ---
 
-## 22. Привязка токена к namespace
+## 17. Привязка токена к namespace
 
 ### NSB-1: Токен не выходит за свой namespace
 
@@ -1243,7 +894,7 @@ curl.exe -s -o NUL -w "%{http_code}" "$env:TUCK_ADDR/v1/secret/data" -H "X-Tuck-
 
 ---
 
-## 23. Шифр барьера, ротация DEK, шифрование путей
+## 18. Шифр барьера, ротация DEK, шифрование путей
 
 ### BR-1: Шифр в seal-status
 
@@ -1274,7 +925,7 @@ Select-String -Path .\tuck.db -Pattern "very-secret-name" -Encoding ascii
 
 ---
 
-## 24. TLS: горячая перезагрузка сертификата
+## 19. TLS: горячая перезагрузка сертификата
 
 ```powershell
 .\tuck.exe server -tls-cert .\srv.crt -tls-key .\srv.key ...
@@ -1286,7 +937,7 @@ openssl s_client -connect localhost:8200 </dev/null 2>$null | openssl x509 -noou
 
 ---
 
-## 25. Raft: mutual TLS между узлами
+## 20. Raft: mutual TLS между узлами
 
 Требует: три узла и отдельный CA кластера (не публичный).
 
@@ -1299,7 +950,7 @@ openssl s_client -connect localhost:8200 </dev/null 2>$null | openssl x509 -noou
 
 ---
 
-## 26. Защита памяти
+## 21. Защита памяти
 
 ```powershell
 .\tuck.exe server -require-mlock ...
@@ -1312,7 +963,7 @@ openssl s_client -connect localhost:8200 </dev/null 2>$null | openssl x509 -noou
 ## Полезные команды для отладки
 
 ```powershell
-# Посмотреть все смонтированные движки
+# Посмотреть все точки монтирования
 Invoke-RestMethod "$env:TUCK_ADDR/v1/sys/mounts" `
     -Headers @{"X-Tuck-Token"=$env:TUCK_TOKEN}
 
@@ -1352,27 +1003,24 @@ Invoke-RestMethod "$env:TUCK_ADDR/v1/sys/audit" `
 | JWT/OIDC | JWT-1…3 | ✅ jwt_test.go (10 тестов) | OIDC-провайдер |
 | LDAP | LDAP-1…3 | ✅ ldap_test.go (9 тестов) | LDAP-сервер |
 | Kubernetes | K8S-1…2 | ✅ k8s_test.go (8 тестов) | K8s-кластер |
-| Transit | TR-1…8 | ✅ transit_test.go (9 тестов) | — |
-| PKI | PKI-1…5 | ✅ integration_e2e_test.go | — |
-| SSH | SSH-1…4 | ✅ ssh_test.go (11 тестов) | ssh-keygen |
-| TOTP | TOTP-1…4 | ✅ totp_test.go (9 тестов) | — |
 | Shamir Seal | SH-1…3 | ✅ sys_test.go | — |
 | Backup/Restore | BAK-1…2 | ✅ integration_e2e_test.go | — |
 | Metrics | MET-1…2 | ✅ bench_test.go | — |
 | Namespaces | NS-1…2 | ✅ integration | — |
-| Dynamic DB | DB-1…2 | ⚠️ unit (нет e2e) | PostgreSQL/MySQL |
 | Multi-cluster K8s | MC-1…2 | ✅ k8s_test.go | 2 кластера K8s |
 | Namespace binding | NSB-1…2 | ✅ api-тесты | — |
 | Barrier: cipher / DEK / пути | BR-1…3 | ✅ barrier-тесты | — |
-| TLS hot-reload | §24 | ✅ tlsutil/reload_test.go | — |
-| Raft mTLS | §25 | ✅ raft/tls_test.go | — |
+| TLS hot-reload | §19 | ✅ tlsutil/reload_test.go | — |
+| Raft mTLS | §20 | ✅ raft/tls_test.go | — |
 
 ---
 
 ## Результаты сквозного CLI-прогона (2026-07-26)
 
-Полный проход разделов 1–20 живьём на пересобранном с нуля minikube-кластере (Helm chart, свежие
-образы server/operator/csi), поверх реального Postgres-контейнера для §20. JWT/LDAP оставлены вне
+> Исторический отчёт. Движки Transit/PKI/SSH/TOTP/Database и leases впоследствии удалены из Tuck; упоминания о них ниже сохранены как история находок.
+
+Полный проход разделов (на момент прогона, включая ныне удалённые движки) живьём на пересобранном с нуля minikube-кластере (Helm chart, свежие
+образы server/operator/csi), JWT/LDAP оставлены вне
 объёма (нужен внешний OIDC/LDAP-сервер — см. матрицу выше). Найденные UX/документационные несоответствия ниже — но самая
 серьёзная находка всей сессии (см. 0 ниже) обнаружилась не в этом прогоне, а позже, при постройке
 реальных юз-кейсов применения (см. `docs/USE_CASES.md`), и уже исправлена.

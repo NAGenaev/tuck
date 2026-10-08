@@ -78,8 +78,6 @@ type Config struct {
 		Cipher string `yaml:"cipher"`
 	} `yaml:"barrier"`
 
-	// EnableEngines opts in to experimental engines (pki, ssh, totp).
-	EnableEngines []string `yaml:"enable_engines"`
 
 	// RequireMlock makes startup fail when process memory cannot be locked.
 	RequireMlock bool `yaml:"require_mlock"`

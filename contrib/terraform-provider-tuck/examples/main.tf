@@ -30,16 +30,10 @@ resource "tuck_namespace" "team_a" {
 
 # ── Secret Engine Mounts ──────────────────────────────────────────────────────
 
-resource "tuck_mount" "transit" {
-  path        = "transit/"
-  type        = "transit"
-  description = "Encryption-as-a-service for team-a"
-}
-
-resource "tuck_mount" "pki" {
-  path        = "pki/"
-  type        = "pki"
-  description = "Internal PKI CA"
+resource "tuck_mount" "team_a_kv" {
+  path        = "team-a-kv/"
+  type        = "kv"
+  description = "KV secrets for team-a"
 }
 
 # ── Policies ──────────────────────────────────────────────────────────────────
@@ -56,7 +50,6 @@ resource "tuck_policy" "app_writer" {
   name = "app-writer"
   rules_json = jsonencode([
     { path = "app/*", capabilities = 7 },     # read + write + create
-    { path = "transit/*", capabilities = 5 }, # read + create
   ])
 }
 
@@ -84,104 +77,4 @@ output "backend_role_id" {
   value       = tuck_approle_role.backend.role_id
   description = "RoleID for the backend AppRole (combine with a SecretID to authenticate)"
   sensitive   = false
-}
-
-# ── PKI ───────────────────────────────────────────────────────────────────────
-
-resource "tuck_pki_role" "web" {
-  name             = "web-server"
-  allowed_domains  = ["example.internal"]
-  allow_subdomains = true
-  server_flag      = true
-  default_ttl      = "720h"
-  max_ttl          = "8760h"
-}
-
-# ── Transit ───────────────────────────────────────────────────────────────────
-
-resource "tuck_transit_key" "app" {
-  name = "app-encryption-key"
-  type = "aes256-gcm96"
-  # Tuck refuses to delete a Transit key until this is explicitly true —
-  # flip it (and apply) before removing the resource, or `terraform destroy`
-  # fails on purpose instead of silently discarding key material.
-  deletion_allowed = false
-}
-
-# ── SSH CA ────────────────────────────────────────────────────────────────────
-
-resource "tuck_ssh_role" "ops" {
-  name          = "ops"
-  allowed_users = ["ubuntu", "deploy"]
-  cert_type     = "user"
-  default_ttl   = "1h"
-  max_ttl       = "24h"
-}
-
-# ── Dynamic Database Secrets ──────────────────────────────────────────────────
-
-resource "tuck_database_connection" "app_postgres" {
-  name           = "app-postgres"
-  plugin_name    = "postgresql"
-  connection_url = "postgres://tuck_admin:{{password}}@postgres.internal:5432/postgres?sslmode=disable"
-  database       = "app"
-}
-
-resource "tuck_database_role" "app_readonly" {
-  name    = "app-readonly"
-  db_name = tuck_database_connection.app_postgres.name
-  creation_statements = join(" ", [
-    "CREATE USER \"{{username}}\" WITH PASSWORD '{{password}}' VALID UNTIL '{{expiry}}';",
-    "GRANT CONNECT ON DATABASE \"{{database}}\" TO \"{{username}}\";",
-    "GRANT SELECT ON ALL TABLES IN SCHEMA public TO \"{{username}}\";",
-  ])
-  default_ttl = "1h"
-  max_ttl     = "24h"
-}
-
-# ── KV v1 Secrets ─────────────────────────────────────────────────────────────
-
-resource "tuck_kv_secret" "db_password" {
-  path  = "db/password"
-  value = "s3cr3t!"
-}
-
-resource "tuck_kv_secret" "api_key" {
-  path  = "services/api-key"
-  value = "my-api-key-value"
-}
-
-# ── KV v2 Secrets (versioned) ─────────────────────────────────────────────────
-
-resource "tuck_kv_secret_v2" "app_config" {
-  path = "app/config"
-  value = jsonencode({
-    db_host = "postgres.internal"
-    db_port = 5432
-  })
-}
-
-output "app_config_version" {
-  value = tuck_kv_secret_v2.app_config.version
-}
-
-# ── Data Sources ──────────────────────────────────────────────────────────────
-
-data "tuck_kv_secret" "db_password" {
-  path = tuck_kv_secret.db_password.path
-}
-
-data "tuck_kv_secret_v2" "app_config" {
-  path = tuck_kv_secret_v2.app_config.path
-  # version omitted → reads latest
-}
-
-output "db_password_value" {
-  value     = data.tuck_kv_secret.db_password.value
-  sensitive = true
-}
-
-output "app_config_value" {
-  value     = data.tuck_kv_secret_v2.app_config.value
-  sensitive = true
 }

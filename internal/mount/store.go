@@ -181,12 +181,7 @@ func Builtins() []struct{ Path, Type, Description string } {
 		{"cubbyhole/", "cubbyhole", "Per-token private storage"},
 		{"sys/", "system", "System configuration and management"},
 		{"auth/", "auth", "Authentication methods"},
-		{"database/", "database", "Database dynamic credentials"},
-		{"pki/", "pki", "PKI / certificate management"},
-		{"transit/", "transit", "Encryption-as-a-service"},
-		{"ssh/", "ssh", "SSH certificate signing"},
-		{"totp/", "totp", "TOTP two-factor management"},
-		{"identity/", "identity", "Entity and alias management"},
+							{"identity/", "identity", "Entity and alias management"},
 	}
 }
 

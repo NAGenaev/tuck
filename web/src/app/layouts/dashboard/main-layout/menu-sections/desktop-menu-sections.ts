@@ -59,19 +59,7 @@ export const useDesktopMenuSections = (): MenuItem[] => {
             header: t('nav.engines'),
             icon: 'plug',
             section: [
-                { id: 'mounts', name: t('nav.mounts'), href: ROUTES.DASHBOARD.MOUNTS, icon: 'plug' },
-                {
-                    id: 'dynamic-secrets',
-                    name: t('nav.dynamicSecrets'),
-                    href: ROUTES.DASHBOARD.DYNAMIC_SECRETS,
-                    icon: 'bolt'
-                },
-                {
-                    id: 'crypto-engines',
-                    name: t('nav.cryptoEngines'),
-                    href: ROUTES.DASHBOARD.CRYPTO_ENGINES,
-                    icon: 'lock'
-                }
+                { id: 'mounts', name: t('nav.mounts'), href: ROUTES.DASHBOARD.MOUNTS, icon: 'plug' }
             ]
         },
         {

@@ -12,7 +12,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ### Removed
 
 - Вне области пилота удалены: облачные seal (AWS KMS, GCP KMS, Azure Key Vault), облачные динамические движки (AWS, GCP, Azure), GitHub-логин, `internal/plugin`, `internal/replication`, их API-ручки, ресурсы Terraform-провайдера и страницы веб-интерфейса. Go-код: 52 937 → 44 779 строк (−8 158); вместе с веб-частью и зависимостями коммит `46745ac`: −11 957 / +470 строк, 80 файлов. Это ломает конфигурации, где использовались эти функции.
-- Экспериментальные движки теперь только `pki`, `ssh`, `totp`.
+- Удалены движки PKI, Transit, SSH, TOTP, Database dynamic secrets и Leases (API `/v1/{pki,transit,ssh,totp,database}/*`, `/v1/sys/leases/*`, страницы UI, команды `tuckcli`, методы SDK, ресурсы Terraform-провайдера) и флаг `--enable-engine` / `enable_engines` — продукт сфокусирован на Kubernetes-сценарии (KV + K8s auth + operator/CSI/injector). Seal типа `transit` (авто-unseal) сохранён.
 
 ### Added
 

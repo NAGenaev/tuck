@@ -24,7 +24,7 @@ Tuck — open-source менеджер секретов для Kubernetes. Гла
 | Хранилище | Внешнее | Встроенный bbolt или встроенный Raft |
 | Распечатывание после рестарта | Ручное (кворум Shamir) | Автоматическое (dev / transit) |
 | Kubernetes-оператор | Внешний (ESO) | Встроенный |
-| Движки секретов | PKI, Transit, SSH, Database, TOTP | Те же |
+| Хранилища секретов | KV, PKI, Transit, SSH, Database, TOTP | KV v1/v2, Cubbyhole (фокус на Kubernetes) |
 | Методы аутентификации | Token, K8s, JWT, AppRole | Те же |
 | HA | Vault Enterprise / OSS Raft | Встроенный Raft (3–5 нод) |
 | Размер бинаря | ~300 МБ | ~20 МБ |
@@ -55,16 +55,6 @@ Tuck — open-source менеджер секретов для Kubernetes. Гла
 | **JWT / OIDC** | Любой OIDC-провайдер — Keycloak, Auth0, Google |
 | **AppRole** | Машина-машина: `role_id` + `secret_id` |
 | **LDAP / AD** | Аутентификация пользователей из OpenLDAP, Active Directory, FreeIPA; членство в группах → политики через Roles |
-
-### Движки динамических секретов
-
-| Движок | Описание |
-|--------|----------|
-| **Database** | On-demand учётные данные PostgreSQL / MySQL; автоотзыв по истечении lease |
-| **PKI** | Внутренний X.509 CA; выпуск короткоживущих TLS-сертификатов по роли |
-| **Transit** | Шифрование как сервис; версионированные ключи (AES-256-GCM, ECDSA, Ed25519, RSA-PSS); sign/verify/HMAC; rewrap после ротации |
-| **SSH** | CA-режим: подпись публичных ключей пользователей и хостов; workflow `TrustedUserCAKeys` |
-| **TOTP** | Хранение TOTP-секретов, валидация и генерация OTP-кодов; URL `otpauth://` для QR-кода |
 
 ### Kubernetes
 
@@ -187,74 +177,6 @@ metadata:
 
 ---
 
-## Примеры динамических секретов
-
-### PKI — выпуск TLS-сертификата
-
-```sh
-# Создать корневой CA
-curl -XPOST https://tuck:8200/v1/pki/generate/root \
-  -H "X-Tuck-Token: $TOKEN" \
-  -d '{"common_name":"Tuck Internal CA","ttl":"87600h"}'
-
-# Создать роль
-curl -XPUT https://tuck:8200/v1/pki/roles/web \
-  -H "X-Tuck-Token: $TOKEN" \
-  -d '{"allowed_domains":["svc.cluster.local"],"allow_subdomains":true,"default_ttl":"72h"}'
-
-# Выпустить сертификат
-curl -XPOST https://tuck:8200/v1/pki/issue/web \
-  -H "X-Tuck-Token: $TOKEN" \
-  -d '{"common_name":"api.svc.cluster.local"}'
-```
-
-### SSH — подпись SSH-ключа
-
-```sh
-# Настройка хоста (один раз): добавить CA-ключ в TrustedUserCAKeys
-curl https://tuck:8200/v1/ssh/ca/public-key | jq -r .public_key \
-  | sudo tee /etc/ssh/trusted_user_ca_keys
-
-# Подписать публичный ключ пользователя
-curl -XPOST https://tuck:8200/v1/ssh/sign/ops \
-  -H "X-Tuck-Token: $TOKEN" \
-  -d '{"public_key":"ssh-ed25519 AAAA...","valid_principals":["ubuntu"],"ttl":"24h"}'
-```
-
-### Transit — шифрование без передачи ключей
-
-```sh
-# Создать AES-ключ
-curl -XPOST https://tuck:8200/v1/transit/keys/payments \
-  -H "X-Tuck-Token: $TOKEN" -d '{"type":"aes256-gcm96"}'
-
-# Зашифровать
-CIPHER=$(curl -s -XPOST https://tuck:8200/v1/transit/encrypt/payments \
-  -H "X-Tuck-Token: $TOKEN" \
-  -d "{\"plaintext\":\"$(echo -n 'card:4242' | base64)\"}" | jq -r .ciphertext)
-
-# Ротировать и перезавернуть
-curl -XPOST https://tuck:8200/v1/transit/keys/payments/rotate -H "X-Tuck-Token: $TOKEN"
-curl -XPOST https://tuck:8200/v1/transit/rewrap/payments \
-  -H "X-Tuck-Token: $TOKEN" -d "{\"ciphertext\":\"$CIPHER\"}"
-```
-
-### TOTP — валидация 2FA
-
-```sh
-# Создать ключ (вернёт секрет + otpauth:// URL для импорта в приложение)
-curl -XPOST https://tuck:8200/v1/totp/keys/myapp \
-  -H "X-Tuck-Token: $TOKEN" \
-  -d '{"issuer":"ACME Corp","account":"user@example.com"}'
-
-# Проверить код от пользователя
-curl -XPOST https://tuck:8200/v1/totp/code/myapp \
-  -H "X-Tuck-Token: $TOKEN" -d '{"code":"123456"}'
-# → {"valid":true}
-```
-
----
-
 ## Архитектура
 
 ```
@@ -266,12 +188,11 @@ curl -XPOST https://tuck:8200/v1/totp/code/myapp \
 │  Core  (оркестрация + логические операции)               │
 │  Token store · Policy store · KV v1/v2                   │
 ├────────────────┬────────────────────────────────────────┤
-│  Auth-движки   │  Движки динамических секретов           │
-│  · K8s SA      │  · Database (PostgreSQL / MySQL)        │
-│  · JWT / OIDC  │  · PKI (X.509 CA)                       │
-│  · AppRole     │  · Transit (шифрование как сервис)      │
-│                │  · SSH (CA-режим, сертификаты)          │
-│                │  · TOTP (time-based OTP)                │
+│  Auth-методы   │  Kubernetes-интеграция                  │
+│  · K8s SA      │  · Оператор TuckSecret (CRD)            │
+│  · JWT / OIDC  │  · Webhook-инжектор (tmpfs)             │
+│  · AppRole     │  · CSI-провайдер                        │
+│  · LDAP / AD   │                                         │
 ├────────────────┴────────────────────────────────────────┤
 │  Barrier  (AES-256-GCM envelope-шифрование)             │
 │  root key → DEK → шифртекст                             │
@@ -320,11 +241,11 @@ go build ./cmd/tuck-agent
 | M11 — Raft HA backend (кластер 3–5 нод) | v0.11 | ✅ |
 | M12 — Webhook Agent Injector (tmpfs, минует etcd) | v0.12 | ✅ |
 | M13 — JWT/OIDC auth, Helm-chart | v0.13 | ✅ |
-| M14 — AppRole auth, Database dynamic secrets | v0.14 | ✅ |
-| M15 — PKI-движок (внутренний X.509 CA) | v0.15 | ✅ |
-| M16 — Transit-движок (шифрование как сервис) | v0.16 | ✅ |
-| M17 — SSH-движок (CA-режим, сертификаты) | v0.17 | ✅ |
-| M18 — TOTP-движок (2FA / OTP-валидация) | v0.18 | ✅ |
+| M14 — AppRole auth, Database dynamic secrets (Database удалён) | v0.14 | ✅ |
+| M15 — PKI-движок (внутренний X.509 CA) | v0.15 | 🗑 удалено |
+| M16 — Transit-движок (шифрование как сервис) | v0.16 | 🗑 удалено |
+| M17 — SSH-движок (CA-режим, сертификаты) | v0.17 | 🗑 удалено |
+| M18 — TOTP-движок (2FA / OTP-валидация) | v0.18 | 🗑 удалено |
 | M19 — AWS KMS + GCP Cloud KMS seal backends | v0.19 | 🗑 удалено |
 | M20 — LDAP/AD auth (Azure Key Vault seal — удалён) | v0.20 | ✅ |
 | M21 — AWS динамические секреты | v0.21 | 🗑 удалено |
@@ -336,9 +257,9 @@ go build ./cmd/tuck-agent
 | M27 — Deny-правила в политиках (CapDeny; запрет имеет приоритет над разрешением) | v0.27 | ✅ |
 | M28 — Возобновляемые токены с MaxTTL (флаг renewable, ограничение max_ttl, lookup-self, renew-self) | v0.28 | ✅ |
 | M29 — Token MaxUses (авто-отзыв после N вызовов API; одноразовые bootstrap-токены) | v0.29 | ✅ |
-| M30 — UI: Auth Methods (AppRole/JWT/LDAP/K8s) + Dynamic Secrets (DB) + Leases | v0.30 | ✅ |
-| M31 — UI: Crypto Engines (PKI / Transit / SSH / TOTP в браузере) | v0.31 | 🔜 |
-| M32 — CLI completeness (db creds, pki/transit/ssh/totp операции) | v0.32 | 🔜 |
+| M30 — UI: Auth Methods (AppRole/JWT/LDAP/K8s) | v0.30 | ✅ |
+| M31 — UI: Crypto Engines (PKI / Transit / SSH / TOTP в браузере) | v0.31 | 🗑 снято |
+| M32 — CLI completeness (db creds, pki/transit/ssh/totp операции) | v0.32 | 🗑 снято |
 | v1.0 GA — Внешний security audit | — | 🔜 |
 
 ---

@@ -79,11 +79,11 @@ flowchart LR
   User[Пользователь или SA] --> Login[Auth method]
   Login --> Token[Token с policies]
   Token --> ACL[Policy rules path plus caps]
-  ACL --> Secret[KV / engines]
+  ACL --> Secret[KV / Cubbyhole]
 ```
 
 - **Deny-first**: если путь не разрешён явно — доступ запрещён.
-- Пути в политиках указываются с mount: `secret/...`, `database/creds/...`, `pki/...`.
+- Пути в политиках указываются с mount: `secret/...`, `cubbyhole/...`.
 
 ## Частые ошибки
 

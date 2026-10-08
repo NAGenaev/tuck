@@ -10,12 +10,11 @@
 
 1. **Один бинарь** — никаких внешних runtime-зависимостей (хранилище встроенное).
 2. **Всё через барьер** — plaintext никогда не касается физического хранилища.
-3. **Узкий `barrierIface`** — каждый движок видит только `Get/Put/Delete/List`, никогда — полный `physical.Backend`.
-4. **Единый паттерн dynamic-движков** — `config CRUD + role CRUD + creds + lease CRUD`.
-5. **Фоновый GC каждые 15 минут** — истёкшие токены / leases / wrapping-токены.
-6. **Deny-правила побеждают** — deny в любой политике блокирует, независимо от allow.
-7. **Ключевой материал зануляется** после использования.
-8. **Audit перед операцией** — fail-closed: нет audit → нет операции.
+3. **Узкий `barrierIface`** — каждое хранилище видит только `Get/Put/Delete/List`, никогда — полный `physical.Backend`.
+4. **Фоновый GC каждые 15 минут** — истёкшие токены / wrapping-токены.
+5. **Deny-правила побеждают** — deny в любой политике блокирует, независимо от allow.
+6. **Ключевой материал зануляется** после использования.
+7. **Audit перед операцией** — fail-closed: нет audit → нет операции.
 
 ---
 
@@ -47,8 +46,6 @@ flowchart TB
     subgraph engines["Движки"]
         KV["KV v1/v2 Cubbyhole Wrapping"]
         AUTHENG["Auth token k8s jwt approle ldap"]
-        DYN["Dynamic db"]
-        CRYPTO["Crypto pki transit ssh totp"]
         IDENT["Identity Namespaces Mounts"]
     end
 
@@ -107,7 +104,6 @@ flowchart LR
         i_kvv2["kvv2 / kvsecret"]
         i_cub["cubbyhole / wrapping"]
         i_auth["auth jwt approle ldap"]
-        i_dyn["dynamic db pki"]
         i_id["identity namespace mount"]
         i_obs["audit metrics telemetry"]
         i_k8s["k8s operator injector csi"]
@@ -137,7 +133,6 @@ flowchart LR
 | `internal/kvv2`, `kvsecret` | KV v2 (версии/CAS/soft-delete) и KV v1 |
 | `internal/cubbyhole`, `wrapping` | Приватное хранилище токена; одноразовые wrapping-токены |
 | `internal/auth/*` | JWT/OIDC, AppRole, LDAP/AD |
-| `internal/dynamic/*` | Движки: database, pki, transit, ssh, totp |
 | `internal/identity` | Entities, aliases, groups, group-aliases |
 | `internal/namespace` | Изоляция по неймспейсам (мультиарендность) |
 | `internal/mount` | Mount table |
@@ -178,10 +173,6 @@ flowchart TB
         AE1[LoginK8s / LoginJWT / LoginAppRole]
         AE2[AppRole / LDAP]
     end
-    subgraph CE["Crypto-движки"]
-        CE1[Transit encrypt/decrypt/sign]
-        CE2[PKI issue/revoke / SSH sign / TOTP]
-    end
     subgraph OP["Операции"]
         OP1[RotateKey / Snapshotter / ClusterBackend]
     end
@@ -191,7 +182,6 @@ flowchart TB
     ROOT --> PL
     ROOT --> KV
     ROOT --> AE
-    ROOT --> CE
     ROOT --> OP
 ```
 
@@ -247,19 +237,13 @@ flowchart LR
 | `auth/<method>/...` | Конфиги/роли auth-движков (k8s, jwt, approle, ldap) |
 | `secret/<path>` | KV v1 значение |
 | `kvv2/<path>/meta`, `kvv2/<path>/v/<n>` | KV v2 метаданные и версии |
-| `dynamic/<engine>/config` | Конфиг dynamic-движка (секреты внутри зашифрованы) |
-| `dynamic/<engine>/roles/<name>` | Роль движка |
-| `dynamic/<engine>/leases/<id>` | Lease выданных кредов |
-| `dynamic/pki/ca`, `.../certs/<serial>` | CA + записи сертификатов (без приватных ключей leaf) |
-| `dynamic/transit/keys/<name>` | Все версии Transit-ключа |
-| `dynamic/ssh/ca`, `dynamic/totp/keys/<name>` | SSH CA; TOTP-секреты |
 | `sys/wrapping/<id>` | Запись wrapping-токена |
 | `cubbyhole/<token_id>/<path>` | Приватное хранилище токена |
 | `audit/last_hash` | Последний хеш цепочки аудита |
 
 ---
 
-## 2.8. Карта движков секретов
+## 2.8. Карта хранилищ секретов
 
 ```mermaid
 flowchart TB
@@ -269,24 +253,10 @@ flowchart TB
         CUB[Cubbyhole]
         WRAP[Response Wrapping]
     end
-    subgraph dyn["Динамические секреты"]
-        DB[Database PG/MySQL]
-    end
-    subgraph cr["Криптография как сервис"]
-        PKI["PKI X.509 CA"]
-        TR["Transit encrypt/sign"]
-        SSH["SSH CA certs"]
-        TOTP["TOTP OTP"]
-    end
     BAR[(Barrier)]
-    EXT["База данных"]
     static --> BAR
-    dyn --> BAR
-    cr --> BAR
-    dyn -.-> EXT
 ```
 
-**Паттерн dynamic-движков (11 эндпоинтов):** `config` (PUT/GET/DELETE/LIST) + `roles` (PUT/GET/DELETE/LIST) + `creds` (POST) + `lease` (GET/DELETE/LIST). Это делает API предсказуемым и упрощает обучение.
 
 ---
 

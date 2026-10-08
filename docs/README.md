@@ -61,7 +61,7 @@
 | Файлов тестов | 69 |
 | Соотношение тест/код | ~0.51 |
 | HTTP-эндпоинтов | 194+ |
-| Движков секретов | 7 (KV v1/v2, Cubbyhole, DB, Transit; PKI, SSH, TOTP — experimental) |
+| Движков секретов | 2 (KV v1/v2) + Cubbyhole |
 | Методов аутентификации | 5 (Token, K8s, JWT/OIDC, AppRole, LDAP/AD) |
 | Типов seal (auto-unseal) | 3 (dev, Shamir, Transit) |
 | Лицензия | Apache-2.0 |

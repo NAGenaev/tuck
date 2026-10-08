@@ -6,7 +6,6 @@ import { CSSProperties, FormEvent, useEffect, useRef, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 
 import { getAuditStats } from '@shared/api/endpoints/audit'
-import { listLeases } from '@shared/api/endpoints/leases'
 import { rotate, seal, snapshot, unseal } from '@shared/api/endpoints/sys'
 import { listTokens } from '@shared/api/endpoints/token'
 import { getSecretsUsage } from '@shared/api/endpoints/usage'
@@ -66,13 +65,6 @@ export function StatusPage() {
     const off = view === 'loading' || view === 'error'
 
     // --- activity (needs an unsealed vault) ---
-    const leasesQuery = useQuery({
-        queryKey: ['leases', 'list'],
-        queryFn: listLeases,
-        enabled: unsealedKnown,
-        refetchInterval: ACTIVITY_POLL,
-        retry: false
-    })
     const tokensQuery = useQuery({
         queryKey: ['tokens', 'list'],
         queryFn: listTokens,
@@ -109,7 +101,9 @@ export function StatusPage() {
         return null
     }
 
-    const activeLeases = leasesQuery.data ? leasesQuery.data.filter((l) => !l.revoked).length : undefined
+
+    const tileCount = 1 + (secretsForbidden ? 0 : 1) + (auditForbidden ? 0 : 1)
+    const tileW = tileCount === 3 ? styles.w2 : styles.w3
 
     // --- unseal form ---
     const [shard, setShard] = useState('')
@@ -128,7 +122,6 @@ export function StatusPage() {
 
     const refreshAfterStateChange = async () => {
         await queryClient.invalidateQueries({ queryKey: ['sys'] })
-        await queryClient.invalidateQueries({ queryKey: ['leases', 'list'] })
         await queryClient.invalidateQueries({ queryKey: ['tokens', 'list'] })
     }
 
@@ -531,16 +524,7 @@ export function StatusPage() {
                     </div>
                     <div className={styles.bento}>
                         <ActivityTile
-                            className={secretsForbidden ? styles.w3 : styles.w2}
-                            dead={deadFor(leasesQuery.isError)}
-                            label={t('activity.leases')}
-                            loading={view === 'loading' || leasesQuery.isLoading}
-                            stamp={leasesQuery.dataUpdatedAt}
-                            total={leasesQuery.data?.length}
-                            value={activeLeases}
-                        />
-                        <ActivityTile
-                            className={secretsForbidden ? styles.w3 : styles.w2}
+                            className={tileW}
                             dead={deadFor(tokensQuery.isError)}
                             label={t('activity.tokens')}
                             loading={view === 'loading' || tokensQuery.isLoading}
@@ -549,7 +533,7 @@ export function StatusPage() {
                         />
                         {!secretsForbidden && (
                             <ActivityTile
-                                className={styles.w2}
+                                className={tileW}
                                 dead={deadFor(secretsQuery.isError)}
                                 label={t('activity.secrets')}
                                 loading={view === 'loading' || secretsQuery.isLoading}
@@ -559,7 +543,7 @@ export function StatusPage() {
                         )}
                         {!auditForbidden && (
                             <ActivityTile
-                                className={styles.w2}
+                                className={tileW}
                                 dead={deadFor(auditRateQuery.isError)}
                                 label={t('activity.auditRate')}
                                 loading={view === 'loading' || auditRateQuery.isLoading}

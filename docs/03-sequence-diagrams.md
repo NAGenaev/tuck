@@ -110,78 +110,7 @@ sequenceDiagram
 
 ---
 
-## 3.5. Динамические креды БД (с lease и авто-отзывом)
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor App as Приложение
-    participant Tuck as tuck server
-    participant DBEng as database engine
-    participant DB as PostgreSQL MySQL
-    participant GC as GC reaper
-
-    App->>Tuck: POST /v1/database/creds/readonly
-    Tuck->>DBEng: GenerateCreds role readonly
-    DBEng->>DB: creation_statements CREATE USER
-    DB-->>DBEng: ok
-    DBEng->>Tuck: записать Lease TTL username
-    Tuck-->>App: username password lease_id ttl
-    Note over App,DB: App использует временные креды
-    GC->>DBEng: RevokeExpired по таймеру
-    DBEng->>DB: revocation_statements DROP USER
-    Note over Tuck: или DELETE /v1/database/lease/id
-```
-
----
-
-## 3.6. Выпуск TLS-сертификата (PKI)
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Op as Оператор CI
-    participant Tuck as tuck server
-    participant PKI as pki engine
-    participant Bar as barrier
-
-    Op->>Tuck: POST /v1/pki/generate/root
-    Tuck->>PKI: создать CA ECDSA P-256
-    PKI->>Bar: сохранить CA cert и приватный ключ
-    Op->>Tuck: PUT /v1/pki/roles/web
-    Op->>Tuck: POST /v1/pki/issue/web
-    PKI->>PKI: валидировать CN SAN по роли
-    PKI->>PKI: сгенерировать ключ и подписать cert
-    PKI->>Bar: сохранить CertRecord
-    Tuck-->>Op: certificate private_key ca_chain serial
-    Note over Op,Tuck: GET /v1/pki/ca/pem без токена
-```
-
----
-
-## 3.7. Transit — шифрование как сервис + ротация и rewrap
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor App as Приложение
-    participant Tuck as tuck server
-    participant TR as transit engine
-
-    App->>Tuck: POST /v1/transit/keys/payments
-    App->>Tuck: POST /v1/transit/encrypt/payments
-    TR-->>App: ciphertext vault:v1
-    Note over App: ключ не покидает Tuck
-    App->>Tuck: POST /v1/transit/keys/payments/rotate
-    TR->>TR: добавить версию ключа v2
-    App->>Tuck: POST /v1/transit/rewrap/payments
-    TR->>TR: decrypt v1 encrypt v2
-    TR-->>App: ciphertext vault:v2
-```
-
----
-
-## 3.8. Response Wrapping — безопасная передача секрета
+## 3.5. Response Wrapping — безопасная передача секрета
 
 ```mermaid
 sequenceDiagram
@@ -203,7 +132,7 @@ sequenceDiagram
 
 ---
 
-## 3.9. Синхронизация TuckSecret оператором в K8s Secret
+## 3.6. Синхронизация TuckSecret оператором в K8s Secret
 
 ```mermaid
 sequenceDiagram
@@ -231,7 +160,7 @@ sequenceDiagram
 
 ---
 
-## 3.10. Webhook-инъекция секретов в Pod (минуя etcd)
+## 3.7. Webhook-инъекция секретов в Pod (минуя etcd)
 
 ```mermaid
 sequenceDiagram
@@ -256,7 +185,7 @@ sequenceDiagram
 
 ---
 
-## 3.11. HA-запись через Raft (forwarding на лидера)
+## 3.8. HA-запись через Raft (forwarding на лидера)
 
 ```mermaid
 sequenceDiagram
@@ -279,7 +208,7 @@ sequenceDiagram
 
 ---
 
-## 3.12. Ротация root-ключа без простоя
+## 3.9. Ротация root-ключа без простоя
 
 ```mermaid
 sequenceDiagram

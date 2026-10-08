@@ -130,6 +130,8 @@ File: `internal/audit/audit.go`
 
 ### 4.7 Transit engine (encryption-as-a-service)
 
+> Removed: the Transit, PKI, SSH, TOTP and Database engines (and leases) were deleted when the product scope was narrowed to the Kubernetes scenario. This section and the gosec rows referencing `dynamic/*` are kept as history of the v1.0 audit.
+
 File: `internal/dynamic/transit/transit.go`
 
 - Key material stored encrypted through barrier ✅

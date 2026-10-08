@@ -22,16 +22,10 @@ import (
 	authlda "github.com/NAGenaev/tuck/internal/auth/ldap"
 	"github.com/NAGenaev/tuck/internal/barrier"
 	"github.com/NAGenaev/tuck/internal/cubbyhole"
-	"github.com/NAGenaev/tuck/internal/dynamic/database"
-	"github.com/NAGenaev/tuck/internal/dynamic/pki"
-	dynSSH "github.com/NAGenaev/tuck/internal/dynamic/ssh"
-	dynTOTP "github.com/NAGenaev/tuck/internal/dynamic/totp"
-	"github.com/NAGenaev/tuck/internal/dynamic/transit"
 	"github.com/NAGenaev/tuck/internal/identity"
 	k8sauth "github.com/NAGenaev/tuck/internal/k8s"
 	"github.com/NAGenaev/tuck/internal/kvsecret"
 	"github.com/NAGenaev/tuck/internal/kvv2"
-	"github.com/NAGenaev/tuck/internal/lease"
 	"github.com/NAGenaev/tuck/internal/mount"
 	"github.com/NAGenaev/tuck/internal/namespace"
 	"github.com/NAGenaev/tuck/internal/physical"
@@ -108,15 +102,9 @@ type Core struct {
 	ldapStore      *authlda.Store
 	cubbyhole      *cubbyhole.Store
 	wrapping       *wrapping.Store
-	dbManager      *database.Manager
-	pkiManager     *pki.Manager
-	transitManager *transit.Manager
-	sshManager     *dynSSH.Manager
-	totpManager    *dynTOTP.Manager
 	identity       *identity.Store
 
 	sysconfigStore   *sysconfig.Store
-	leaseManager     *lease.Manager
 	mountStore       *mount.Store
 	mountConfigStore *mount.ConfigStore
 
@@ -187,17 +175,11 @@ func NewWithK8s(backend physical.Backend, s seal.Seal, reviewer k8sauth.Reviewer
 		ldapStore:      authlda.NewStore(b),
 		cubbyhole:      cubbyhole.NewStore(b),
 		wrapping:       wrapping.NewStore(b),
-		dbManager:      database.NewManager(b),
-		pkiManager:     pki.NewManager(b),
-		transitManager: transit.NewManager(b),
-		sshManager:     dynSSH.NewManager(b),
-		totpManager:    dynTOTP.NewManager(b),
 		identity:       identity.NewStore(b),
 		sysconfigStore: sysconfig.New(b),
 		k8sReviewer:    reviewer,
 		k8sRoles:       k8sauth.NewRoleStore(b),
 	}
-	c.leaseManager = lease.NewWithEngines(c.dbManager)
 	c.mountStore = mount.New(b)
 	c.mountConfigStore = mount.NewConfigStore(b)
 	c.kv2.WithDefaults(c.kv2MountDefaults)
@@ -1178,132 +1160,6 @@ func (c *Core) LoginJWT(ctx context.Context, tokenStr string) (*token.Token, err
 	return tok, nil
 }
 
-// --- TOTP secrets engine ---
-
-func (c *Core) TOTPCreateKey(ctx context.Context, name string, req dynTOTP.CreateKeyRequest) (*dynTOTP.CreateResult, error) {
-	return c.totpManager.CreateKey(ctx, name, req)
-}
-func (c *Core) TOTPGetKey(ctx context.Context, name string) (*dynTOTP.KeyInfo, error) {
-	return c.totpManager.GetKey(ctx, name)
-}
-func (c *Core) TOTPDeleteKey(ctx context.Context, name string) error {
-	return c.totpManager.DeleteKey(ctx, name)
-}
-func (c *Core) TOTPListKeys(ctx context.Context) ([]string, error) {
-	return c.totpManager.ListKeys(ctx)
-}
-func (c *Core) TOTPGenerateCode(ctx context.Context, name string) (*dynTOTP.GenerateResult, error) {
-	return c.totpManager.GenerateCode(ctx, name)
-}
-func (c *Core) TOTPValidateCode(ctx context.Context, name, code string) (bool, error) {
-	return c.totpManager.ValidateCode(ctx, name, code)
-}
-
-// --- SSH secrets engine ---
-
-func (c *Core) SSHGenerateCA(ctx context.Context, keyType string) (string, error) {
-	return c.sshManager.GenerateCA(ctx, keyType)
-}
-func (c *Core) SSHImportCA(ctx context.Context, privateKeyPEM string) error {
-	return c.sshManager.ImportCA(ctx, privateKeyPEM)
-}
-func (c *Core) SSHGetCAPublicKey(ctx context.Context) (string, error) {
-	return c.sshManager.GetCAPublicKey(ctx)
-}
-func (c *Core) SSHPutRole(ctx context.Context, r *dynSSH.Role) error {
-	return c.sshManager.PutRole(ctx, r)
-}
-func (c *Core) SSHGetRole(ctx context.Context, name string) (*dynSSH.Role, error) {
-	return c.sshManager.GetRole(ctx, name)
-}
-func (c *Core) SSHDeleteRole(ctx context.Context, name string) error {
-	return c.sshManager.DeleteRole(ctx, name)
-}
-func (c *Core) SSHListRoles(ctx context.Context) ([]string, error) {
-	return c.sshManager.ListRoles(ctx)
-}
-func (c *Core) SSHSignPublicKey(ctx context.Context, roleName, publicKeyStr string, validPrincipals []string, ttl time.Duration) (*dynSSH.SignedCert, error) {
-	return c.sshManager.SignPublicKey(ctx, roleName, publicKeyStr, validPrincipals, ttl)
-}
-
-// --- Transit secrets engine ---
-
-func (c *Core) TransitCreateKey(ctx context.Context, name, keyType string) error {
-	return c.transitManager.CreateKey(ctx, name, keyType)
-}
-func (c *Core) TransitGetKey(ctx context.Context, name string) (*transit.Key, error) {
-	return c.transitManager.GetKey(ctx, name)
-}
-func (c *Core) TransitDeleteKey(ctx context.Context, name string) error {
-	return c.transitManager.DeleteKey(ctx, name)
-}
-func (c *Core) TransitListKeys(ctx context.Context) ([]string, error) {
-	return c.transitManager.ListKeys(ctx)
-}
-func (c *Core) TransitRotate(ctx context.Context, name string) error {
-	return c.transitManager.Rotate(ctx, name)
-}
-func (c *Core) TransitUpdateKey(ctx context.Context, name string, minVersion int, deletable bool) error {
-	return c.transitManager.UpdateKey(ctx, name, minVersion, deletable)
-}
-func (c *Core) TransitEncrypt(ctx context.Context, name string, plaintext []byte) (string, error) {
-	return c.transitManager.Encrypt(ctx, name, plaintext)
-}
-func (c *Core) TransitDecrypt(ctx context.Context, name string, ciphertext string) ([]byte, error) {
-	return c.transitManager.Decrypt(ctx, name, ciphertext)
-}
-func (c *Core) TransitRewrap(ctx context.Context, name string, ciphertext string) (string, error) {
-	return c.transitManager.Rewrap(ctx, name, ciphertext)
-}
-func (c *Core) TransitSign(ctx context.Context, name string, input []byte, hashAlg string) (string, error) {
-	return c.transitManager.Sign(ctx, name, input, hashAlg)
-}
-func (c *Core) TransitVerify(ctx context.Context, name string, input []byte, sig string, hashAlg string) (bool, error) {
-	return c.transitManager.Verify(ctx, name, input, sig, hashAlg)
-}
-func (c *Core) TransitHMAC(ctx context.Context, name string, input []byte, hashAlg string) (string, error) {
-	return c.transitManager.HMAC(ctx, name, input, hashAlg)
-}
-
-// --- PKI secrets engine ---
-
-func (c *Core) GeneratePKICA(ctx context.Context, cfg *pki.CAConfig) (string, error) {
-	return c.pkiManager.GenerateCA(ctx, cfg)
-}
-func (c *Core) ImportPKICA(ctx context.Context, certPEM, keyPEM string) error {
-	return c.pkiManager.ImportCA(ctx, certPEM, keyPEM)
-}
-func (c *Core) GetPKICACert(ctx context.Context) (string, error) {
-	return c.pkiManager.GetCACert(ctx)
-}
-func (c *Core) GetPKICRL(ctx context.Context) (string, error) {
-	return c.pkiManager.GetCRL(ctx)
-}
-func (c *Core) PutPKIRole(ctx context.Context, r *pki.Role) error {
-	return c.pkiManager.PutRole(ctx, r)
-}
-func (c *Core) GetPKIRole(ctx context.Context, name string) (*pki.Role, error) {
-	return c.pkiManager.GetRole(ctx, name)
-}
-func (c *Core) DeletePKIRole(ctx context.Context, name string) error {
-	return c.pkiManager.DeleteRole(ctx, name)
-}
-func (c *Core) ListPKIRoles(ctx context.Context) ([]string, error) {
-	return c.pkiManager.ListRoles(ctx)
-}
-func (c *Core) IssuePKICert(ctx context.Context, roleName, commonName string, altNames []string, ttl time.Duration) (*pki.IssuedCert, error) {
-	return c.pkiManager.IssueCert(ctx, roleName, commonName, altNames, ttl)
-}
-func (c *Core) RevokePKICert(ctx context.Context, serial string) error {
-	return c.pkiManager.RevokeCert(ctx, serial)
-}
-func (c *Core) GetPKICert(ctx context.Context, serial string) (*pki.CertRecord, error) {
-	return c.pkiManager.GetCert(ctx, serial)
-}
-func (c *Core) ListPKICerts(ctx context.Context) ([]string, error) {
-	return c.pkiManager.ListCerts(ctx)
-}
-
 // --- AppRole auth ---
 
 func (c *Core) PutAppRole(ctx context.Context, r *approle.Role) error {
@@ -1346,45 +1202,6 @@ func (c *Core) LoginAppRole(ctx context.Context, roleID, secretID, remoteIP stri
 	return tok, nil
 }
 
-// --- Dynamic secrets: Database engine ---
-
-func (c *Core) PutDBConfig(ctx context.Context, cfg *database.Config) error {
-	return c.dbManager.PutConfig(ctx, cfg)
-}
-func (c *Core) GetDBConfig(ctx context.Context, name string) (*database.Config, error) {
-	return c.dbManager.GetConfig(ctx, name)
-}
-func (c *Core) DeleteDBConfig(ctx context.Context, name string) error {
-	return c.dbManager.DeleteConfig(ctx, name)
-}
-func (c *Core) ListDBConfigs(ctx context.Context) ([]string, error) {
-	return c.dbManager.ListConfigs(ctx)
-}
-func (c *Core) PutDBRole(ctx context.Context, r *database.Role) error {
-	return c.dbManager.PutRole(ctx, r)
-}
-func (c *Core) GetDBRole(ctx context.Context, name string) (*database.Role, error) {
-	return c.dbManager.GetRole(ctx, name)
-}
-func (c *Core) DeleteDBRole(ctx context.Context, name string) error {
-	return c.dbManager.DeleteRole(ctx, name)
-}
-func (c *Core) ListDBRoles(ctx context.Context) ([]string, error) {
-	return c.dbManager.ListRoles(ctx)
-}
-func (c *Core) GenerateDBCreds(ctx context.Context, roleName string) (*database.Credentials, error) {
-	return c.dbManager.GenerateCreds(ctx, roleName)
-}
-func (c *Core) RevokeDBLease(ctx context.Context, leaseID string) error {
-	return c.dbManager.RevokeLease(ctx, leaseID)
-}
-func (c *Core) GetDBLease(ctx context.Context, leaseID string) (*database.Lease, error) {
-	return c.dbManager.GetLease(ctx, leaseID)
-}
-func (c *Core) ListDBLeases(ctx context.Context) ([]string, error) {
-	return c.dbManager.ListLeases(ctx)
-}
-
 func (c *Core) runGC(ctx context.Context) {
 	expired, err := c.tokens.ListExpired(ctx)
 	if err != nil {
@@ -1394,18 +1211,7 @@ func (c *Core) runGC(ctx context.Context) {
 		_ = c.tokens.Delete(ctx, id)
 		_ = c.cubbyhole.PurgeToken(ctx, id)
 	}
-	_ = c.dbManager.RevokeExpired(ctx)
 	_ = c.wrapping.RevokeExpired(ctx)
-}
-
-// --- Unified lease manager ---
-
-// LeaseManager returns the unified cross-backend lease manager.
-func (c *Core) LeaseManager() *lease.Manager { return c.leaseManager }
-
-// RenewLease extends the lease identified by unifiedID by increment.
-func (c *Core) RenewLease(ctx context.Context, unifiedID string, increment time.Duration) (time.Time, error) {
-	return c.leaseManager.Renew(ctx, unifiedID, increment)
 }
 
 // --- LDAP auth ---

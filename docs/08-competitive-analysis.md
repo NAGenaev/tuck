@@ -66,9 +66,7 @@ flowchart TB
 | Auto-unseal по умолчанию | **да** | нет (ручной/KMS) | нет | n/a |
 | Seal-типы | dev/Shamir/Transit | Shamir/Transit/KMS | Shamir/Transit/KMS | n/a |
 | KV v1/v2 | ✅/✅ | ✅/✅ | ✅/✅ | ✅ (свой) |
-| Dynamic DB | ✅ | ✅ | ✅ | ограниченно |
-| Dynamic-секреты БД | ✅ | ✅ | ✅ | частично |
-| PKI / Transit / SSH / TOTP | ✅/✅/✅/✅ | ✅/✅/✅/✅ | ✅/✅/✅/✅ | ⚠️ ограниченно |
+| Dynamic DB / PKI / Transit / SSH / TOTP | **нет (вне объёма, K8s-фокус)** | ✅ | ✅ | ограниченно |
 | Auth: K8s/JWT/AppRole/LDAP/OIDC | ✅ | ✅ | ✅ | ✅(свои) |
 | Identity (entity/group) | ✅ | ✅ | ✅ | ⚠️ |
 | Namespaces / мультиарендность | **✅ (OSS)** | Enterprise | ⚠️ | ✅ (проекты) |
@@ -112,7 +110,7 @@ flowchart TB
 
 ## 8.5. Чем Tuck ЛУЧШЕ конкурентов
 
-1. **Операционная простота при полноте функций.** Один бинарь ~20 МБ, ноль внешних зависимостей, auto-unseal по умолчанию — и при этом KV, Transit, Database, 5 методов auth, Identity, Namespaces. Vault/OpenBao требуют Consul/Raft и ручного unseal; Infisical — PostgreSQL+Redis.
+1. **Операционная простота при полноте функций.** Один бинарь ~20 МБ, ноль внешних зависимостей, auto-unseal по умолчанию — и при этом KV v1/v2, 5 методов auth, Identity, Namespaces. Vault/OpenBao требуют Consul/Raft и ручного unseal; Infisical — PostgreSQL+Redis.
 2. **Kubernetes-native из коробки.** Встроенные оператор (CRD) и webhook-инжектор — не нужен отдельный ESO. Инжектор пишет секреты на tmpfs, **минуя etcd** (выше безопасность, чем у нативных K8s Secret).
 3. **Бизнес-дружелюбная лицензия Apache-2.0.** В отличие от BSL у Vault — нет ограничений на коммерческое использование/конкуренцию.
 4. **Namespaces/мультиарендность в open-source.** У Vault это платный Enterprise.

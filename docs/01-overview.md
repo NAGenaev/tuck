@@ -8,11 +8,9 @@
 
 **Tuck** — менеджер секретов (secrets manager) и платформа управления чувствительными данными для современной инфраструктуры, в первую очередь Kubernetes. Он отвечает за:
 
-- **хранение секретов** (пароли, API-ключи, токены, сертификаты) в зашифрованном виде;
-- **выдачу динамических, короткоживущих учётных данных** для облаков и баз данных;
+- **хранение секретов** (пароли, API-ключи, токены) в зашифрованном виде;
 - **аутентификацию** приложений и людей;
 - **авторизацию** через политики (ACL);
-- **криптографию как сервис** (шифрование, подпись, выпуск сертификатов);
 - **аудит** всех обращений к секретам.
 
 Девиз проекта: *«The simplest Kubernetes-native secrets manager. Tuck a secret away — no ceremony.»* («Спрячь секрет — без лишних ритуалов».)
@@ -50,8 +48,8 @@
 | **Platform Engineer** | Централизованные секреты для кластера/команды | k8s-native, единый бинарь, оператор |
 | **DevOps / SRE** | Замена Vault без операционного оверхеда | auto-unseal, HA из коробки, простой Day-2 |
 | **Startup CTO / Tech Lead** | Быстрый старт без выделенной инфраструктуры | время до первого секрета < 10 мин |
-| **Security Engineer** | Аудит, ACL, динамические креды, ротация | hash-chain audit, deny-rules, dynamic secrets |
-| **Backend-разработчик** | Получить секрет/сертификат из приложения | SDK, CLI, агент-инжектор, понятный API |
+| **Security Engineer** | Аудит, ACL, ротация | hash-chain audit, deny-rules, namespace-изоляция |
+| **Backend-разработчик** | Получить секрет из приложения | SDK, CLI, агент-инжектор, понятный API |
 
 ---
 
@@ -82,7 +80,7 @@ flowchart TB
         S4a["Envelope encryption AES-256-GCM"]
         S4b["Tamper-evident audit"]
         S4c["Deny-rules ACL"]
-        S4d["Dynamic short-lived creds"]
+        S4d["Namespace-изоляция путей"]
     end
     subgraph S5["Открытость"]
         S5a["Apache-2.0"]
@@ -109,16 +107,11 @@ flowchart TB
 ### Seal / Unseal (3 типа)
 `dev` (локальный auto-unseal), `shamir` (кворум n-of-k), `transit` (Vault-совместимый API).
 
-### Движки секретов
+### Хранилища секретов
 - **KV v1** — простое key-value хранилище.
 - **KV v2** — версии, CAS (check-and-set), soft-delete/undelete/destroy, `max_versions`.
 - **Cubbyhole** — приватное хранилище токена, авто-очистка при отзыве.
 - **Response Wrapping** — одноразовые токены `tuck_wrap_` для безопасной передачи секретов.
-- **Database** — динамические креды PostgreSQL/MySQL, авто-отзыв по lease.
-- **PKI** — внутренний X.509 CA, выпуск сертификатов по ролям, CRL.
-- **Transit** — шифрование-как-сервис (AES-GCM, ECDSA, Ed25519, RSA), sign/verify/HMAC, rewrap.
-- **SSH** — CA-режим, подпись пользовательских/хостовых сертификатов.
-- **TOTP** — RFC 6238, генерация и валидация OTP-кодов, `otpauth://` URL.
 
 ### Методы аутентификации
 `Token`, `Kubernetes SA` (TokenReview), `JWT/OIDC` (JWKS), `AppRole` (role_id+secret_id), `LDAP/AD`.
@@ -126,7 +119,7 @@ flowchart TB
 ### Identity и мультиарендность
 - **Entity & Identity** — сущности, алиасы, группы, group-алиасы (объединение нескольких auth-личностей в одну identity).
 - **Namespaces** — изоляция политик/секретов по неймспейсам (мультиарендность).
-- **Mount table** — управление точками монтирования движков.
+- **Mount table** — управление точками монтирования.
 
 ### Авторизация
 ACL-политики с glob-сопоставлением путей и **deny-правилами** (deny имеет приоритет над allow). Capabilities: `read`, `write`, `delete`, `list`, `deny`.
@@ -169,11 +162,10 @@ Prometheus-метрики (`/metrics`), OpenTelemetry-трейсинг (OTLP), t
 | **Root key** | Корневой 32-байтовый ключ, существует только в памяти, предоставляется механизмом seal |
 | **DEK** | Data Encryption Key — ключ шифрования данных, хранится зашифрованным root key (envelope encryption) |
 | **Shamir's Secret Sharing** | Схема разделения секрета на N долей, восстановление требует K долей |
-| **Lease** | Аренда: запись о выданных динамических кредах с TTL и авто-отзывом |
 | **Accessor** | Непрозрачный псевдоним токена (`tuck_acc_`) для lookup/revoke без знания самого токена |
 | **Policy / ACL** | Политика доступа: набор правил «путь → capabilities» |
 | **Capability** | Право: read / write / delete / list / deny |
-| **Engine (движок)** | Подсистема, реализующая определённый класс секретов (KV, PKI, Transit, ...) |
+| **Engine (движок)** | Подсистема хранения секретов (KV v1/v2, Cubbyhole) |
 | **Mount** | Точка монтирования движка по пути |
 | **Entity / Identity** | Сущность — единая identity, объединяющая несколько auth-алиасов |
 | **Namespace** | Логически изолированное пространство секретов/политик (мультиарендность) |

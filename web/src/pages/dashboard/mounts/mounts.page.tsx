@@ -25,7 +25,6 @@ import {
     catOf,
     type Filter,
     fmtTtl,
-    isExperimental,
     isForbidden,
     matchesFilter,
     nsToSec,
@@ -87,9 +86,6 @@ function Detail({ m, open }: { m: MountEntry; open: boolean }) {
         ['deletedVersions', stats?.deleted_versions],
         ['destroyedVersions', stats?.destroyed_versions],
         ['roles', stats?.roles],
-        ['connections', stats?.connections],
-        ['issuedCerts', stats?.issued_certs],
-        ['leases', stats?.leases],
         ['tokens', stats?.tokens]
     ]
 
@@ -333,11 +329,6 @@ export function MountsPage() {
                                 <u>/</u>
                             </code>
                             <Pill tone={CAT_PILL[cat]}>{m.type}</Pill>
-                            {isExperimental(m.type) && (
-                                <Pill size="sm" title={t('unit.experimentalHint')} tone="r">
-                                    {t('unit.experimental')}
-                                </Pill>
-                            )}
                             {m.builtin && (
                                 <Pill tone="v">
                                     <Icon name="lock" size={11} />
@@ -667,7 +658,6 @@ function Impact({ loading, stats }: { loading: boolean; stats?: MountStats }) {
     if (!stats) return null
     const cells: Array<[string, number | undefined]> = [
         ['secrets', stats.secrets],
-        ['leases', stats.leases],
         ['tokens', stats.tokens]
     ]
     const shown = cells.filter(([, v]) => v !== undefined)

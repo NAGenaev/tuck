@@ -184,7 +184,6 @@ http://127.0.0.1:8201/ui/
 | Tokens | создание, просмотр, отзыв токенов |
 | Policies | ACL-политики |
 | Auth | AppRole, JWT, LDAP, K8s auth |
-| Leases | аренды динамических секретов |
 | Namespaces | мультитенантность |
 
 ---

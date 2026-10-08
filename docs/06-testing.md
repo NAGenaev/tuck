@@ -15,7 +15,7 @@
 | Соотношение тест/код | ~0.51 (14.5k / 28.5k) |
 | Race detector | `go test -race ./...` — чисто (Linux/macOS; Windows без CGO) |
 | e2e на minikube | 37 / 37 PASS |
-| API integration tests | 119 тестов в `internal/api` (Transit, TOTP, SSH, JWT, LDAP, K8s, Chaos, Sys, AppRole, KVv2, Wrapping, PKI, Config) |
+| API integration tests | 119 тестов в `internal/api` (JWT, LDAP, K8s, Chaos, Sys, AppRole, KVv2, Wrapping, Config) |
 | Бенчмарки | Go benchmarks (in-process) для KV/Token/SealStatus |
 | Нагрузочные | k6-сценарии smoke / load / stress / soak |
 
@@ -35,10 +35,8 @@ flowchart TB
         t7[k8s client_test]
     end
     subgraph engines["Движки"]
-        t8[dynamic database]
-        t9[dynamic pki transit ssh totp]
         t10[kvsecret kvv2 cubbyhole wrapping]
-        t11[lease mount]
+        t11[mount]
     end
     subgraph platform["Платформа"]
         t12[physical raft backend_test]
@@ -54,9 +52,6 @@ flowchart TB
 ```
 
 Покрытие **по площади хорошее**: тесты есть практически в каждом пакете, включая крипто-ядро, ACL, все движки, Raft, оператор, инжектор, CSI и SDK. Особо ценны:
-- **RFC 6238** известные тест-векторы в `totp_test.go`.
-- **Проверка цепочки x509** в `pki_test.go`.
-- **Проверка SSH-сертификатов** через `gossh.CertChecker` в `ssh_test.go`.
 - **Raft-консенсус** на 3-нодовом in-process кластере в `physical/raft/backend_test.go`.
 
 ---
@@ -99,24 +94,24 @@ k6-пороги для GA: KV GET/PUT p99 < 50 мс, token create p99 < 100 мс
 
 | # | Пробел | Риск | Приоритет |
 |---|--------|------|-----------|
-| 1 | ~~**Нет fuzz-тестов** парсеров~~ — **Закрыто**: `FuzzDecryptBytes`, `FuzzBarrierUnseal`, `FuzzParseVaultToken`, `FuzzDecryptAES`, `FuzzVerifyECDSA/Ed25519`, `FuzzMetaJSON`, `FuzzWrite`, `FuzzReadAfterWrite` + `FuzzEncryptDecryptRoundtrip` (barrier, transit, kvv2) | — | ✅ |
+| 1 | ~~**Нет fuzz-тестов** парсеров~~ — **Закрыто**: `FuzzDecryptBytes`, `FuzzBarrierUnseal`, `FuzzMetaJSON`, `FuzzWrite`, `FuzzReadAfterWrite` + `FuzzEncryptDecryptRoundtrip` (barrier, transit, kvv2) | — | ✅ |
 | 2 | **Soak 24h не в CI** (есть сценарий, но не автоматизирован) | Утечки памяти/goroutine под нагрузкой | P1 |
 | 3 | **Chaos-тесты Raft** (убийство лидера/ноды, network partition) ограничены | Потеря данных/split-brain | P1 |
-| 4 | **e2e против реальных облаков** и реальных БД | Регрессии dynamic-движков и seal | P1 |
+| 4 | **e2e против реального внешнего Transit (seal)** | Регрессии seal | P1 |
 | 5 | **Coverage-гейт** не зафиксирован на security-пакетах | Дрейф покрытия | P1 |
 | 6 | **Тесты ротации/восстановления** (rotate → restore → consistency) не как отдельный e2e-набор | Ошибки DR | P1 |
 | 7 | ~~**Negative/abuse-тесты** rate-limit~~ — **Частично закрыто**: `TestIPRateLimitBlocks`, `TestTokenRateLimitBlocks`, `TestRateLimitDisabled`, `TestRateLimitTokenIsolation` в `internal/api/ratelimit_test.go`; brute-force lockout под нагрузкой остаётся | Обход защиты | P2 |
 | 8 | **Тесты совместимости формата хранилища** между версиями (миграции схемы) | Поломка апгрейда | P2 |
-| 9 | **Тесты на бинарную безопасность** значений (не-UTF8) во всех движках | Порча данных | P2 |
-| 10 | **Property-based** для крипто-инвариантов (encrypt→decrypt идемпотентность, rewrap) | Логические дефекты | P2 |
+| 9 | **Тесты на бинарную безопасность** значений (не-UTF8) во всех хранилищах | Порча данных | P2 |
+| 10 | **Property-based** для крипто-инвариантов (encrypt→decrypt идемпотентность) | Логические дефекты | P2 |
 
 ---
 
 ## 6.5. Рекомендуемый план тестирования
 
 ### Фаза A — безопасность тестов (P0)
-- [x] Fuzz-тесты парсеров: `FuzzDecryptBytes`, `FuzzBarrierUnseal`, `FuzzParseVaultToken`, `FuzzDecryptAES`, `FuzzVerifyECDSA/Ed25519`, `FuzzMetaJSON`, `FuzzWrite`, `FuzzReadAfterWrite`.
-- [x] Property-тесты крипто: `FuzzEncryptDecryptRoundtrip` (barrier + transit), `FuzzRewrap` — `encrypt(decrypt(x)) == x` и `rewrap` не паникует.
+- [x] Fuzz-тесты парсеров: `FuzzDecryptBytes`, `FuzzBarrierUnseal`, `FuzzMetaJSON`, `FuzzWrite`, `FuzzReadAfterWrite`.
+- [x] Property-тесты крипто: `FuzzEncryptDecryptRoundtrip` (barrier) — `encrypt(decrypt(x)) == x`.
 - [ ] `FuzzShamirParse`, `FuzzGlobMatch`, `FuzzPolicyJSON`, `FuzzPathNormalize` — ещё не написаны.
 - [ ] Тест «нет токена в дампе»: грепнуть `tuck.db` после создания токенов — не должно быть валидных ID.
 
@@ -126,7 +121,7 @@ k6-пороги для GA: KV GET/PUT p99 < 50 мс, token create p99 < 100 мс
 - [ ] e2e DR: snapshot → restore в чистый инстанс → проверка целостности всех движков.
 
 ### Фаза C — облака и интеграции (P1)
-- [ ] Матрица e2e (по расписанию, секреты в CI): PostgreSQL + MySQL dynamic, Transit seal.
+- [ ] Матрица e2e (по расписанию, секреты в CI): Transit seal.
 - [ ] e2e оператора и инжектора на `kind`/`minikube` в CI (расширить с 37 сценариев).
 
 ### Фаза D — гейты качества (P1/P2)
@@ -150,11 +145,6 @@ flowchart LR
 | Policy / ACL | ✅ | ✅ | ✅ | ❌ нужно | — |
 | Tokens | ✅ | ✅ | ✅ | — | ⚠️ |
 | KV v1/v2 | ✅ | ✅ | ✅ | ⚠️ | ⚠️ |
-| Dynamic (db) | ✅ | ⚠️ | ❌ реальные | — | — |
-| Transit | ✅ | ✅ | ✅ | ⚠️ | — |
-| PKI | ✅ | ✅ | ✅ | ⚠️ | — |
-| SSH | ✅ | ✅ | ✅ | — | — |
-| TOTP | ✅ | ✅ | ✅ | — | — |
 | JWT/LDAP auth | ✅ | ✅ | ✅ | — | — |
 | AppRole/K8s auth | ✅ | ✅ | ✅ | — | — |
 | Raft HA | ✅ | ✅ | ⚠️ | — | ❌ нужно chaos |

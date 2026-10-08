@@ -89,8 +89,21 @@ server:
 
 - Состав кластера фиксируется при установке. Менять `replicaCount` уже работающего кластера нельзя — добавляйте/удаляйте ноды через `cluster join` / `DELETE /v1/sys/cluster/node/{id}`.
 - Между отказом leader и появлением нового проходит несколько секунд без доступного endpoint: клиенты (оператор по `refreshInterval`, CSI, SDK) повторят запрос при следующей попытке.
-- Raft-трафик между подами — plain TCP, пока не заданы `cluster.tls_*` (mTLS). В банке включите его.
+- Raft-трафик между подами — plain TCP, пока не задан `server.cluster.tls.secretName` (mTLS). В банке включите его (раздел ниже).
 - Без `shamir`-автоматизации после рестарта каждый под ждёт ручной распечатки; для пилота используйте Transit.
+
+### mTLS на Raft-транспорте
+
+```yaml
+server:
+  cluster:
+    enabled: true
+    tls:
+      secretName: tuck-raft-tls   # tls.crt, tls.key, ca.crt (формат cert-manager)
+      serverName: ""              # необязательно: ожидаемое имя в сертификате пира
+```
+
+Сертификат один на все поды, поэтому в SAN нужен шаблон `*.<release>-server-headless.<ns>.svc`, а в extended key usage — и `serverAuth`, и `clientAuth`. Поды стартуют с `--cluster-tls-cert/-key/-ca`; в логе должна быть строка «Raft RPC secured with mutual TLS». Проверено на minikube: 3 пода, общий сертификат, выбор лидера, запись и чтение через Service, смена лидера после удаления пода.
 
 ## Проверка
 

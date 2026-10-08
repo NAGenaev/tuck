@@ -294,7 +294,12 @@ export function LiveLogSection() {
                                                 <span className={styles.lStatus} data-sev={sev}>
                                                     {e.status}
                                                 </span>
-                                                <span className={styles.lFp}>{e.fingerprint || '—'}</span>
+                                                <span
+                                                    className={styles.lFp}
+                                                    title={[e.identity, e.fingerprint, e.client_ip].filter(Boolean).join(' · ')}
+                                                >
+                                                    {e.identity || e.fingerprint || '—'}
+                                                </span>
                                                 <Icon
                                                     className={open ? styles.chevOpen : undefined}
                                                     name="right"

@@ -13,6 +13,7 @@ package main
 import (
 	"bytes"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -34,6 +35,28 @@ type client struct {
 	namespace string
 	insecure  bool
 	http      *http.Client
+}
+
+// trustCAFile makes the client also trust the CA bundle in path (the bank's
+// internal CA), in addition to the system roots.
+func (c *client) trustCAFile(path string) error {
+	pemBytes, err := os.ReadFile(path) // #nosec G304 — operator-supplied flag
+	if err != nil {
+		return err
+	}
+	pool, err := x509.SystemCertPool()
+	if err != nil || pool == nil {
+		pool = x509.NewCertPool()
+	}
+	if !pool.AppendCertsFromPEM(pemBytes) {
+		return fmt.Errorf("%s contains no valid PEM certificate", path)
+	}
+	tr, ok := c.http.Transport.(*http.Transport)
+	if !ok {
+		return fmt.Errorf("unexpected HTTP transport")
+	}
+	tr.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+	return nil
 }
 
 func newClient(addr, token, ns string, insecure bool) *client {
@@ -903,6 +926,7 @@ Usage: tuckcli [flags] <command> [args]
 Global flags:
   --addr string     Server address (env TUCK_ADDR, default http://127.0.0.1:8200)
   --token string    Bearer token  (env TUCK_TOKEN)
+  --ca-file string  PEM file with the CA that signed the server certificate (env TUCK_CA_FILE); a bad file is an error, not a silent fallback
   --insecure        Skip TLS certificate verification (or TUCK_INSECURE=1)
 
 System:
@@ -1181,6 +1205,7 @@ func main() {
 	token := flag.String("token", os.Getenv("TUCK_TOKEN"), "bearer token")
 	ns := flag.String("namespace", envOr("TUCK_NAMESPACE", ""), "namespace (empty = root)")
 	insecure := flag.Bool("insecure", os.Getenv("TUCK_INSECURE") == "1", "skip TLS verification (env TUCK_INSECURE=1)")
+	caFile := flag.String("ca-file", os.Getenv("TUCK_CA_FILE"), "PEM file with the CA that signed the server certificate (env TUCK_CA_FILE)")
 	flag.Usage = usage
 	flag.Parse()
 
@@ -1190,6 +1215,11 @@ func main() {
 	}
 
 	c := newClient(*addr, *token, *ns, *insecure)
+	if *caFile != "" && !*insecure {
+		if err := c.trustCAFile(*caFile); err != nil {
+			fatalf("--ca-file: %v", err)
+		}
+	}
 
 	switch args[0] {
 	case "version":

@@ -93,6 +93,9 @@ export interface AuditEvent {
     status: number
     client_ip?: string
     fingerprint?: string
+    /** who the request is attributed to, e.g. "ldap:alice"; a claimed login for a failed sign-in */
+    identity?: string
+    entity_id?: string
     duration_ms: number
     prev_hash: string
     hash: string

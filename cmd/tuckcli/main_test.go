@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/pem"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -73,5 +75,41 @@ func TestReadJSONArgStripsBOMFromStdin(t *testing.T) {
 	}
 	if got := readJSONArg("[]"); got != "[]" {
 		t.Fatalf("literal arg changed: %q", got)
+	}
+}
+
+func TestTrustCAFile(t *testing.T) {
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
+	defer ts.Close()
+	// Without the CA the self-signed server is rejected.
+	c := newClient(ts.URL, "t", "", false)
+	if resp, err := c.do("GET", "/x", nil); err == nil {
+		_ = resp.Body.Close()
+		t.Fatal("untrusted certificate accepted")
+	}
+	// With the server's certificate as CA it is accepted.
+	dir := t.TempDir()
+	pemPath := filepath.Join(dir, "ca.pem")
+	pemData := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ts.Certificate().Raw})
+	if err := os.WriteFile(pemPath, pemData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c = newClient(ts.URL, "t", "", false)
+	if err := c.trustCAFile(pemPath); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := c.do("GET", "/x", nil)
+	if err != nil {
+		t.Fatalf("trusted CA rejected: %v", err)
+	}
+	_ = resp.Body.Close()
+	// A bad file is an error, never a silent fallback.
+	bad := filepath.Join(dir, "bad.pem")
+	_ = os.WriteFile(bad, []byte("nonsense"), 0o600)
+	if err := newClient(ts.URL, "t", "", false).trustCAFile(bad); err == nil {
+		t.Error("garbage CA file accepted")
+	}
+	if err := newClient(ts.URL, "t", "", false).trustCAFile(filepath.Join(dir, "missing.pem")); err == nil {
+		t.Error("missing CA file accepted")
 	}
 }

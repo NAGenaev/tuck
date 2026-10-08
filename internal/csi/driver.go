@@ -35,7 +35,7 @@ const (
 
 	// Volume context keys supplied by the StorageClass / PVC attributes.
 	ctxAddr            = "tuck.io/addr"             // e.g. "https://tuck:8200"
-	ctxPaths           = "tuck.io/paths"            // comma-separated secret paths
+	ctxPaths           = "tuck.io/paths"            // comma-separated secret paths; "path=file" names the file explicitly
 	ctxNamespace       = "tuck.io/namespace"        // optional Tuck namespace
 	ctxKVVersion       = "tuck.io/kv-version"       // "1" or "2" (default "1")
 	ctxInsecure        = "tuck.io/insecure"         // "true" to skip TLS verification
@@ -302,14 +302,33 @@ func fetchAll(ctx context.Context, hc *http.Client, st *mountState) (map[string]
 	}
 	for attempt := 0; ; attempt++ {
 		all := make(map[string]string)
+		source := make(map[string]string) // file name -> path that produced it
 		var failed error
-		for _, p := range st.paths {
+		for _, spec := range st.paths {
+			p, alias, specErr := parsePathSpec(spec)
+			if specErr != nil {
+				return nil, specErr
+			}
 			files, err := fetchSecretFiles(ctx, hc, st.addr, st.token, st.ns, p, st.kvVersion, st.expandKeys)
 			if err != nil {
 				failed = fmt.Errorf("fetch secret %q: %w", p, err)
 				break
 			}
+			if alias != "" && len(files) == 1 {
+				for fname, value := range files { // a single value takes the explicit name
+					delete(files, fname)
+					files[alias] = value
+				}
+			}
 			for fname, value := range files {
+				// Two secrets must never silently share one file: the pod would
+				// read the wrong credential without any error.
+				if prev, dup := source[fname]; dup {
+					return nil, status.Errorf(codes.InvalidArgument,
+						"file name %q is produced by both %q and %q; give them distinct names with \"path=filename\" in tuck.io/paths",
+						fname, prev, p)
+				}
+				source[fname] = p
 				all[fname] = value
 			}
 		}
@@ -325,6 +344,19 @@ func fetchAll(ctx context.Context, hc *http.Client, st *mountState) (map[string]
 		}
 		return nil, failed
 	}
+}
+
+// parsePathSpec splits one tuck.io/paths entry, "path" or "path=filename".
+func parsePathSpec(spec string) (path, alias string, err error) {
+	path, alias, _ = strings.Cut(strings.TrimSpace(spec), "=")
+	path, alias = strings.TrimSpace(path), strings.TrimSpace(alias)
+	if path == "" {
+		return "", "", status.Errorf(codes.InvalidArgument, "tuck.io/paths: empty path in %q", spec)
+	}
+	if alias != "" && (strings.ContainsAny(alias, `/\`) || alias == "." || alias == "..") {
+		return "", "", status.Errorf(codes.InvalidArgument, "tuck.io/paths: file name %q must be a plain name", alias)
+	}
+	return path, alias, nil
 }
 
 // parseRefreshInterval validates tuck.io/refresh-interval. Empty (the

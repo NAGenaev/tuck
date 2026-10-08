@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"runtime"
 	"testing"
 
@@ -260,5 +261,45 @@ func TestNodeGetVolumeStats(t *testing.T) {
 	}
 	if resp == nil {
 		t.Error("expected non-nil response")
+	}
+}
+
+// Two secrets whose paths end in the same name must not silently share one
+// file (the pod would read the wrong credential); "path=file" names them apart.
+func TestNodePublishVolume_FileNameCollisionAndAlias(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"value": "value-of-" + r.URL.Path})
+	}))
+	defer ts.Close()
+	publish := func(paths string) (string, error) {
+		target := t.TempDir()
+		_, err := csi.NewDriver("n", newMock()).NodePublishVolume(context.Background(), &csispec.NodePublishVolumeRequest{
+			VolumeId: "v", TargetPath: target,
+			VolumeContext: map[string]string{"tuck.io/addr": ts.URL, "tuck.io/paths": paths},
+			Secrets:       map[string]string{"token": "t"},
+		})
+		return target, err
+	}
+
+	if _, err := publish("db/core/password,db/ledger/password"); err == nil || !strings.Contains(err.Error(), "distinct names") {
+		t.Fatalf("a name collision must fail the mount, got %v", err)
+	}
+
+	target, err := publish("db/core/password=core-password, db/ledger/password=ledger-password ,hsm/pin")
+	if err != nil {
+		t.Fatalf("aliased publish: %v", err)
+	}
+	for name, want := range map[string]string{
+		"core-password":   "value-of-/v1/secret/db/core/password",
+		"ledger-password": "value-of-/v1/secret/db/ledger/password",
+		"pin":             "value-of-/v1/secret/hsm/pin",
+	} {
+		got, err := os.ReadFile(filepath.Join(target, name))
+		if err != nil || string(got) != want {
+			t.Errorf("%s = %q, %v; want %q", name, got, err, want)
+		}
+	}
+	if _, err := publish("db/core/password=../evil"); err == nil {
+		t.Error("a path-like file name must be rejected")
 	}
 }

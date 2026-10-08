@@ -25,7 +25,7 @@ type AdmissionResponse struct {
 	UID       string `json:"uid"`
 	Allowed   bool   `json:"allowed"`
 	PatchType string `json:"patchType,omitempty"`
-	// Patch is base64-encoded JSON Patch (RFC 6902).
+	// Patch is a raw JSON Patch (RFC 6902); encoding/json base64-encodes it on the wire.
 	Patch []byte `json:"patch,omitempty"`
 }
 
@@ -58,9 +58,9 @@ type Container struct {
 }
 
 type EnvVar struct {
-	Name      string         `json:"name"`
-	Value     string         `json:"value,omitempty"`
-	ValueFrom *EnvVarSource  `json:"valueFrom,omitempty"`
+	Name      string        `json:"name"`
+	Value     string        `json:"value,omitempty"`
+	ValueFrom *EnvVarSource `json:"valueFrom,omitempty"`
 }
 
 type EnvVarSource struct {

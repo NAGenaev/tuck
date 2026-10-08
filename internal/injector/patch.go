@@ -1,7 +1,6 @@
 package injector
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -88,7 +87,7 @@ func ParseAnnotations(ann map[string]string, defaultImage string) (InjectConfig,
 	return cfg, true
 }
 
-// BuildPatch returns a base64-encoded JSON Patch (RFC 6902) that injects the
+// BuildPatch returns a JSON Patch (RFC 6902) that injects the
 // tuck-agent init container and shared tmpfs volume into the Pod.
 // alreadyInjected prevents double-injection on updates.
 func BuildPatch(pod *Pod, cfg InjectConfig) ([]byte, error) {
@@ -208,9 +207,7 @@ func BuildPatch(pod *Pod, cfg InjectConfig) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshal patches: %w", err)
 	}
-	encoded := make([]byte, base64.StdEncoding.EncodedLen(len(raw)))
-	base64.StdEncoding.Encode(encoded, raw)
-	return encoded, nil
+	return raw, nil
 }
 
 // ParseSecretsList parses the tuck.io/secrets annotation value into

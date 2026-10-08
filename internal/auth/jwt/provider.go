@@ -2,6 +2,7 @@ package jwt
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,6 +30,21 @@ type Config struct {
 	// DefaultTTL is the TTL applied to issued Tuck tokens when the role does not
 	// specify one. Defaults to 1 hour.
 	DefaultTTL time.Duration `json:"default_ttl,omitempty"`
+
+	// Browser (authorization-code + PKCE) login. All optional; when
+	// OIDCAuthorizationURL is empty the OIDC flow is disabled and only
+	// direct JWT login works. See Config.ValidateOIDC.
+	OIDCAuthorizationURL string `json:"oidc_authorization_url,omitempty"`
+	OIDCTokenURL         string `json:"oidc_token_url,omitempty"`
+	OIDCClientID         string `json:"oidc_client_id,omitempty"`
+	// OIDCClientSecret is empty for a public client (PKCE only). Never
+	// returned by the API.
+	OIDCClientSecret string `json:"oidc_client_secret,omitempty"`
+	// OIDCRedirectURI is the exact redirect URI registered at the IdP; it
+	// points at the web UI callback route.
+	OIDCRedirectURI string `json:"oidc_redirect_uri,omitempty"`
+	// OIDCScopes is a space-separated list. "openid" is always requested.
+	OIDCScopes string `json:"oidc_scopes,omitempty"`
 }
 
 // Role binds a set of JWT claims to Tuck policies.
@@ -42,6 +58,9 @@ type Role struct {
 	BoundClaims map[string]string `json:"bound_claims,omitempty"`
 	// BoundAudiences is a list of accepted "aud" values. Empty accepts any.
 	BoundAudiences []string `json:"bound_audiences,omitempty"`
+	// BoundGroups accepts a JWT whose "groups" claim contains ANY of these
+	// values (exact match). Empty means no group constraint.
+	BoundGroups []string `json:"bound_groups,omitempty"`
 	// Policies are the Tuck policy names granted on login.
 	Policies []string `json:"policies"`
 	// TTL is the lifetime of issued Tuck tokens. Zero uses Config.DefaultTTL.
@@ -81,7 +100,25 @@ func (p *Provider) Login(ctx context.Context, tokenStr string, roles []*Role) (*
 	if err != nil {
 		return nil, err
 	}
+	return p.resolve(claims, roles)
+}
 
+// LoginIDToken is Login for an OIDC id_token obtained through the
+// authorization-code flow: the token must also carry the nonce bound to the
+// login attempt, which defeats replay of an id_token captured elsewhere.
+func (p *Provider) LoginIDToken(ctx context.Context, idToken, nonce string, roles []*Role) (*LoginResult, error) {
+	claims, err := p.validate(ctx, idToken)
+	if err != nil {
+		return nil, err
+	}
+	got, _ := claims["nonce"].(string)
+	if nonce == "" || subtle.ConstantTimeCompare([]byte(got), []byte(nonce)) != 1 {
+		return nil, ErrInvalidToken
+	}
+	return p.resolve(claims, roles)
+}
+
+func (p *Provider) resolve(claims jwt.MapClaims, roles []*Role) (*LoginResult, error) {
 	role := matchRole(claims, roles)
 	if role == nil {
 		return nil, ErrNoRole
@@ -166,6 +203,9 @@ func roleMatches(claims jwt.MapClaims, role *Role) bool {
 			return false
 		}
 	}
+	if len(role.BoundGroups) > 0 && !anyMatch(extractGroups(claims), role.BoundGroups) {
+		return false
+	}
 	return true
 }
 
@@ -204,6 +244,8 @@ func extractGroups(claims jwt.MapClaims) []string {
 		return out
 	case []string:
 		return v
+	case string:
+		return []string{v}
 	}
 	return nil
 }

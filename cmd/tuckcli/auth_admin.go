@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -37,7 +38,8 @@ func readJSONArg(arg string) string {
 	if err != nil {
 		fatalf("read stdin: %v", err)
 	}
-	return string(data)
+	// Windows PowerShell pipes may prepend a UTF-8 BOM, which is not valid JSON.
+	return string(bytes.TrimPrefix(data, []byte("\xef\xbb\xbf")))
 }
 
 func dispatchLDAPAuth(c *client, args []string) {

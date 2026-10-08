@@ -24,6 +24,21 @@ export async function loginLdap(username: string, password: string, namespace?: 
     return data
 }
 
+export async function getOidcStatus(): Promise<{ enabled: boolean }> {
+    const { data } = await instance.get<{ enabled: boolean }>('/v1/auth/oidc/status')
+    return data
+}
+
+export async function getOidcAuthUrl(): Promise<{ state: string; url: string }> {
+    const { data } = await instance.get<{ state: string; url: string }>('/v1/auth/oidc/auth-url')
+    return data
+}
+
+export async function oidcCallback(code: string, state: string): Promise<LdapLoginResult> {
+    const { data } = await instance.post<LdapLoginResult>('/v1/auth/oidc/callback', { code, state })
+    return data
+}
+
 export async function renewSelf(): Promise<Token> {
     const { data } = await instance.post<Token>('/v1/auth/token/renew-self', {})
     return data

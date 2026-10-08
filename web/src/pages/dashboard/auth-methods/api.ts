@@ -88,11 +88,18 @@ export interface JwtConfigFull {
     default_ttl?: number
     issuer?: string
     jwks_uri: string
+    oidc_authorization_url?: string
+    oidc_client_id?: string
+    oidc_client_secret_set?: boolean
+    oidc_redirect_uri?: string
+    oidc_scopes?: string
+    oidc_token_url?: string
 }
 
 export interface JwtRoleFull {
     bound_audiences?: string[]
     bound_claims?: Record<string, string>
+    bound_groups?: string[]
     bound_subject?: string
     name: string
     policies: string[]
@@ -103,6 +110,7 @@ export interface JwtRoleFull {
 export interface JwtRoleBody {
     bound_audiences?: string[]
     bound_claims?: Record<string, string>
+    bound_groups?: string[]
     bound_subject?: string
     policies: string[]
     ttl?: string
@@ -119,6 +127,13 @@ export async function putJwtConfig(body: {
     default_ttl?: string
     issuer?: string
     jwks_uri: string
+    oidc_authorization_url?: string
+    oidc_client_id?: string
+    /** omitted keeps the stored secret, '' clears it */
+    oidc_client_secret?: string
+    oidc_redirect_uri?: string
+    oidc_scopes?: string
+    oidc_token_url?: string
 }): Promise<void> {
     await instance.put('/v1/auth/jwt/config', body)
 }

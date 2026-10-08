@@ -1,18 +1,13 @@
 package injector
 
 import (
-	"encoding/base64"
 	"strings"
 	"testing"
 )
 
 func patchJSON(t *testing.T, pod *Pod, cfg InjectConfig) string {
 	t.Helper()
-	enc, err := BuildPatch(pod, cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw, err := base64.StdEncoding.DecodeString(string(enc))
+	raw, err := BuildPatch(pod, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

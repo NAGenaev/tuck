@@ -1285,18 +1285,61 @@
         "responses": { "200": { "description": "Tuck token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } }, "401": { "description": "Invalid token" }, "403": { "description": "Claims mismatch" } }
       }
     },
+    "/v1/auth/oidc/status": {
+      "get": {
+        "tags": ["auth-jwt"],
+        "summary": "Is browser OIDC login (SSO) enabled",
+        "operationId": "oidcStatus",
+        "security": [],
+        "responses": { "200": { "description": "Status", "content": { "application/json": { "schema": { "type": "object", "properties": { "enabled": { "type": "boolean" } }, "required": ["enabled"] } } } } }
+      }
+    },
+    "/v1/auth/oidc/auth-url": {
+      "get": {
+        "tags": ["auth-jwt"],
+        "summary": "Start a browser OIDC login (authorization code + PKCE)",
+        "description": "Creates a one-time server-side state (nonce, PKCE verifier, 5 minute expiry) and returns the identity provider authorization URL to redirect the browser to.",
+        "operationId": "oidcAuthURL",
+        "security": [],
+        "responses": {
+          "200": { "description": "Authorization URL and state", "content": { "application/json": { "schema": { "type": "object", "properties": { "url": { "type": "string" }, "state": { "type": "string" } }, "required": ["url", "state"] } } } },
+          "429": { "description": "Rate limited, or too many pending logins" },
+          "503": { "description": "OIDC login not configured" }
+        }
+      }
+    },
+    "/v1/auth/oidc/callback": {
+      "post": {
+        "tags": ["auth-jwt"],
+        "summary": "Finish a browser OIDC login",
+        "description": "Consumes the one-time state, redeems the authorization code with the stored PKCE verifier, validates the id_token (signature, issuer, audience, expiry, nonce) and maps it to a JWT role.",
+        "operationId": "oidcCallback",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "code": { "type": "string" }, "state": { "type": "string" } }, "required": ["code", "state"] } } } },
+        "responses": {
+          "200": { "description": "Tuck token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } },
+          "400": { "description": "Unknown, expired or reused state, or code rejected by the provider" },
+          "401": { "description": "id_token failed validation" },
+          "403": { "description": "No role matches the id_token claims" },
+          "429": { "description": "Rate limited" },
+          "502": { "description": "Identity provider unavailable" },
+          "503": { "description": "OIDC login not configured" }
+        }
+      }
+    },
     "/v1/auth/jwt/config": {
       "get": {
         "tags": ["auth-jwt"],
         "summary": "Get JWT provider config",
         "operationId": "getJWTConfig",
+        "description": "oidc_client_secret is never returned; oidc_client_secret_set reports whether one is stored.",
         "responses": { "200": { "description": "Config" } }
       },
       "put": {
         "tags": ["auth-jwt"],
         "summary": "Set JWT provider config",
         "operationId": "putJWTConfig",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "jwks_uri": { "type": "string" }, "issuer": { "type": "string" }, "bound_issuer": { "type": "string" } } } } } },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "jwks_uri": { "type": "string" }, "issuer": { "type": "string" }, "bound_issuer": { "type": "string" }, "audience": { "type": "string" }, "default_ttl": { "type": "string" }, "oidc_authorization_url": { "type": "string" }, "oidc_token_url": { "type": "string" }, "oidc_client_id": { "type": "string" }, "oidc_client_secret": { "type": "string", "description": "Omit to keep the stored secret; empty string clears it." }, "oidc_redirect_uri": { "type": "string" }, "oidc_scopes": { "type": "string" } } } } } },
         "responses": { "204": { "description": "Saved" } }
       }
     },
@@ -1312,7 +1355,7 @@
         "tags": ["auth-jwt"],
         "summary": "Create or update a JWT role",
         "operationId": "putJWTRole",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "bound_subject": { "type": "string" }, "bound_audiences": { "type": "array", "items": { "type": "string" } }, "bound_claims": { "type": "object" }, "policies": { "type": "array", "items": { "type": "string" } }, "ttl": { "type": "string" } } } } } },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "bound_subject": { "type": "string" }, "bound_audiences": { "type": "array", "items": { "type": "string" } }, "bound_claims": { "type": "object" }, "bound_groups": { "type": "array", "items": { "type": "string" }, "description": "Matches when the groups claim contains any of these." }, "policies": { "type": "array", "items": { "type": "string" } }, "ttl": { "type": "string" } } } } } },
         "responses": { "204": { "description": "Saved" } }
       },
       "delete": {

@@ -190,3 +190,16 @@ func (s *ShamirSeal) ShardsProgress() (required, received int) {
 	defer s.mu.Unlock()
 	return s.k, len(s.received)
 }
+
+// Reset discards any buffered shards and re-arms the seal for a new unseal
+// round. Core.Seal calls it so that a manually sealed server can be unsealed
+// again without a restart.
+func (s *ShamirSeal) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.received {
+		clear(s.received[i])
+	}
+	s.received = nil
+	s.done = false
+}

@@ -76,7 +76,30 @@
     "modeLabel": "Sign-in method",
     "mode": {
         "token": "Token",
-        "ldap": "LDAP"
+        "ldap": "LDAP",
+        "sso": "SSO"
+    },
+    "sso": {
+        "formTitle": "Sign in with SSO",
+        "signIn": "Sign in with SSO",
+        "hint": "You will be sent to your identity provider and brought back here after signing in",
+        "note": "Access is decided by your account's groups at the provider",
+        "termWaiting": "waiting to redirect to the provider…",
+        "redirecting": "redirecting to the provider…",
+        "notConfigured": "SSO sign-in has not been configured by an administrator yet",
+        "throttled": "Too many attempts. Try again later",
+        "badge": "SSO · provider return",
+        "working": "Finishing sign-in…",
+        "workingText": "Verifying the provider's response and issuing a Tuck token.",
+        "failTitle": "SSO sign-in failed",
+        "back": "Back to sign-in",
+        "errProvider": "The provider returned an error: {{error}}",
+        "errState": "No sign-in session found, or it has expired. Start again",
+        "errInvalidState": "The sign-in link has expired or was already used. Start again",
+        "errCode": "The provider rejected the authorization code. Start again",
+        "errIdp": "The provider is unavailable. Try again later",
+        "errToken": "The provider's response failed verification (signature, expiry, audience or nonce)",
+        "errNoRole": "Signed in, but no Tuck role matches your groups. Contact an administrator"
     },
     "ldap": {
         "formTitle": "Sign in with LDAP",

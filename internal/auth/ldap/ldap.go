@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"sort"
 	"strings"
@@ -33,6 +34,11 @@ var (
 	ErrInvalidCredentials = errors.New("ldap: invalid username or password")
 	// ErrNoRole is returned when no role matches the authenticated user.
 	ErrNoRole = errors.New("ldap: no matching role for user")
+	// ErrUnavailable wraps every failure that is not the user's fault: the
+	// directory cannot be reached, TLS verification fails, the service account
+	// cannot bind, a search errors out. Callers map it to 503 rather than 500
+	// and must not echo the wrapped detail (hosts, DNs) to the client.
+	ErrUnavailable = errors.New("ldap: directory unavailable")
 )
 
 // NamespaceChoiceError is returned when the roles matching a user are bound to
@@ -167,7 +173,15 @@ type Conn interface {
 // realConn wraps *goldap.Conn behind the Conn interface.
 type realConn struct{ inner *goldap.Conn }
 
-func (r *realConn) Bind(dn, password string) error { return r.inner.Bind(dn, password) }
+func (r *realConn) Bind(dn, password string) error {
+	err := r.inner.Bind(dn, password)
+	if goldap.IsErrorWithCode(err, goldap.ErrorNetwork) ||
+		goldap.IsErrorWithCode(err, goldap.LDAPResultBusy) ||
+		goldap.IsErrorWithCode(err, goldap.LDAPResultUnavailable) {
+		return fmt.Errorf("%w: %w", ErrUnavailable, err)
+	}
+	return err
+}
 func (r *realConn) Close() error                   { _ = r.inner.Close(); return nil }
 
 func (r *realConn) Search(baseDN, filter string, attrs []string) ([]*Entry, error) {
@@ -329,12 +343,12 @@ func (a *Authenticator) Login(ctx context.Context, roles []*Role, username, pass
 func (a *Authenticator) LoginNamespace(ctx context.Context, roles []*Role, username, password string, namespace *string) (*LoginResult, error) {
 	conn, err := a.dial(ctx, a.cfg)
 	if err != nil {
-		return nil, fmt.Errorf("ldap: connect: %w", err)
+		return nil, fmt.Errorf("%w: connect: %w", ErrUnavailable, err)
 	}
 	defer func() { _ = conn.Close() }()
 
 	if err := conn.Bind(a.cfg.BindDN, a.cfg.BindPassword); err != nil {
-		return nil, fmt.Errorf("ldap: service account bind: %w", err)
+		return nil, fmt.Errorf("%w: service account bind: %w", ErrUnavailable, err)
 	}
 
 	userAttr := a.cfg.userAttrField()
@@ -342,7 +356,7 @@ func (a *Authenticator) LoginNamespace(ctx context.Context, roles []*Role, usern
 	filter := fmt.Sprintf("(%s=%s)", userAttr, goldap.EscapeFilter(username))
 	entries, err := conn.Search(a.cfg.UserDN, filter, []string{"dn", groupAttr})
 	if err != nil {
-		return nil, fmt.Errorf("ldap: user search: %w", err)
+		return nil, fmt.Errorf("%w: user search: %w", ErrUnavailable, err)
 	}
 	if len(entries) != 1 {
 		// No match, or an ambiguous match: never guess which account the
@@ -353,17 +367,20 @@ func (a *Authenticator) LoginNamespace(ctx context.Context, roles []*Role, usern
 	userGroups := entries[0].Attributes[groupAttr]
 
 	if err := conn.Bind(userDN, password); err != nil {
+		if errors.Is(err, ErrUnavailable) {
+			return nil, fmt.Errorf("user bind: %w", err)
+		}
 		return nil, ErrInvalidCredentials
 	}
 
 	if a.cfg.GroupDN != "" {
 		if err := conn.Bind(a.cfg.BindDN, a.cfg.BindPassword); err != nil {
-			return nil, fmt.Errorf("ldap: re-bind for group search: %w", err)
+			return nil, fmt.Errorf("%w: re-bind for group search: %w", ErrUnavailable, err)
 		}
 		gf := a.cfg.buildGroupFilter(userDN)
 		gEntries, err := conn.Search(a.cfg.GroupDN, gf, []string{"dn"})
 		if err != nil {
-			return nil, fmt.Errorf("ldap: group search: %w", err)
+			return nil, fmt.Errorf("%w: group search: %w", ErrUnavailable, err)
 		}
 		userGroups = make([]string, len(gEntries))
 		for i, e := range gEntries {
@@ -513,6 +530,11 @@ func (c *Config) tlsConfig(serverURL string) (*tls.Config, error) {
 	return tlsCfg, nil
 }
 
+const (
+	dialTimeout = 5 * time.Second
+	opTimeout   = 10 * time.Second
+)
+
 // defaultDial connects to the first reachable LDAP server in cfg.URLs.
 func defaultDial(_ context.Context, cfg Config) (Conn, error) {
 	var lastErr error
@@ -521,11 +543,17 @@ func defaultDial(_ context.Context, cfg Config) (Conn, error) {
 		if err != nil {
 			return nil, err
 		}
-		conn, err := goldap.DialURL(u, goldap.DialWithTLSConfig(tlsCfg))
+		// go-ldap defaults to a 60s dial and operation timeout, longer than the
+		// HTTP server's 30s write timeout: a black-holed directory would hang the
+		// login until the client connection is cut with no response at all.
+		conn, err := goldap.DialURL(u,
+			goldap.DialWithTLSConfig(tlsCfg),
+			goldap.DialWithDialer(&net.Dialer{Timeout: dialTimeout}))
 		if err != nil {
 			lastErr = err
 			continue
 		}
+		conn.SetTimeout(opTimeout)
 		if cfg.StartTLS {
 			if err := conn.StartTLS(tlsCfg); err != nil {
 				_ = conn.Close()

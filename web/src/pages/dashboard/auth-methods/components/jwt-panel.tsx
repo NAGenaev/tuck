@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { Button, TextInput } from '@mantine/core'
+import { Button, PasswordInput, TextInput } from '@mantine/core'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
@@ -79,13 +79,29 @@ export function JwtPanel() {
     const [issuer, setIssuer] = useState('')
     const [audience, setAudience] = useState('')
     const [defTtl, setDefTtl] = useState(0)
+    const [oidcAuthUrl, setOidcAuthUrl] = useState('')
+    const [oidcTokenUrl, setOidcTokenUrl] = useState('')
+    const [oidcClientId, setOidcClientId] = useState('')
+    const [oidcSecret, setOidcSecret] = useState('')
+    const [oidcClearSecret, setOidcClearSecret] = useState(false)
+    const [oidcRedirect, setOidcRedirect] = useState('')
+    const [oidcScopes, setOidcScopes] = useState('')
     const [cfgTouched, setCfgTouched] = useState(false)
+    const loadCfg = (d: NonNullable<typeof cfg.data>) => {
+        setJwks(d.jwks_uri ?? '')
+        setIssuer(d.issuer ?? '')
+        setAudience(d.audience ?? '')
+        setDefTtl(nsToSeconds(d.default_ttl))
+        setOidcAuthUrl(d.oidc_authorization_url ?? '')
+        setOidcTokenUrl(d.oidc_token_url ?? '')
+        setOidcClientId(d.oidc_client_id ?? '')
+        setOidcSecret('')
+        setOidcClearSecret(false)
+        setOidcRedirect(d.oidc_redirect_uri ?? '')
+        setOidcScopes(d.oidc_scopes ?? '')
+    }
     useEffect(() => {
-        if (!cfg.data) return
-        setJwks(cfg.data.jwks_uri ?? '')
-        setIssuer(cfg.data.issuer ?? '')
-        setAudience(cfg.data.audience ?? '')
-        setDefTtl(nsToSeconds(cfg.data.default_ttl))
+        if (cfg.data) loadCfg(cfg.data)
     }, [cfg.data])
 
     const jwksErr = httpsError(jwks, t)
@@ -94,7 +110,15 @@ export function JwtPanel() {
         jwks.trim() !== (cfg.data.jwks_uri ?? '') ||
         issuer.trim() !== (cfg.data.issuer ?? '') ||
         audience.trim() !== (cfg.data.audience ?? '') ||
-        defTtl !== nsToSeconds(cfg.data.default_ttl)
+        defTtl !== nsToSeconds(cfg.data.default_ttl) ||
+        oidcAuthUrl.trim() !== (cfg.data.oidc_authorization_url ?? '') ||
+        oidcTokenUrl.trim() !== (cfg.data.oidc_token_url ?? '') ||
+        oidcClientId.trim() !== (cfg.data.oidc_client_id ?? '') ||
+        oidcRedirect.trim() !== (cfg.data.oidc_redirect_uri ?? '') ||
+        oidcScopes.trim() !== (cfg.data.oidc_scopes ?? '') ||
+        oidcSecret !== '' ||
+        oidcClearSecret
+    const secretSet = cfg.data?.oidc_client_secret_set === true
 
     const saveCfg = useMutation({
         mutationFn: () =>
@@ -102,7 +126,13 @@ export function JwtPanel() {
                 audience: audience.trim() || undefined,
                 default_ttl: toDur(defTtl),
                 issuer: issuer.trim() || undefined,
-                jwks_uri: jwks.trim()
+                jwks_uri: jwks.trim(),
+                oidc_authorization_url: oidcAuthUrl.trim() || undefined,
+                oidc_client_id: oidcClientId.trim() || undefined,
+                oidc_client_secret: oidcClearSecret ? '' : oidcSecret || undefined,
+                oidc_redirect_uri: oidcRedirect.trim() || undefined,
+                oidc_scopes: oidcScopes.trim() || undefined,
+                oidc_token_url: oidcTokenUrl.trim() || undefined
             }),
         onSuccess: async () => {
             toast.success(t('jwt.toast.cfgSaved'), t('jwt.toast.cfgSavedMsg'))
@@ -225,6 +255,83 @@ export function JwtPanel() {
                         onChange={setDefTtl}
                         value={defTtl}
                     />
+                    <p className={styles.hint}>
+                        <b>{t('jwt.sso.title')}.</b> {t('jwt.sso.text')}
+                    </p>
+                    <div className={styles.grid2}>
+                        <Field hint={t('jwt.sso.authUrlHint')} label="oidc_authorization_url">
+                            <TextInput
+                                aria-label="oidc_authorization_url"
+                                onChange={(e) => setOidcAuthUrl(e.currentTarget.value)}
+                                placeholder="https://idp.example.com/authorize"
+                                value={oidcAuthUrl}
+                            />
+                        </Field>
+                        <Field hint={t('jwt.sso.tokenUrlHint')} label="oidc_token_url">
+                            <TextInput
+                                aria-label="oidc_token_url"
+                                onChange={(e) => setOidcTokenUrl(e.currentTarget.value)}
+                                placeholder="https://idp.example.com/token"
+                                value={oidcTokenUrl}
+                            />
+                        </Field>
+                        <Field hint={t('jwt.sso.clientIdHint')} label="oidc_client_id">
+                            <TextInput
+                                aria-label="oidc_client_id"
+                                onChange={(e) => setOidcClientId(e.currentTarget.value)}
+                                placeholder="tuck"
+                                value={oidcClientId}
+                            />
+                        </Field>
+                        <Field
+                            hint={
+                                oidcClearSecret
+                                    ? t('jwt.sso.secretClearing')
+                                    : secretSet
+                                      ? t('jwt.sso.secretSet')
+                                      : t('jwt.sso.secretHint')
+                            }
+                            label="oidc_client_secret"
+                        >
+                            <PasswordInput
+                                aria-label="oidc_client_secret"
+                                autoComplete="new-password"
+                                disabled={oidcClearSecret}
+                                onChange={(e) => setOidcSecret(e.currentTarget.value)}
+                                placeholder={secretSet ? '••••••••' : ''}
+                                value={oidcSecret}
+                            />
+                            {secretSet && (
+                                <Button
+                                    mt={6}
+                                    onClick={() => {
+                                        setOidcSecret('')
+                                        setOidcClearSecret((v) => !v)
+                                    }}
+                                    size="xs"
+                                    variant="default"
+                                >
+                                    {oidcClearSecret ? t('jwt.sso.keepSecret') : t('jwt.sso.clearSecret')}
+                                </Button>
+                            )}
+                        </Field>
+                        <Field hint={t('jwt.sso.redirectHint')} label="oidc_redirect_uri">
+                            <TextInput
+                                aria-label="oidc_redirect_uri"
+                                onChange={(e) => setOidcRedirect(e.currentTarget.value)}
+                                placeholder={`${window.location.origin}/ui/auth/oidc/callback`}
+                                value={oidcRedirect}
+                            />
+                        </Field>
+                        <Field hint={t('jwt.sso.scopesHint')} label="oidc_scopes">
+                            <TextInput
+                                aria-label="oidc_scopes"
+                                onChange={(e) => setOidcScopes(e.currentTarget.value)}
+                                placeholder="openid profile groups"
+                                value={oidcScopes}
+                            />
+                        </Field>
+                    </div>
                     <p className={styles.hint}>{t('jwt.replaceNote')}</p>
                     <div className={styles.secActs}>
                         <Button
@@ -239,10 +346,7 @@ export function JwtPanel() {
                             <Button
                                 disabled={!dirty}
                                 onClick={() => {
-                                    setJwks(cfg.data.jwks_uri ?? '')
-                                    setIssuer(cfg.data.issuer ?? '')
-                                    setAudience(cfg.data.audience ?? '')
-                                    setDefTtl(nsToSeconds(cfg.data.default_ttl))
+                                    loadCfg(cfg.data)
                                     setCfgTouched(false)
                                 }}
                                 variant="default"
@@ -320,6 +424,11 @@ export function JwtPanel() {
                                                                 sub={r.bound_subject}
                                                             </span>
                                                         )}
+                                                        {(r.bound_groups ?? []).map((g) => (
+                                                            <span className={cx(styles.chip, styles.ice)} key={g}>
+                                                                group={g}
+                                                            </span>
+                                                        ))}
                                                         {(r.bound_audiences ?? []).map((a) => (
                                                             <span className={cx(styles.chip, styles.ice)} key={a}>
                                                                 aud={a}
@@ -330,7 +439,10 @@ export function JwtPanel() {
                                                                 {t('jwt.claims', { count: claims })}
                                                             </span>
                                                         )}
-                                                        {!r.bound_subject && !(r.bound_audiences ?? []).length && !claims && (
+                                                        {!r.bound_subject &&
+                                                            !(r.bound_audiences ?? []).length &&
+                                                            !(r.bound_groups ?? []).length &&
+                                                            !claims && (
                                                             <span className={styles.dim}>—</span>
                                                         )}
                                                     </div>
@@ -421,6 +533,7 @@ function RoleDrawer({
     const [ttl, setTtl] = useState(0)
     const [auds, setAuds] = useState<string[]>([])
     const [sub, setSub] = useState('')
+    const [groups, setGroups] = useState<string[]>([])
     const [claims, setClaims] = useState<KvPair[]>([])
     const [touched, setTouched] = useState(false)
     const [serverErr, setServerErr] = useState('')
@@ -433,6 +546,7 @@ function RoleDrawer({
         setTtl(nsToSeconds(edit?.ttl))
         setAuds(edit?.bound_audiences ?? [])
         setSub(edit?.bound_subject ?? '')
+        setGroups(edit?.bound_groups ?? [])
         setClaims(Object.entries(edit?.bound_claims ?? {}).map(([key, value]) => ({ key, value })))
         setTouched(false)
         setServerErr('')
@@ -453,6 +567,7 @@ function RoleDrawer({
                 bound_claims: claims.some((c) => c.key.trim())
                     ? Object.fromEntries(claims.filter((c) => c.key.trim()).map((c) => [c.key.trim(), c.value]))
                     : undefined,
+                bound_groups: groups.length ? groups : undefined,
                 bound_subject: sub.trim() || undefined,
                 policies,
                 ttl: toDur(ttl),
@@ -524,6 +639,9 @@ function RoleDrawer({
                         onChange={(e) => setSub(e.currentTarget.value)}
                         value={sub}
                     />
+                </Field>
+                <Field hint={t('jwt.f.groupsHint')} label="bound_groups">
+                    <TagInput ariaLabel="bound_groups" comma={false} onChange={setGroups} value={groups} />
                 </Field>
                 <KeyValueEditor
                     description={t('jwt.f.claimsHint')}

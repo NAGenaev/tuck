@@ -903,7 +903,7 @@ Usage: tuckcli [flags] <command> [args]
 Global flags:
   --addr string     Server address (env TUCK_ADDR, default http://127.0.0.1:8200)
   --token string    Bearer token  (env TUCK_TOKEN)
-  --insecure        Skip TLS certificate verification
+  --insecure        Skip TLS certificate verification (or TUCK_INSECURE=1)
 
 System:
   status                              Show seal status
@@ -1173,7 +1173,7 @@ func main() {
 	addr := flag.String("addr", envOr("TUCK_ADDR", "http://127.0.0.1:8200"), "server address")
 	token := flag.String("token", os.Getenv("TUCK_TOKEN"), "bearer token")
 	ns := flag.String("namespace", envOr("TUCK_NAMESPACE", ""), "namespace (empty = root)")
-	insecure := flag.Bool("insecure", false, "skip TLS verification")
+	insecure := flag.Bool("insecure", os.Getenv("TUCK_INSECURE") == "1", "skip TLS verification (env TUCK_INSECURE=1)")
 	flag.Usage = usage
 	flag.Parse()
 
@@ -1340,15 +1340,7 @@ func main() {
 			if len(args) < 4 {
 				fatalf("policy put requires a name and rules JSON")
 			}
-			rulesJSON := args[3]
-			if rulesJSON == "-" {
-				data, err := io.ReadAll(os.Stdin)
-				if err != nil {
-					fatalf("read stdin: %v", err)
-				}
-				rulesJSON = string(data)
-			}
-			cmdPolicyPut(c, args[2], rulesJSON)
+			cmdPolicyPut(c, args[2], readJSONArg(args[3]))
 		case "delete":
 			if len(args) < 3 {
 				fatalf("policy delete requires a name")

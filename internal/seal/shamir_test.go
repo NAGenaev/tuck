@@ -168,3 +168,33 @@ func TestShamirSeal_FromConfig(t *testing.T) {
 		t.Errorf("loaded seal threshold = %d, want 3", req)
 	}
 }
+
+func TestShamirSeal_ResetAllowsSecondUnsealRound(t *testing.T) {
+	s := newTestShamirSeal(t, 3, 2)
+	res, err := s.Init()
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	for i := 0; i < 2; i++ {
+		done, key, err := s.AcceptShard(res.Shares[i])
+		if err != nil {
+			t.Fatalf("round1 shard %d: %v", i, err)
+		}
+		if i == 1 && (!done || len(key) != 32) {
+			t.Fatalf("round1: want complete with 32-byte key")
+		}
+	}
+	if _, _, err := s.AcceptShard(res.Shares[2]); err == nil {
+		t.Fatal("expected error after threshold without Reset")
+	}
+	s.Reset()
+	for i := 0; i < 2; i++ {
+		done, _, err := s.AcceptShard(res.Shares[i])
+		if err != nil {
+			t.Fatalf("round2 shard %d: %v", i, err)
+		}
+		if i == 1 && !done {
+			t.Fatal("round2: want complete")
+		}
+	}
+}

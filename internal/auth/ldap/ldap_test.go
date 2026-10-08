@@ -3,6 +3,7 @@ package ldap_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -301,5 +302,50 @@ func TestLogin_NamespaceSelection(t *testing.T) {
 	ns = ""
 	if res, err := auth.LoginNamespace(ctx, roles, "alice", "alicepass", &ns); err != nil || res.TuckNamespace != "" || res.Policies[0] != "pr" {
 		t.Fatalf("root login: %+v %v", res, err)
+	}
+}
+
+// unavailableConn fails the way a dead directory does: after a successful dial,
+// the named operation returns an error that realConn marks as ErrUnavailable.
+type unavailableConn struct {
+	*fakeLDAPConn
+	failBind   string // DN whose Bind reports the directory as unavailable
+	failSearch bool
+}
+
+func (u unavailableConn) Bind(dn, password string) error {
+	if dn == u.failBind {
+		return fmt.Errorf("%w: network error", authlda.ErrUnavailable)
+	}
+	return u.fakeLDAPConn.Bind(dn, password)
+}
+
+func (u unavailableConn) Search(b, f string, a []string) ([]*authlda.Entry, error) {
+	if u.failSearch {
+		return nil, errors.New("connection reset")
+	}
+	return u.fakeLDAPConn.Search(b, f, a)
+}
+
+// TestLogin_DirectoryFailuresAreUnavailable verifies that everything that is
+// not the user's fault maps to ErrUnavailable, never to ErrInvalidCredentials.
+func TestLogin_DirectoryFailuresAreUnavailable(t *testing.T) {
+	base := newFakeConn("cn=svc,dc=test", "svcpass", sampleUsers())
+	cases := map[string]authlda.Conn{
+		"service bind": unavailableConn{fakeLDAPConn: base, failBind: "cn=svc,dc=test"},
+		"user bind":    unavailableConn{fakeLDAPConn: base, failBind: "uid=alice,ou=users,dc=test"},
+		"search":       unavailableConn{fakeLDAPConn: base, failSearch: true},
+	}
+	for name, conn := range cases {
+		t.Run(name, func(t *testing.T) {
+			auth := authlda.NewAuthenticator(sampleCfg(), authlda.WithDialer(dialFactory(conn)))
+			_, err := auth.Login(context.Background(), nil, "alice", "alicepass")
+			if !errors.Is(err, authlda.ErrUnavailable) {
+				t.Fatalf("expected ErrUnavailable, got %v", err)
+			}
+			if errors.Is(err, authlda.ErrInvalidCredentials) {
+				t.Fatalf("directory failure must not look like a wrong password: %v", err)
+			}
+		})
 	}
 }

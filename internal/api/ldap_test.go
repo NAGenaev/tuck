@@ -448,3 +448,22 @@ func TestLDAPThrottleIsPerClientAddress(t *testing.T) {
 		t.Fatal("source port must not matter")
 	}
 }
+
+// TestLDAPDirectoryDownIs503 verifies that an unreachable directory yields 503
+// with a generic body: no 500, and no host or port from the dial error leaks.
+func TestLDAPDirectoryDownIs503(t *testing.T) {
+	ts, c, root := newLDAPTestServer(t)
+	putLDAPConfig(t, ts, root)
+	putLDAPRole(t, ts, root, "r", []string{"devs"}, nil, []string{"root"}, "1h")
+
+	c.SetLDAPDialer(func(_ context.Context, _ authlda.Config) (authlda.Conn, error) {
+		return nil, errors.New("dial tcp 10.9.8.7:636: x509: certificate signed by unknown authority")
+	})
+	status, body := ldapLogin(t, ts, "alice", "alicepass")
+	if status != http.StatusServiceUnavailable {
+		t.Fatalf("directory down: %d %s, want 503", status, body)
+	}
+	if strings.Contains(string(body), "10.9.8.7") || strings.Contains(string(body), "x509") {
+		t.Errorf("response leaks dial error: %s", body)
+	}
+}

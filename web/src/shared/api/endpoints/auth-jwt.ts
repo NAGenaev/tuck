@@ -6,6 +6,12 @@ export interface JWTConfig {
     issuer?: string
     audience?: string
     default_ttl?: number
+    oidc_authorization_url?: string
+    oidc_token_url?: string
+    oidc_client_id?: string
+    oidc_client_secret_set?: boolean
+    oidc_redirect_uri?: string
+    oidc_scopes?: string
 }
 
 export interface JWTConfigPut {
@@ -13,6 +19,13 @@ export interface JWTConfigPut {
     issuer?: string
     audience?: string
     default_ttl?: string
+    oidc_authorization_url?: string
+    oidc_token_url?: string
+    oidc_client_id?: string
+    /** omitted keeps the stored secret, '' clears it */
+    oidc_client_secret?: string
+    oidc_redirect_uri?: string
+    oidc_scopes?: string
 }
 
 export interface JWTRole {
@@ -20,6 +33,7 @@ export interface JWTRole {
     bound_subject?: string
     bound_claims?: Record<string, string>
     bound_audiences?: string[]
+    bound_groups?: string[]
     policies: string[]
     ttl: number
 }
@@ -28,6 +42,7 @@ export interface JWTRolePut {
     policies: string[]
     bound_subject?: string
     bound_audiences?: string[]
+    bound_groups?: string[]
     ttl?: string
 }
 

@@ -9,6 +9,7 @@ import { AuthGuard } from '@shared/hocs/guards/auth-guard'
 import { ROUTES } from '@shared/constants/routes'
 
 import { LoginPage } from '@pages/auth/login/login.page'
+import { OidcCallbackPage } from '@pages/auth/oidc-callback/oidc-callback.page'
 import { NotFoundPage } from '@pages/not-found/not-found.page'
 import { AuditSinksPage } from '@pages/dashboard/audit-sinks/audit-sinks.page'
 import { AuthMethodsPage } from '@pages/dashboard/auth-methods/auth-methods.page'
@@ -32,7 +33,10 @@ const router = createBrowserRouter(
                 {
                     path: ROUTES.AUTH.ROOT,
                     element: <AuthLayout />,
-                    children: [{ path: ROUTES.AUTH.LOGIN, element: <LoginPage /> }]
+                    children: [
+                        { path: ROUTES.AUTH.LOGIN, element: <LoginPage /> },
+                        { path: ROUTES.AUTH.OIDC_CALLBACK, element: <OidcCallbackPage /> }
+                    ]
                 },
                 {
                     path: ROUTES.DASHBOARD.ROOT,

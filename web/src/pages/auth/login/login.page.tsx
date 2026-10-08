@@ -3,16 +3,17 @@
 // submit handler rewritten against Tuck's token-auth model (paste a token, validate via lookup-self —
 // Tuck's built-in token auth has no username/password login, matching the previous UI's behavior).
 // Visual design: "Консоль Tuck" (login, sealed vault and session-expired variants).
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import { CSSProperties, FormEvent, ReactNode, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
 
 import { useAuthTone } from '@app/layouts/auth/auth.layout'
-import { loginLdap, lookupSelf } from '@shared/api/endpoints/auth'
+import { getOidcAuthUrl, getOidcStatus, loginLdap, lookupSelf } from '@shared/api/endpoints/auth'
 import { unseal } from '@shared/api/endpoints/sys'
 import { useSealStatus } from '@shared/api/hooks/use-seal-status'
+import { OIDC_STATE_KEY } from '@shared/auth/oidc'
 import { removeToken, setToken } from '@shared/auth/token'
 import { ROUTES } from '@shared/constants/routes'
 import { useAuth } from '@shared/hooks/use-auth'
@@ -28,9 +29,11 @@ const COMMAND = 'tuck token lookup-self'
 const REQUEST_LINE = '→ GET /v1/auth/token/lookup-self'
 const LDAP_COMMAND = 'tuck auth ldap login'
 const LDAP_REQUEST_LINE = '→ POST /v1/auth/ldap/login'
+const SSO_COMMAND = 'tuck auth oidc login'
+const SSO_REQUEST_LINE = '→ GET /v1/auth/oidc/auth-url'
 const MODE_KEY = 'tuck_login_mode'
 
-type Mode = 'ldap' | 'token'
+type Mode = 'ldap' | 'sso' | 'token'
 type Phase = 'busy' | 'fail' | 'idle' | 'ok'
 interface Hint {
     icon?: 'check' | 'warn'
@@ -40,7 +43,8 @@ interface Hint {
 
 function savedMode(): Mode {
     try {
-        return localStorage.getItem(MODE_KEY) === 'ldap' ? 'ldap' : 'token'
+        const m = localStorage.getItem(MODE_KEY)
+        return m === 'ldap' || m === 'sso' ? m : 'token'
     } catch {
         return 'token'
     }
@@ -100,7 +104,11 @@ export function LoginPage() {
     const { data: seal } = useSealStatus()
 
     const [expired, setExpired] = useState<null | SessionExpiredInfo>(() => peekSessionExpired())
-    const [mode, setMode] = useState<Mode>(savedMode)
+    const [rawMode, setMode] = useState<Mode>(savedMode)
+    const { data: oidc } = useQuery({ queryFn: getOidcStatus, queryKey: ['oidc-status'], retry: false })
+    const ssoEnabled = oidc?.enabled === true
+    // a remembered SSO choice falls back to the token form when SSO is not (or no longer) configured
+    const mode: Mode = rawMode === 'sso' && !ssoEnabled ? 'token' : rawMode
     const [username, setUsername] = useState('')
     const [password, setPassword] = useState('')
     const [token, setTokenInput] = useState('')
@@ -114,8 +122,9 @@ export function LoginPage() {
     const [shake, setShake] = useState(0)
     const inputRef = useRef<HTMLInputElement>(null)
     const isLdap = mode === 'ldap'
-    const command = isLdap ? LDAP_COMMAND : COMMAND
-    const requestLine = isLdap ? LDAP_REQUEST_LINE : REQUEST_LINE
+    const isSso = mode === 'sso'
+    const command = isSso ? SSO_COMMAND : isLdap ? LDAP_COMMAND : COMMAND
+    const requestLine = isSso ? SSO_REQUEST_LINE : isLdap ? LDAP_REQUEST_LINE : REQUEST_LINE
 
     const sealed = seal?.sealed === true
     const showExpired = expired !== null && !sealed
@@ -201,6 +210,10 @@ export function LoginPage() {
 
     const signIn = async (namespace?: string) => {
         if (busy || sealed) return
+        if (isSso) {
+            await startSso()
+            return
+        }
         const value = token.trim()
         if (isLdap ? !username.trim() || !password : !value) {
             fail('', isLdap ? t('ldap.errEmpty') : t('errEmpty'))
@@ -246,6 +259,27 @@ export function LoginPage() {
         setIsAuthenticated(true)
         navigate(ROUTES.DASHBOARD.STATUS)
         void door.open()
+    }
+
+    const startSso = async () => {
+        setPhase('busy')
+        setFailMsg(null)
+        try {
+            const { state, url } = await getOidcAuthUrl()
+            try {
+                sessionStorage.setItem(OIDC_STATE_KEY, state)
+            } catch {
+                fail('', t('sso.errState'))
+                return
+            }
+            window.location.assign(url)
+        } catch (err) {
+            const status = isAxiosError(err) ? err.response?.status : undefined
+            if (isAxiosError(err) && !err.response) fail('', t('errNetwork'))
+            else if (status === 503) fail('503', t('sso.notConfigured'))
+            else if (status === 429) fail('429', t('sso.throttled'))
+            else fail(String(status ?? ''), t('errServer'))
+        }
     }
 
     const received = seal?.received_shards ?? 0
@@ -352,9 +386,11 @@ export function LoginPage() {
             <>
                 <TermHead command={command} />
                 <span className="c">
-                    {isLdap
-                        ? `${requestLine}\n  user: ${username.trim()}\n  password: ••••••••`
-                        : `${requestLine}\n  X-Tuck-Token: tuck_••••••••`}
+                    {isSso
+                        ? `${requestLine}\n  ${t('sso.redirecting')}`
+                        : isLdap
+                          ? `${requestLine}\n  user: ${username.trim()}\n  password: ••••••••`
+                          : `${requestLine}\n  X-Tuck-Token: tuck_••••••••`}
                 </span>{' '}
                 <Cursor />
             </>
@@ -388,6 +424,8 @@ export function LoginPage() {
                     <span className="c">{`· ${received} / ${total}`}</span>
                 </>
             )
+        } else if (isSso) {
+            line = <span className="c">{`→ ${t('sso.termWaiting')}`}</span>
         } else if (isLdap) {
             line = username.trim() ? (
                 <>
@@ -493,11 +531,11 @@ export function LoginPage() {
 
                 <form autoComplete="off" className={styles.form} noValidate onSubmit={handleSubmit}>
                     <div className={styles.formHead}>
-                        <h2>{isLdap ? t('ldap.formTitle') : t('formTitle')}</h2>
-                        <span className={c.pill}>{isLdap ? 'ldap' : 'lookup-self'}</span>
+                        <h2>{isSso ? t('sso.formTitle') : isLdap ? t('ldap.formTitle') : t('formTitle')}</h2>
+                        <span className={c.pill}>{isSso ? 'oidc' : isLdap ? 'ldap' : 'lookup-self'}</span>
                     </div>
                     <div aria-label={t('modeLabel')} className={styles.modes} role="tablist">
-                        {(['token', 'ldap'] as const).map((m) => (
+                        {((ssoEnabled ? ['token', 'ldap', 'sso'] : ['token', 'ldap']) as Mode[]).map((m) => (
                             <button
                                 aria-selected={mode === m}
                                 className={styles.mode}
@@ -522,7 +560,20 @@ export function LoginPage() {
                         </div>
                     )}
                     <fieldset disabled={sealed || busy}>
-                        {isLdap ? (
+                        {isSso ? (
+                            <div className={c.field}>
+                                <div className={c.hint} data-tone={phase === 'fail' && failMsg?.code === '' ? 'err' : undefined}>
+                                    {phase === 'fail' && failMsg && failMsg.code === '' ? (
+                                        <>
+                                            <ShellIcon name="warn" size={14} />
+                                            {failMsg.text}
+                                        </>
+                                    ) : (
+                                        t('sso.hint')
+                                    )}
+                                </div>
+                            </div>
+                        ) : isLdap ? (
                             <>
                         <div className={c.field}>
                             <label htmlFor="login-username">{t('ldap.username')}</label>
@@ -658,11 +709,11 @@ export function LoginPage() {
                                 type="submit"
                             >
                                 <span className={c.spinner} />
-                                {sealed ? t('submitSealed') : t('signIn')}
+                                {sealed ? t('submitSealed') : isSso ? t('sso.signIn') : t('signIn')}
                             </button>
                         )}
                     </fieldset>
-                    <div className={styles.note}>{isLdap ? t('ldap.note') : t('tokenHint')}</div>
+                    <div className={styles.note}>{isSso ? t('sso.note') : isLdap ? t('ldap.note') : t('tokenHint')}</div>
                 </form>
 
                 <div className={c.seal} data-tone={sealed ? 'red' : undefined}>

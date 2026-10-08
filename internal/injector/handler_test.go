@@ -83,10 +83,7 @@ func TestInjectBasic(t *testing.T) {
 		t.Fatal("expected patch")
 	}
 
-	raw, err := base64.StdEncoding.DecodeString(string(resp.Response.Patch))
-	if err != nil {
-		t.Fatalf("decode patch base64: %v", err)
-	}
+	raw := resp.Response.Patch
 
 	var patches []jsonPatch
 	if err := json.Unmarshal(raw, &patches); err != nil {
@@ -161,7 +158,7 @@ func TestInjectCustomOutputDir(t *testing.T) {
 	if resp.Response.Patch == nil {
 		t.Fatal("expected patch")
 	}
-	raw, _ := base64.StdEncoding.DecodeString(string(resp.Response.Patch))
+	raw := resp.Response.Patch
 	if !bytes.Contains(raw, []byte("/custom/secrets")) {
 		t.Fatalf("expected /custom/secrets in patch, got: %s", raw)
 	}
@@ -185,7 +182,7 @@ func TestInjectExistingVolumes(t *testing.T) {
 	if resp.Response.Patch == nil {
 		t.Fatal("expected patch")
 	}
-	raw, _ := base64.StdEncoding.DecodeString(string(resp.Response.Patch))
+	raw := resp.Response.Patch
 
 	var patches []jsonPatch
 	_ = json.Unmarshal(raw, &patches)
@@ -210,10 +207,7 @@ func TestInjectKubernetesAuthMountsNoStaticToken(t *testing.T) {
 		Spec: PodSpec{Containers: []Container{{Name: "app", Image: "nginx"}}},
 	}
 	resp := callWebhook(t, h, admissionBody(t, pod))
-	raw, err := base64.StdEncoding.DecodeString(string(resp.Response.Patch))
-	if err != nil {
-		t.Fatal(err)
-	}
+	raw := resp.Response.Patch
 	s := string(raw)
 	if bytes.Contains(raw, []byte("tuck-token")) || bytes.Contains(raw, []byte("TUCK_TOKEN_FILE")) {
 		t.Fatalf("kubernetes auth must not reference a static token: %s", s)
@@ -236,11 +230,39 @@ func TestInjectKubernetesAuthClusterEnv(t *testing.T) {
 		Spec: PodSpec{Containers: []Container{{Name: "app", Image: "nginx"}}},
 	}
 	resp := callWebhook(t, h, admissionBody(t, pod))
-	raw, err := base64.StdEncoding.DecodeString(string(resp.Response.Patch))
+	raw := resp.Response.Patch
+	if !bytes.Contains(raw, []byte(`"TUCK_K8S_CLUSTER"`)) || !bytes.Contains(raw, []byte(`"dc2"`)) {
+		t.Fatalf("expected TUCK_K8S_CLUSTER=dc2 env: %s", raw)
+	}
+}
+
+// The API server base64-decodes AdmissionResponse.patch exactly once; a second
+// layer of encoding makes the patch invalid and (failurePolicy: Ignore) the Pod
+// is silently created without the agent.
+func TestPatchWireFormatDecodesOnceToJSONPatch(t *testing.T) {
+	h := NewHandler("agent:1", nil)
+	pod := Pod{
+		Metadata: ObjectMeta{Annotations: map[string]string{
+			"tuck.io/inject": "true", "tuck.io/secrets": "db/pass:pass", "tuck.io/auth": "kubernetes",
+		}},
+		Spec: PodSpec{Containers: []Container{{Name: "app", Image: "x"}}},
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/mutate", bytes.NewReader(admissionBody(t, pod))))
+	var wire struct {
+		Response struct {
+			Patch string `json:"patch"`
+		} `json:"response"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &wire); err != nil {
+		t.Fatal(err)
+	}
+	dec, err := base64.StdEncoding.DecodeString(wire.Response.Patch)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(raw, []byte(`"TUCK_K8S_CLUSTER"`)) || !bytes.Contains(raw, []byte(`"dc2"`)) {
-		t.Fatalf("expected TUCK_K8S_CLUSTER=dc2 env: %s", raw)
+	var ops []jsonPatch
+	if err := json.Unmarshal(dec, &ops); err != nil || len(ops) == 0 {
+		t.Fatalf("patch after one base64 decode is not a JSON Patch: %v\n%s", err, dec)
 	}
 }

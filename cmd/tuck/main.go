@@ -365,8 +365,12 @@ func main() {
 		log.Printf("tuck: cluster mode — followers wait for the leader to initialize the store")
 	}
 	startResult, startErr := c.StartWhenReady(ctx, time.Second)
-	if startErr != nil && !errors.Is(startErr, core.ErrNeedsUnseal) {
+	sealRetry := errors.Is(startErr, core.ErrSealUnavailable)
+	if startErr != nil && !errors.Is(startErr, core.ErrNeedsUnseal) && !sealRetry {
 		log.Fatalf("start core: %v", startErr)
+	}
+	if sealRetry {
+		log.Printf("tuck: WARNING auto-unseal failed, staying SEALED and retrying every 5s: %v", startErr)
 	}
 	if startResult != nil {
 		log.Printf("==========================================================")
@@ -407,10 +411,34 @@ func main() {
 	apiSrv := api.New(c)
 	// Restore barrier-persisted rate-limit config when the barrier is already
 	// open (dev seal, auto-unseal). Shamir-sealed servers restore in postUnseal.
-	if !errors.Is(startErr, core.ErrNeedsUnseal) {
+	if !errors.Is(startErr, core.ErrNeedsUnseal) && !sealRetry {
 		if persisted, cfgErr := c.GetSysConfig(ctx); cfgErr == nil {
 			apiSrv.ApplyRateConfig(persisted)
 		}
+	}
+	if sealRetry {
+		go func() {
+			tick := time.NewTicker(5 * time.Second)
+			defer tick.Stop()
+			for attempt := 1; ; attempt++ {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tick.C:
+				}
+				if ok, err := c.UnsealShard(ctx, ""); err != nil {
+					if attempt%12 == 1 {
+						log.Printf("tuck: auto-unseal still failing (node stays sealed): %v", err)
+					}
+				} else if ok {
+					log.Printf("tuck: auto-unseal succeeded — node is unsealed")
+					if persisted, cfgErr := c.GetSysConfig(ctx); cfgErr == nil {
+						apiSrv.ApplyRateConfig(persisted)
+					}
+					return
+				}
+			}
+		}()
 	}
 	apiSrv.StartLimiterCleanup(ctx)
 	handler := apiSrv.Handler()
@@ -471,13 +499,15 @@ func main() {
 		scheme = "https"
 	}
 	sealState := "unsealed"
-	if errors.Is(startErr, core.ErrNeedsUnseal) {
+	if errors.Is(startErr, core.ErrNeedsUnseal) || sealRetry {
 		sealState = "sealed"
 	}
 	log.Printf(`{"level":"info","msg":"tuck started","version":%q,"commit":%q,"seal":%q,"addr":%q,"state":%q}`,
 		version.Version, version.Commit, *sealType, *addr, sealState)
 	if errors.Is(startErr, core.ErrNeedsUnseal) {
 		log.Printf("tuck: SEALED — provide shards via POST %s://%s/v1/sys/unseal", scheme, *addr)
+	} else if sealRetry {
+		log.Printf("tuck: SEALED — waiting for the %s seal to become available", *sealType)
 	} else if *sealType == "dev" {
 		log.Printf("tuck: unsealed (dev seal) — %s://%s", scheme, *addr)
 		log.Printf("tuck: WARNING dev seal stores root key in plaintext at %q — dev only", *devSealKey)

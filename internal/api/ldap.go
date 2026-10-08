@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -55,6 +56,9 @@ func (s *Server) loginLDAP(w http.ResponseWriter, r *http.Request) {
 				"error":      "namespace selection required",
 				"namespaces": choice.Namespaces,
 			})
+		case errors.Is(err, authlda.ErrUnavailable):
+			log.Printf("tuck: ldap login for %q failed: %v", req.Username, err)
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "directory unavailable"})
 		case errors.Is(err, authlda.ErrNotConfigured):
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "LDAP auth not configured"})
 		case errors.Is(err, authlda.ErrInvalidCredentials):

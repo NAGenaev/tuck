@@ -36,6 +36,9 @@ type Server struct {
 	ipLimiter    *ratelimit.Limiter
 	tokenLimiter *ratelimit.Limiter
 	ldapThrottle loginThrottle
+	// oidcLimiter bounds the unauthenticated OIDC start/finish endpoints per
+	// source address; it is always on, independent of the sysconfig limiters.
+	oidcLimiter *ratelimit.Limiter
 }
 
 // New returns an HTTP server wired to the core's audit Dispatcher.
@@ -46,6 +49,7 @@ func New(c *core.Core) *Server {
 		audit:        c.Dispatcher(),
 		ipLimiter:    ratelimit.New(0, 0),
 		tokenLimiter: ratelimit.New(0, 0),
+		oidcLimiter:  ratelimit.New(5, 30),
 	}
 }
 
@@ -56,6 +60,7 @@ func NewWithAudit(c *core.Core, l audit.Loggable) *Server {
 		audit:        l,
 		ipLimiter:    ratelimit.New(0, 0),
 		tokenLimiter: ratelimit.New(0, 0),
+		oidcLimiter:  ratelimit.New(5, 30),
 	}
 }
 
@@ -78,6 +83,7 @@ func (s *Server) StartLimiterCleanup(ctx context.Context) {
 			case <-t.C:
 				s.ipLimiter.Cleanup(10 * time.Minute)
 				s.tokenLimiter.Cleanup(10 * time.Minute)
+				s.oidcLimiter.Cleanup(10 * time.Minute)
 			}
 		}
 	}()
@@ -221,6 +227,9 @@ func (s *Server) Handler() http.Handler {
 
 	// JWT/OIDC auth — login is unauthenticated; config and role management require a token
 	mux.HandleFunc("POST /v1/auth/jwt/login", s.loginJWT)
+	mux.HandleFunc("GET /v1/auth/oidc/status", s.oidcStatus)
+	mux.HandleFunc("GET /v1/auth/oidc/auth-url", s.oidcAuthURL)
+	mux.HandleFunc("POST /v1/auth/oidc/callback", s.oidcCallback)
 	mux.HandleFunc("GET /v1/auth/jwt/config", s.requireToken(s.getJWTConfig))
 	mux.HandleFunc("PUT /v1/auth/jwt/config", s.requireToken(s.putJWTConfig))
 	mux.HandleFunc("PUT /v1/auth/jwt/role/{name}", s.requireToken(s.putJWTRole))

@@ -1,7 +1,8 @@
 export const ROUTES = {
     AUTH: {
         ROOT: '/auth',
-        LOGIN: '/auth/login'
+        LOGIN: '/auth/login',
+        OIDC_CALLBACK: '/auth/oidc/callback'
     },
     DASHBOARD: {
         ROOT: '/dashboard',

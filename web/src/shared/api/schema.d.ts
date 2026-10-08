@@ -1111,6 +1111,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/oidc/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Is browser OIDC login (SSO) enabled */
+        get: operations["oidcStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/oidc/auth-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Start a browser OIDC login (authorization code + PKCE)
+         * @description Creates a one-time server-side state (nonce, PKCE verifier, 5 minute expiry) and returns the identity provider authorization URL to redirect the browser to.
+         */
+        get: operations["oidcAuthURL"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/oidc/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish a browser OIDC login
+         * @description Consumes the one-time state, redeems the authorization code with the stored PKCE verifier, validates the id_token (signature, issuer, audience, expiry, nonce) and maps it to a JWT role.
+         */
+        post: operations["oidcCallback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/jwt/config": {
         parameters: {
             query?: never;
@@ -1118,7 +1175,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get JWT provider config */
+        /**
+         * Get JWT provider config
+         * @description oidc_client_secret is never returned; oidc_client_secret_set reports whether one is stored.
+         */
         get: operations["getJWTConfig"];
         /** Set JWT provider config */
         put: operations["putJWTConfig"];
@@ -4599,6 +4659,134 @@ export interface operations {
             };
         };
     };
+    oidcStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                    };
+                };
+            };
+        };
+    };
+    oidcAuthURL: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Authorization URL and state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        url: string;
+                        state: string;
+                    };
+                };
+            };
+            /** @description Rate limited, or too many pending logins */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OIDC login not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    oidcCallback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string;
+                    state: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Tuck token */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            /** @description Unknown, expired or reused state, or code rejected by the provider */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description id_token failed validation */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No role matches the id_token claims */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Rate limited */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Identity provider unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OIDC login not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     getJWTConfig: {
         parameters: {
             query?: never;
@@ -4630,6 +4818,15 @@ export interface operations {
                     jwks_uri?: string;
                     issuer?: string;
                     bound_issuer?: string;
+                    audience?: string;
+                    default_ttl?: string;
+                    oidc_authorization_url?: string;
+                    oidc_token_url?: string;
+                    oidc_client_id?: string;
+                    /** @description Omit to keep the stored secret; empty string clears it. */
+                    oidc_client_secret?: string;
+                    oidc_redirect_uri?: string;
+                    oidc_scopes?: string;
                 };
             };
         };
@@ -4685,6 +4882,8 @@ export interface operations {
                     bound_subject?: string;
                     bound_audiences?: string[];
                     bound_claims?: Record<string, never>;
+                    /** @description Matches when the groups claim contains any of these. */
+                    bound_groups?: string[];
                     policies?: string[];
                     ttl?: string;
                 };

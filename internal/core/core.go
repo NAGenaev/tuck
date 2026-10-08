@@ -51,6 +51,12 @@ var (
 	// should poll SealStatus and surface POST /v1/sys/unseal to operators.
 	ErrNeedsUnseal = errors.New("core: seal requires manual unseal — supply shards via /v1/sys/unseal")
 
+	// ErrSealUnavailable is returned by Start when an already-initialized store
+	// could not be auto-unsealed (Transit/KMS unreachable, token rejected). The
+	// core stays sealed; the caller should keep retrying UnsealShard instead of
+	// exiting.
+	ErrSealUnavailable = errors.New("core: auto-unseal failed")
+
 	// ErrAwaitingInit is returned by Start on a cluster node that is not the
 	// leader while the store has not been initialized yet: only the leader may
 	// initialize, followers must wait for the initialized state to replicate.
@@ -251,7 +257,7 @@ func (c *Core) Start(ctx context.Context) (*StartResult, error) {
 			c.unsealCtx = ctx
 			return nil, ErrNeedsUnseal
 		}
-		return nil, fmt.Errorf("seal unseal: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrSealUnavailable, err)
 	}
 	if err := c.barrier.Unseal(ctx, rootKey); err != nil {
 		return nil, fmt.Errorf("barrier unseal: %w", err)
@@ -424,7 +430,12 @@ func (c *Core) SealStatus() SealStatusInfo {
 func (c *Core) Sealed() bool { return c.barrier.IsSealed() }
 
 // Seal re-seals the core, dropping the in-memory key.
-func (c *Core) Seal() { c.barrier.Seal() }
+func (c *Core) Seal() {
+	c.barrier.Seal()
+	if r, ok := c.seal.(interface{ Reset() }); ok {
+		r.Reset()
+	}
+}
 
 // --- Identity ---
 
@@ -1109,9 +1120,91 @@ func (c *Core) ConfigureJWT(ctx context.Context, cfg *jwt.Config) error {
 	return c.jwtStore.PutConfig(ctx, cfg)
 }
 
-// GetJWTConfig returns the current JWT auth configuration.
+// GetJWTConfig returns the current JWT auth configuration with the OIDC
+// client secret redacted.
 func (c *Core) GetJWTConfig(ctx context.Context) (*jwt.Config, error) {
-	return c.jwtStore.GetConfig(ctx)
+	cfg, err := c.jwtStore.GetConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cfg.OIDCClientSecret = ""
+	return cfg, nil
+}
+
+// ConfigureJWTKeepSecret stores cfg but keeps the previously stored OIDC client
+// secret, so editing the config does not require re-entering it.
+func (c *Core) ConfigureJWTKeepSecret(ctx context.Context, cfg *jwt.Config) error {
+	if old, err := c.jwtStore.GetConfig(ctx); err == nil {
+		cfg.OIDCClientSecret = old.OIDCClientSecret
+	}
+	return c.jwtStore.PutConfig(ctx, cfg)
+}
+
+// HasJWTClientSecret reports whether an OIDC client secret is stored.
+func (c *Core) HasJWTClientSecret(ctx context.Context) bool {
+	cfg, err := c.jwtStore.GetConfig(ctx)
+	return err == nil && cfg.OIDCClientSecret != ""
+}
+
+// OIDCEnabled reports whether the browser OIDC login is configured. A sealed
+// barrier or missing config simply reads as disabled.
+func (c *Core) OIDCEnabled(ctx context.Context) bool {
+	cfg, err := c.jwtStore.GetConfig(ctx)
+	return err == nil && cfg.OIDCEnabled()
+}
+
+// OIDCAuthURL starts a browser login: it records the nonce and PKCE verifier
+// server-side and returns the IdP redirect URL together with the state id.
+func (c *Core) OIDCAuthURL(ctx context.Context) (authURL, state string, err error) {
+	cfg, err := c.jwtStore.GetConfig(ctx)
+	if err != nil {
+		if errors.Is(err, jwt.ErrConfigNotFound) {
+			return "", "", jwt.ErrOIDCNotConfigured
+		}
+		return "", "", err
+	}
+	authURL, state, st, err := cfg.NewOIDCAttempt()
+	if err != nil {
+		return "", "", err
+	}
+	if err := c.jwtStore.PutOIDCState(ctx, state, st); err != nil {
+		return "", "", err
+	}
+	return authURL, state, nil
+}
+
+// LoginOIDC completes a browser login: the one-time state is consumed, the
+// code is redeemed with the stored PKCE verifier, and the id_token (checked
+// against the stored nonce) is mapped to a role like a direct JWT login.
+func (c *Core) LoginOIDC(ctx context.Context, code, state string) (*token.Token, error) {
+	cfg, err := c.jwtStore.GetConfig(ctx)
+	if err != nil {
+		if errors.Is(err, jwt.ErrConfigNotFound) {
+			return nil, jwt.ErrOIDCNotConfigured
+		}
+		return nil, err
+	}
+	if !cfg.OIDCEnabled() {
+		return nil, jwt.ErrOIDCNotConfigured
+	}
+	st, err := c.jwtStore.TakeOIDCState(ctx, state)
+	if err != nil {
+		return nil, err
+	}
+	provider := jwt.NewOIDCProvider(*cfg)
+	idToken, err := provider.ExchangeCode(ctx, code, st.Verifier)
+	if err != nil {
+		return nil, err
+	}
+	roles, err := c.jwtStore.AllRoles(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load jwt roles: %w", err)
+	}
+	result, err := provider.LoginIDToken(ctx, idToken, st.Nonce, roles)
+	if err != nil {
+		return nil, err
+	}
+	return c.issueJWTLogin(ctx, result)
 }
 
 // PutJWTRole creates or updates a JWT auth role.
@@ -1149,6 +1242,10 @@ func (c *Core) LoginJWT(ctx context.Context, tokenStr string) (*token.Token, err
 	if err != nil {
 		return nil, err
 	}
+	return c.issueJWTLogin(ctx, result)
+}
+
+func (c *Core) issueJWTLogin(ctx context.Context, result *jwt.LoginResult) (*token.Token, error) {
 	if err := c.checkLoginNamespace(ctx, result.TuckNamespace); err != nil {
 		return nil, err
 	}

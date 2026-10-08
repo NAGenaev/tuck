@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 )
 
@@ -51,5 +52,26 @@ func TestSplitCSV(t *testing.T) {
 	got := splitCSV(" a, b ,,c ")
 	if len(got) != 3 || got[0] != "a" || got[2] != "c" {
 		t.Errorf("splitCSV = %v", got)
+	}
+}
+
+func TestReadJSONArgStripsBOMFromStdin(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.WriteString("\xef\xbb\xbf[{\"path\":\"secret/*\"}]"); err != nil {
+		t.Fatal(err)
+	}
+	_ = w.Close()
+	old := os.Stdin
+	os.Stdin = r
+	defer func() { os.Stdin = old }()
+
+	if got := readJSONArg("-"); got != `[{"path":"secret/*"}]` {
+		t.Fatalf("got %q", got)
+	}
+	if got := readJSONArg("[]"); got != "[]" {
+		t.Fatalf("literal arg changed: %q", got)
 	}
 }

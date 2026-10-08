@@ -71,6 +71,14 @@ func (s *Server) putJWTConfig(w http.ResponseWriter, r *http.Request) {
 		Issuer     string `json:"issuer"`
 		Audience   string `json:"audience"`
 		DefaultTTL string `json:"default_ttl"`
+
+		OIDCAuthorizationURL string `json:"oidc_authorization_url"`
+		OIDCTokenURL         string `json:"oidc_token_url"`
+		OIDCClientID         string `json:"oidc_client_id"`
+		// nil keeps the stored secret; "" clears it (public client).
+		OIDCClientSecret *string `json:"oidc_client_secret"`
+		OIDCRedirectURI  string  `json:"oidc_redirect_uri"`
+		OIDCScopes       string  `json:"oidc_scopes"`
 	}
 	if err := json.Unmarshal(body, &wire); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -82,9 +90,17 @@ func (s *Server) putJWTConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := &authjwt.Config{
-		JWKSURI:  wire.JWKSURI,
-		Issuer:   wire.Issuer,
-		Audience: wire.Audience,
+		JWKSURI:              wire.JWKSURI,
+		Issuer:               wire.Issuer,
+		Audience:             wire.Audience,
+		OIDCAuthorizationURL: wire.OIDCAuthorizationURL,
+		OIDCTokenURL:         wire.OIDCTokenURL,
+		OIDCClientID:         wire.OIDCClientID,
+		OIDCRedirectURI:      wire.OIDCRedirectURI,
+		OIDCScopes:           wire.OIDCScopes,
+	}
+	if wire.OIDCClientSecret != nil {
+		cfg.OIDCClientSecret = *wire.OIDCClientSecret
 	}
 	if wire.DefaultTTL != "" {
 		d, err := time.ParseDuration(wire.DefaultTTL)
@@ -95,7 +111,15 @@ func (s *Server) putJWTConfig(w http.ResponseWriter, r *http.Request) {
 		cfg.DefaultTTL = d
 	}
 
-	if err := s.core.ConfigureJWT(r.Context(), cfg); err != nil {
+	if err := cfg.ValidateOIDC(); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	save := s.core.ConfigureJWT
+	if wire.OIDCClientSecret == nil {
+		save = s.core.ConfigureJWTKeepSecret
+	}
+	if err := save(r.Context(), cfg); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -117,11 +141,16 @@ func (s *Server) getJWTConfig(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, cfg)
+	// The secret itself is never returned; the flag lets the UI show "set".
+	raw, _ := json.Marshal(cfg)
+	out := map[string]any{}
+	_ = json.Unmarshal(raw, &out)
+	out["oidc_client_secret_set"] = s.core.HasJWTClientSecret(r.Context())
+	writeJSON(w, http.StatusOK, out)
 }
 
 // PUT /v1/auth/jwt/role/{name}
-// Body: {"bound_subject":"...","bound_claims":{...},"policies":["p1"],"ttl":"1h"}
+// Body: {"bound_subject":"...","bound_claims":{...},"bound_groups":["g"],"policies":["p1"],"ttl":"1h"}
 func (s *Server) putJWTRole(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {
@@ -141,6 +170,7 @@ func (s *Server) putJWTRole(w http.ResponseWriter, r *http.Request) {
 		BoundSubject   string            `json:"bound_subject"`
 		BoundClaims    map[string]string `json:"bound_claims"`
 		BoundAudiences []string          `json:"bound_audiences"`
+		BoundGroups    []string          `json:"bound_groups"`
 		Policies       []string          `json:"policies"`
 		TTL            string            `json:"ttl"`
 		TuckNamespace  string            `json:"tuck_namespace"`
@@ -163,6 +193,7 @@ func (s *Server) putJWTRole(w http.ResponseWriter, r *http.Request) {
 		BoundSubject:   wire.BoundSubject,
 		BoundClaims:    wire.BoundClaims,
 		BoundAudiences: wire.BoundAudiences,
+		BoundGroups:    wire.BoundGroups,
 		Policies:       wire.Policies,
 		TuckNamespace:  tuckNS,
 	}

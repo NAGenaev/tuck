@@ -31,7 +31,7 @@ server:
 
   # -- Shamir seal
   shamirSeal:
-    n: 5
+    "n": 5   # quoted: bare n is a YAML 1.1 boolean and Helm drops the key
     k: 3
     configFile: "/data/tuck-shamir.json"
 

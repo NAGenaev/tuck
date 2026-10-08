@@ -14,7 +14,7 @@ kubectl apply -f deploy/console/                 # optional: OpenShift Console U
 |------|----------|
 | `crd/` | TuckSecret CRD |
 | `server/` | Tuck server Deployment, Service, PVC, RBAC |
-| `operator/` | Operator Deployment + minikube overlay |
+| `operator/` | Operator Deployment + minikube overlay; `namespaced-rbac.yaml` — доступ к Secret только в командных namespace вместо cluster-wide; `restart-rbac.yaml` — для `restartTargets` |
 | `console/` | OpenShift Console (origin-console) for minikube |
 | `examples/` | Sample TuckSecret resources |
 

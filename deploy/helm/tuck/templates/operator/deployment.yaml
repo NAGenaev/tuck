@@ -46,6 +46,9 @@ spec:
             {{- if .Values.operator.enforceNamespacePaths }}
             - --enforce-namespace-paths
             {{- end }}
+            {{- if .Values.operator.enableRestartTargets }}
+            - --enable-restart-targets
+            {{- end }}
             {{- if .Values.operator.leaderElect }}
             - --leader-elect
             - --leader-namespace={{ .Values.operator.leaderNamespace | default (include "tuck.namespace" .) }}

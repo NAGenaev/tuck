@@ -157,6 +157,20 @@ operator:
   # operator ClusterRole.
   enforceNamespacePaths: false
 
+  # -- Act on spec.restartTargets (rolling restart when a synced value really
+  # changes). Adds patch on Deployments/StatefulSets/DaemonSets, bound with the
+  # same scope as Secrets below.
+  enableRestartTargets: false
+
+  rbac:
+    # -- "cluster": the operator may write Secrets (and restart workloads) in
+    # every namespace. "namespaces": only in the listed ones, via per-namespace
+    # RoleBindings -- recommended for multi-team clusters. TuckSecrets in other
+    # namespaces are then reported as errors instead of being synced.
+    scope: cluster
+    # -- Team namespaces for scope=namespaces.
+    namespaces: []
+
   # -- Namespace for the leader-election Lease object. Empty defaults to the
   # release namespace (the same namespace the operator itself runs in) — the
   # operator's own --leader-namespace flag default ("tuck-system") is only

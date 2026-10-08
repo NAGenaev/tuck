@@ -1,0 +1,54 @@
+# Least-privilege alternative to the cluster-wide Secret access in
+# deploy/operator/deployment.yaml.
+#
+# To use it: delete the "secrets" rule from the ClusterRole tuck-operator in
+# deployment.yaml, apply this file, and repeat the RoleBinding for every team
+# namespace the operator may write into. TuckSecrets in other namespaces then
+# fail with 403 instead of being synced.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tuck-operator-secrets
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tuck-operator-secrets
+  namespace: team-a            # one RoleBinding per team namespace
+subjects:
+  - kind: ServiceAccount
+    name: tuck-operator
+    namespace: tuck
+roleRef:
+  kind: ClusterRole
+  name: tuck-operator-secrets
+  apiGroup: rbac.authorization.k8s.io
+---
+# Leader election Lease (only with --leader-elect): one namespace, not cluster-wide.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tuck-operator-leader
+  namespace: tuck
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tuck-operator-leader
+  namespace: tuck
+subjects:
+  - kind: ServiceAccount
+    name: tuck-operator
+    namespace: tuck
+roleRef:
+  kind: Role
+  name: tuck-operator-leader
+  apiGroup: rbac.authorization.k8s.io

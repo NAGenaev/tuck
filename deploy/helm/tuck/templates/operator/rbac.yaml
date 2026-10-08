@@ -1,17 +1,25 @@
 {{- if .Values.operator.enabled }}
+{{- $name := printf "%s-operator" (include "tuck.fullname" .) }}
+{{- $ns := include "tuck.namespace" . }}
+{{- $scope := .Values.operator.rbac.scope | default "cluster" }}
+{{- if and (eq $scope "namespaces") (not .Values.operator.rbac.namespaces) }}
+{{- fail "operator.rbac.scope=namespaces requires operator.rbac.namespaces (the team namespaces the operator may write Secrets into)" }}
+{{- end }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ include "tuck.fullname" . }}-operator
-  namespace: {{ include "tuck.namespace" . }}
+  name: {{ $name }}
+  namespace: {{ $ns }}
   labels:
     {{- include "tuck.labels" . | nindent 4 }}
     app.kubernetes.io/component: operator
 ---
+# Base role: read TuckSecrets everywhere, write only their status. No access
+# to Secrets or workloads here -- those are granted below, per scope.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "tuck.fullname" . }}-operator
+  name: {{ $name }}
   labels:
     {{- include "tuck.labels" . | nindent 4 }}
 rules:
@@ -23,25 +31,147 @@ rules:
     resources: ["namespaces"]
     verbs: ["get"]
   {{- end }}
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get", "create", "update", "patch", "delete"]
-  - apiGroups: ["coordination.k8s.io"]
-    resources: ["leases"]
-    verbs: ["get", "create", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "tuck.fullname" . }}-operator
+  name: {{ $name }}
   labels:
     {{- include "tuck.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ include "tuck.fullname" . }}-operator
+  name: {{ $name }}
 subjects:
   - kind: ServiceAccount
-    name: {{ include "tuck.fullname" . }}-operator
-    namespace: {{ include "tuck.namespace" . }}
+    name: {{ $name }}
+    namespace: {{ $ns }}
+{{- if .Values.operator.leaderElect }}
+---
+# Leader election Lease lives in one namespace only.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}-leader
+  namespace: {{ .Values.operator.leaderNamespace | default $ns }}
+  labels:
+    {{- include "tuck.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}-leader
+  namespace: {{ .Values.operator.leaderNamespace | default $ns }}
+  labels:
+    {{- include "tuck.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}-leader
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ $ns }}
+{{- end }}
+---
+# Writing the destination Secrets.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $name }}-secrets
+  labels:
+    {{- include "tuck.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch", "delete"]
+{{- if .Values.operator.enableRestartTargets }}
+---
+# spec.restartTargets: patch the pod template to trigger a rolling restart.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $name }}-restart
+  labels:
+    {{- include "tuck.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "patch"]
+{{- end }}
+{{- if eq $scope "cluster" }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $name }}-secrets
+  labels:
+    {{- include "tuck.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $name }}-secrets
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ $ns }}
+{{- if .Values.operator.enableRestartTargets }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $name }}-restart
+  labels:
+    {{- include "tuck.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $name }}-restart
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ $ns }}
+{{- end }}
+{{- else }}
+{{- range .Values.operator.rbac.namespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}-secrets
+  namespace: {{ . }}
+  labels:
+    {{- include "tuck.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $name }}-secrets
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ $ns }}
+{{- if $.Values.operator.enableRestartTargets }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}-restart
+  namespace: {{ . }}
+  labels:
+    {{- include "tuck.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $name }}-restart
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ $ns }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- end }}

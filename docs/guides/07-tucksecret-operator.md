@@ -118,6 +118,26 @@ kubectl annotate namespace team-a tuck.io/allowed-paths="shared/tls,platform/com
 
 Аннотацию Namespace могут менять только администраторы кластера, поэтому команда не может расширить себе доступ из своего namespace. Политика оператора в Tuck при этом должна по-прежнему быть ограничена (например, `secret/*` на чтение, но не `root`): флаг — это второй рубеж, а не замена ACL.
 
+## Минимальные права оператора в Kubernetes
+
+По умолчанию ClusterRole оператора разрешает писать Secret **во всех** namespace — при компрометации оператора это чтение/подмена любого Secret кластера. Для многокомандных кластеров ограничьте запись списком командных namespace:
+
+```yaml
+operator:
+  enforceNamespacePaths: true
+  rbac:
+    scope: namespaces
+    namespaces: [team-a, team-b]
+```
+
+Тогда:
+
+- Secret (и `patch` на Deployment/StatefulSet/DaemonSet при `enableRestartTargets`) выдаются только `RoleBinding`-ами в перечисленных namespace; кластерным остаётся лишь чтение TuckSecret (и `get namespaces` при `enforceNamespacePaths`);
+- Lease лидер-выборов — `Role` в одном namespace, не cluster-wide;
+- TuckSecret в namespace вне списка получает в `status` ошибку 403, а не синхронизируется. Новая команда = добавить её namespace в `rbac.namespaces` и выполнить `helm upgrade`.
+
+Без Helm: `deploy/operator/namespaced-rbac.yaml`.
+
 ## Проверка
 
 | Действие | Ожидаемый результат |

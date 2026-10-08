@@ -11,8 +11,10 @@ import {
     TeamRequest,
     TeamResult,
     createTeam,
+    PolicySyncItem,
     listK8sClusters,
-    planTeam
+    planTeam,
+    syncTeamPolicies
 } from '@shared/api/endpoints/teams'
 import { CopyButton, Icon, toast } from '@shared/ui/kit'
 import { Page } from '@shared/ui/page/page'
@@ -133,6 +135,23 @@ export function TeamsPage() {
         setBindings((bs) => bs.map((b) => (b.id === id ? { ...b, ...p } : b)))
         setPlan(null)
     }
+
+    const [syncItems, setSyncItems] = useState<null | PolicySyncItem[]>(null)
+    const syncPreview = useMutation({
+        mutationFn: () => syncTeamPolicies(true),
+        onError: (e) => toast.error(t('sync.failed'), errorText(e)),
+        onSuccess: (items) => setSyncItems(items)
+    })
+    const syncApply = useMutation({
+        mutationFn: () => syncTeamPolicies(false),
+        onError: (e) => toast.error(t('sync.failed'), errorText(e)),
+        onSuccess: (items) => {
+            setSyncItems(items)
+            toast.success(t('sync.done'), t('sync.doneMsg', { n: items.filter((i) => i.action === 'updated').length }))
+            void qc.invalidateQueries()
+        }
+    })
+    const pending = syncItems?.filter((i) => i.action === 'would_update').length ?? 0
 
     const hasConflict = !!plan?.items.some((i) => i.action === 'conflict')
     const busy = preview.isPending || create.isPending
@@ -330,6 +349,58 @@ export function TeamsPage() {
                     </div>
                 </div>
             )}
+
+            <section className={styles.panel} style={{ marginTop: 20 }}>
+                <div className={styles.panelH}>
+                    <h3>{t('sync.title')}</h3>
+                </div>
+                <div className={styles.panelB}>
+                    <p className={styles.hint}>
+                        <Trans components={rich} i18nKey="sync.hint" ns="teams" />
+                    </p>
+                    {syncItems && (
+                        <table className={styles.plan}>
+                            <thead>
+                                <tr>
+                                    <th>{t('sync.namespace')}</th>
+                                    <th>{t('sync.policy')}</th>
+                                    <th>{t('plan.action')}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {syncItems.length === 0 && (
+                                    <tr>
+                                        <td colSpan={3}>{t('sync.none')}</td>
+                                    </tr>
+                                )}
+                                {syncItems.map((it) => (
+                                    <tr key={`${it.namespace}/${it.policy}`}>
+                                        <td className={styles.mono}>{it.namespace}</td>
+                                        <td className={styles.mono}>{it.policy}</td>
+                                        <td>
+                                            <Pill tone={it.action === 'unchanged' ? 'mute' : 'brass'}>
+                                                {t(`sync.action.${it.action}`)}
+                                            </Pill>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+                <div className={styles.actions}>
+                    <Button loading={syncPreview.isPending} onClick={() => syncPreview.mutate()} variant="default">
+                        {t('sync.preview')}
+                    </Button>
+                    <Button
+                        disabled={!syncItems || pending === 0}
+                        loading={syncApply.isPending}
+                        onClick={() => syncApply.mutate()}
+                    >
+                        {t('sync.apply', { n: pending })}
+                    </Button>
+                </div>
+            </section>
         </Page>
     )
 }

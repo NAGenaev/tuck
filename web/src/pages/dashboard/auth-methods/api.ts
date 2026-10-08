@@ -85,6 +85,7 @@ export async function generateSecretId(name: string): Promise<SecretIdResp> {
 
 export interface JwtConfigFull {
     audience?: string
+    ca_cert?: string
     default_ttl?: number
     issuer?: string
     jwks_uri: string
@@ -124,6 +125,8 @@ export async function getJwtConfig(): Promise<JwtConfigFull> {
 
 export async function putJwtConfig(body: {
     audience?: string
+    /** PEM of the identity provider CA; omitted keeps the stored one, '' clears it */
+    ca_cert?: string
     default_ttl?: string
     issuer?: string
     jwks_uri: string
@@ -162,6 +165,8 @@ export interface LdapConfigFull {
     group_attr?: string
     group_dn?: string
     group_filter?: string
+    /** how often live LDAP tokens are re-validated against the directory: "5m" (default), "off" */
+    recheck_interval?: string
     starttls?: boolean
     tls_insecure?: boolean
     urls: string[]

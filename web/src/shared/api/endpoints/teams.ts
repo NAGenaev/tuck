@@ -53,6 +53,21 @@ export async function createTeam(req: TeamRequest): Promise<TeamResult> {
     return { ...data, items: data.items ?? [] }
 }
 
+export interface PolicySyncItem {
+    action: 'unchanged' | 'updated' | 'would_update'
+    namespace: string
+    policy: string
+}
+
+/** Brings the team-admin/developer/reader policies of onboarded teams up to the current templates. */
+export async function syncTeamPolicies(dryRun: boolean, name?: string): Promise<PolicySyncItem[]> {
+    const { data } = await instance.post<{ policies?: PolicySyncItem[] }>('/v1/sys/teams/sync', {
+        dry_run: dryRun,
+        name: name || undefined
+    })
+    return data.policies ?? []
+}
+
 export async function listK8sClusters(): Promise<string[]> {
     const { data } = await instance.get<{ clusters?: string[] }>('/v1/auth/kubernetes/clusters')
     return data.clusters ?? []

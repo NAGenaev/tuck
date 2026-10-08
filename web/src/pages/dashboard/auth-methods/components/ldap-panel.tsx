@@ -44,6 +44,7 @@ interface Draft {
     group_attr: string
     group_dn: string
     group_filter: string
+    recheck_interval: string
     starttls: boolean
     tls_insecure: boolean
     urls: string[]
@@ -58,6 +59,7 @@ const toDraft = (c?: LdapConfigFull): Draft => ({
     group_attr: c?.group_attr ?? '',
     group_dn: c?.group_dn ?? '',
     group_filter: c?.group_filter ?? '',
+    recheck_interval: c?.recheck_interval ?? '',
     starttls: !!c?.starttls,
     tls_insecure: !!c?.tls_insecure,
     urls: c?.urls ?? [],
@@ -109,6 +111,7 @@ export function LdapPanel() {
                 group_attr: d.group_attr.trim() || undefined,
                 group_dn: d.group_dn.trim() || undefined,
                 group_filter: d.group_filter.trim() || undefined,
+                recheck_interval: d.recheck_interval.trim() || undefined,
                 starttls: d.starttls,
                 tls_insecure: d.tls_insecure,
                 urls: d.urls,
@@ -270,6 +273,14 @@ export function LdapPanel() {
                             onChange={(e) => set('group_filter', e.currentTarget.value)}
                             placeholder="(&(objectClass=groupOfNames)(member={{.UserDN}}))"
                             value={draft.group_filter}
+                        />
+                    </Field>
+                    <Field hint={t('ldap.f.recheckHint')} label="recheck_interval">
+                        <TextInput
+                            aria-label="recheck_interval"
+                            onChange={(e) => set('recheck_interval', e.currentTarget.value)}
+                            placeholder="5m"
+                            value={draft.recheck_interval}
                         />
                     </Field>
                     <Field hint={t('ldap.f.caCertHint')} label="ca_cert">

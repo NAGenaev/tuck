@@ -66,5 +66,22 @@
     "another": "Onboard another",
     "next": "Last step on the cluster side: annotate each Kubernetes namespace so the <b>operator</b> reads this team's secrets. Run it on the matching cluster:",
     "noHints": "No Kubernetes bindings were added, so there is nothing to annotate yet. When the team deploys TuckSecret resources, annotate its namespace with tuck.io/tuck-namespace."
+  },
+  "sync": {
+    "title": "Update policies of existing teams",
+    "hint": "Policies <code>team-admin</code>, <code>team-developer</code> and <code>team-reader</code> are written when a team is onboarded. After Tuck changes these templates, this brings the policies of <b>all</b> onboarded teams up to date. Policies a team deleted or renamed are left alone.",
+    "preview": "Check",
+    "apply": "Update ({{n}})",
+    "namespace": "Namespace",
+    "policy": "Policy",
+    "none": "No team policies found.",
+    "failed": "Could not update policies",
+    "done": "Policies updated",
+    "doneMsg": "Changed: {{n}}",
+    "action": {
+      "unchanged": "up to date",
+      "would_update": "will change",
+      "updated": "updated"
+    }
   }
 }

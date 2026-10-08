@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { Button, PasswordInput, TextInput } from '@mantine/core'
+import { Button, PasswordInput, Textarea, TextInput } from '@mantine/core'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
@@ -86,6 +86,7 @@ export function JwtPanel() {
     const [oidcClearSecret, setOidcClearSecret] = useState(false)
     const [oidcRedirect, setOidcRedirect] = useState('')
     const [oidcScopes, setOidcScopes] = useState('')
+    const [caCert, setCaCert] = useState('')
     const [cfgTouched, setCfgTouched] = useState(false)
     const loadCfg = (d: NonNullable<typeof cfg.data>) => {
         setJwks(d.jwks_uri ?? '')
@@ -99,6 +100,7 @@ export function JwtPanel() {
         setOidcClearSecret(false)
         setOidcRedirect(d.oidc_redirect_uri ?? '')
         setOidcScopes(d.oidc_scopes ?? '')
+        setCaCert(d.ca_cert ?? '')
     }
     useEffect(() => {
         if (cfg.data) loadCfg(cfg.data)
@@ -116,6 +118,7 @@ export function JwtPanel() {
         oidcClientId.trim() !== (cfg.data.oidc_client_id ?? '') ||
         oidcRedirect.trim() !== (cfg.data.oidc_redirect_uri ?? '') ||
         oidcScopes.trim() !== (cfg.data.oidc_scopes ?? '') ||
+        caCert.trim() !== (cfg.data.ca_cert ?? '').trim() ||
         oidcSecret !== '' ||
         oidcClearSecret
     const secretSet = cfg.data?.oidc_client_secret_set === true
@@ -124,6 +127,7 @@ export function JwtPanel() {
         mutationFn: () =>
             putJwtConfig({
                 audience: audience.trim() || undefined,
+                ca_cert: caCert.trim(),
                 default_ttl: toDur(defTtl),
                 issuer: issuer.trim() || undefined,
                 jwks_uri: jwks.trim(),
@@ -248,6 +252,18 @@ export function JwtPanel() {
                             />
                         </Field>
                     </div>
+                    <Field hint={t('jwt.f.caCertHint')} label="ca_cert">
+                        <Textarea
+                            aria-label="ca_cert"
+                            autosize
+                            minRows={3}
+                            onChange={(e) => setCaCert(e.currentTarget.value)}
+                            placeholder="-----BEGIN CERTIFICATE-----"
+                            spellCheck={false}
+                            styles={{ input: { fontFamily: 'monospace', fontSize: 12 } }}
+                            value={caCert}
+                        />
+                    </Field>
                     <TtlField
                         description={t('jwt.f.defaultTtlHint')}
                         label="default_ttl"

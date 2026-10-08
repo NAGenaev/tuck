@@ -311,6 +311,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sys/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Onboard a team (namespace + policies + LDAP/K8s roles) in one step
+         * @description All-or-nothing. With dry_run=true nothing is changed and the plan is returned. Root namespace only.
+         */
+        post: operations["onboardTeam"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sys/namespaces": {
         parameters: {
             query?: never;
@@ -2129,6 +2149,47 @@ export interface components {
                 [key: string]: string;
             };
         };
+        TeamRequest: {
+            name: string;
+            description?: string;
+            owner?: string;
+            labels?: {
+                [key: string]: string;
+            };
+            /** @description LDAP groups per access level */
+            groups: {
+                admin?: string[];
+                developer?: string[];
+                reader?: string[];
+            };
+            k8s?: {
+                cluster?: string;
+                namespace: string;
+                service_account: string;
+                /** @enum {string} */
+                access?: "reader" | "developer";
+            }[];
+            /** @description Go duration, e.g. 8h */
+            ttl?: string;
+            dry_run?: boolean;
+        };
+        TeamResult: {
+            namespace?: string;
+            dry_run?: boolean;
+            items?: {
+                /** @enum {string} */
+                kind?: "namespace" | "policy" | "ldap_role" | "k8s_role";
+                name?: string;
+                /** @enum {string} */
+                action?: "create" | "conflict";
+                detail?: string;
+            }[];
+            k8s_hints?: {
+                cluster?: string;
+                namespace?: string;
+                annotation?: string;
+            }[];
+        };
         /** @description Editable, non-secret namespace metadata. PUT replaces all three fields. */
         NamespaceMetadata: {
             description?: string;
@@ -2836,6 +2897,60 @@ export interface operations {
             };
             /** @description Named sink not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    onboardTeam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamRequest"];
+            };
+        };
+        responses: {
+            /** @description Dry-run plan */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamResult"];
+                };
+            };
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamResult"];
+                };
+            };
+            /** @description Invalid spec */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Something already exists; nothing was changed */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

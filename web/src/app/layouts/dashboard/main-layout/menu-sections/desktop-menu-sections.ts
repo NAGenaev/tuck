@@ -46,6 +46,7 @@ export const useDesktopMenuSections = (): MenuItem[] => {
                     href: ROUTES.DASHBOARD.AUTH_METHODS,
                     icon: 'login'
                 },
+                { id: 'teams', name: t('nav.teams'), href: ROUTES.DASHBOARD.TEAMS, icon: 'folders' },
                 {
                     id: 'namespaces',
                     name: t('nav.namespaces'),

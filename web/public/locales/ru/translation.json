@@ -17,7 +17,8 @@
     "tucksecrets": "TuckSecret",
     "operations": "Эксплуатация",
     "cluster": "Кластер",
-    "auditSinks": "Аудит"
+    "auditSinks": "Аудит",
+    "teams": "Команды"
   },
   "header": {
     "version": "Версия {{version}}",
@@ -44,7 +45,8 @@
     "tokenRoles": "Роли токенов",
     "auditSinks": "Аудит",
     "cluster": "Кластер",
-    "mounts": "Точки монтирования"
+    "mounts": "Точки монтирования",
+    "teams": "Команды"
   },
   "common": {
     "save": "Сохранить",

@@ -1,0 +1,70 @@
+{
+  "title": "Onboard a team",
+  "eyebrow": "Access · Onboarding",
+  "h1a": "Onboard",
+  "h1b": "a team",
+  "lead": "One form creates the <b>namespace</b>, three <b>policies</b> (admin, developer, reader) and the <b>LDAP roles</b> that map your domain groups onto them. Optionally it also lets chosen Kubernetes ServiceAccounts log in. Everything is created together or not at all.",
+  "team": {
+    "title": "Team",
+    "name": "Namespace name",
+    "nameHint": "Lowercase letters, digits and dashes; \"/\" groups names (team-a/project-x). Cannot be changed later.",
+    "description": "Description",
+    "owner": "Owner",
+    "ttl": "Token lifetime",
+    "ttlHint": "Optional, e.g. 30m or 8h. Empty = server default."
+  },
+  "groups": {
+    "title": "Domain groups",
+    "hint": "Enter group names or full DNs exactly as the directory returns them (<code>CN=payments-dev,OU=Groups,DC=bank,DC=local</code>). A person in several groups gets the highest level. At least one group is required.",
+    "admin": "Administrators",
+    "adminHint": "Read, write, delete and list secrets; view policies",
+    "developer": "Developers",
+    "developerHint": "Read, write and list secrets (no delete)",
+    "reader": "Read-only",
+    "readerHint": "Read and list secrets"
+  },
+  "k8s": {
+    "title": "Kubernetes workloads",
+    "add": "Add",
+    "hint": "Optional. Lets a ServiceAccount log in on its own (injector, CSI). <b>The operator needs nothing here</b>: it uses its own identity and the namespace annotation shown after creation.",
+    "cluster": "Cluster",
+    "defaultCluster": "default",
+    "namespace": "K8s namespace",
+    "serviceAccount": "ServiceAccount",
+    "access": "Access",
+    "remove": "Remove"
+  },
+  "plan": {
+    "title": "What will be created",
+    "empty": "Fill in the form and press Preview. Nothing is changed until you create.",
+    "preview": "Preview",
+    "create": "Create",
+    "kind": "Object",
+    "name": "Name",
+    "action": "Result"
+  },
+  "kind": {
+    "namespace": "Namespace",
+    "policy": "Policy",
+    "ldap_role": "LDAP role",
+    "k8s_role": "K8s role"
+  },
+  "action": {
+    "create": "will be created",
+    "created": "created",
+    "conflict": "already exists"
+  },
+  "errors": {
+    "name": "Use lowercase letters, digits and dashes",
+    "ttl": "Use a number with s, m or h, e.g. 8h"
+  },
+  "toast": {
+    "created": "Team onboarded"
+  },
+  "done": {
+    "title": "Team {{name}} is ready",
+    "another": "Onboard another",
+    "next": "Last step on the cluster side: annotate each Kubernetes namespace so the <b>operator</b> reads this team's secrets. Run it on the matching cluster:",
+    "noHints": "No Kubernetes bindings were added, so there is nothing to annotate yet. When the team deploys TuckSecret resources, annotate its namespace with tuck.io/tuck-namespace."
+  }
+}

@@ -17,7 +17,8 @@
     "tucksecrets": "TuckSecret",
     "operations": "Operations",
     "cluster": "Cluster",
-    "auditSinks": "Audit Sinks"
+    "auditSinks": "Audit Sinks",
+    "teams": "Teams"
   },
   "header": {
     "version": "Version {{version}}",
@@ -44,7 +45,8 @@
     "tokenRoles": "Token Roles",
     "auditSinks": "Audit Sinks",
     "cluster": "Cluster",
-    "mounts": "Mounts"
+    "mounts": "Mounts",
+    "teams": "Teams"
   },
   "common": {
     "save": "Save",

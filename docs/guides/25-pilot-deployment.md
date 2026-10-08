@@ -80,6 +80,22 @@ tuckcli auth kubernetes role put tuck tuck-operator --policies=operator-read --t
 
 Оператор ставится Helm с `operator.enforceNamespacePaths=true` — TuckSecret в namespace `team-a` читает только `team-a/...` ([07](07-tucksecret-operator.md)). Для нескольких кластеров задайте `operator.tuckCluster`.
 
+### 4a. Подключение команды (UI или API)
+
+На каждую новую команду платформенный администратор делает одну операцию — страница **Teams** в веб-интерфейсе или `POST /v1/sys/teams`:
+
+```bash
+curl -X POST $TUCK/v1/sys/teams -H "X-Tuck-Token: $ROOT" -d '{
+  "name": "team-payments", "owner": "pay-lead@bank.local", "ttl": "8h",
+  "groups": {"admin": ["CN=pay-admins,OU=Groups,DC=bank,DC=local"],
+             "developer": ["CN=pay-dev,OU=Groups,DC=bank,DC=local"],
+             "reader": ["CN=pay-audit,OU=Groups,DC=bank,DC=local"]},
+  "k8s": [{"cluster": "dc2", "namespace": "payments", "service_account": "api", "access": "developer"}]
+}'
+```
+
+Создаются: namespace, политики `team-admin` (секреты полностью, политики только чтение), `team-developer` (чтение/запись/список), `team-reader` (чтение/список), LDAP-роли `<namespace>-admin|developer|reader` и роли ServiceAccount из `k8s`. Добавьте `"dry_run": true`, чтобы увидеть план без изменений. Если что-то уже существует (namespace, роль), операция отвечает 409 и ничего не меняет; ошибка посреди выполнения откатывает уже созданное. Для оператора роль не нужна: пометьте namespace кластера аннотацией `tuck.io/tuck-namespace: team-payments` (ответ содержит готовые подсказки). Для зеркальных кластеров добавьте по привязке на каждый кластер. Политики команды не дают ей создавать auth-роли — группы привязывает только платформенный администратор.
+
 ### 5. Миграция из Git (ansible-vault)
 
 1. На доверенной машине расшифруйте файлы: `ansible-vault decrypt` (или `view`) — вывод **не в Git и не на общий диск**.

@@ -138,6 +138,7 @@ func (s *Server) Handler() http.Handler {
 	// "/stats" suffix (formerly its own route) is now dispatched from inside
 	// getNamespace since {name...} would otherwise swallow it as part of name.
 	mux.HandleFunc("POST /v1/sys/namespaces", s.requireToken(s.createNamespace))
+	mux.HandleFunc("POST /v1/sys/teams", s.requireToken(s.onboardTeam))
 	mux.HandleFunc("GET /v1/sys/namespaces/{name...}", s.requireToken(s.getNamespace))
 	mux.HandleFunc("DELETE /v1/sys/namespaces/{name...}", s.requireToken(s.deleteNamespace))
 	mux.HandleFunc("PUT /v1/sys/namespaces/{name...}", s.requireToken(s.updateNamespace))

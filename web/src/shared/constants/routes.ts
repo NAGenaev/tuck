@@ -18,6 +18,7 @@ export const ROUTES = {
         AUDIT_SINKS: '/dashboard/audit-sinks',
         CLUSTER: '/dashboard/cluster',
         MOUNTS: '/dashboard/mounts',
+        TEAMS: '/dashboard/teams',
         TUCKSECRETS: '/dashboard/tucksecrets'
     }
 } as const

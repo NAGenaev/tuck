@@ -20,6 +20,7 @@ import { MountsPage } from '@pages/dashboard/mounts/mounts.page'
 import { NamespacesPage } from '@pages/dashboard/namespaces/namespaces.page'
 import { PoliciesPage } from '@pages/dashboard/policies/policies.page'
 import { StatusPage } from '@pages/dashboard/status/status.page'
+import { TeamsPage } from '@pages/dashboard/teams/teams.page'
 import { TokenRolesPage } from '@pages/dashboard/token-roles/token-roles.page'
 import { TokensPage } from '@pages/dashboard/tokens/tokens.page'
 import { TuckSecretsPage } from '@pages/dashboard/tucksecrets/tucksecrets.page'
@@ -55,6 +56,7 @@ const router = createBrowserRouter(
                         { path: ROUTES.DASHBOARD.AUDIT_SINKS, element: <AuditSinksPage /> },
                         { path: ROUTES.DASHBOARD.CLUSTER, element: <ClusterPage /> },
                         { path: ROUTES.DASHBOARD.MOUNTS, element: <MountsPage /> },
+                        { path: ROUTES.DASHBOARD.TEAMS, element: <TeamsPage /> },
                         { path: ROUTES.DASHBOARD.TUCKSECRETS, element: <TuckSecretsPage /> }
                     ]
                 }

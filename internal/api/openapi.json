@@ -374,6 +374,147 @@
           "labels": { "type": "object", "additionalProperties": { "type": "string" } }
         }
       },
+      "TeamRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "groups"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "groups": {
+            "type": "object",
+            "description": "LDAP groups per access level",
+            "properties": {
+              "admin": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "developer": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "reader": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "k8s": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "namespace",
+                "service_account"
+              ],
+              "properties": {
+                "cluster": {
+                  "type": "string"
+                },
+                "namespace": {
+                  "type": "string"
+                },
+                "service_account": {
+                  "type": "string"
+                },
+                "access": {
+                  "type": "string",
+                  "enum": [
+                    "reader",
+                    "developer"
+                  ]
+                }
+              }
+            }
+          },
+          "ttl": {
+            "type": "string",
+            "description": "Go duration, e.g. 8h"
+          },
+          "dry_run": {
+            "type": "boolean"
+          }
+        }
+      },
+      "TeamResult": {
+        "type": "object",
+        "properties": {
+          "namespace": {
+            "type": "string"
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "namespace",
+                    "policy",
+                    "ldap_role",
+                    "k8s_role"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create",
+                    "conflict"
+                  ]
+                },
+                "detail": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "k8s_hints": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "cluster": {
+                  "type": "string"
+                },
+                "namespace": {
+                  "type": "string"
+                },
+                "annotation": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
       "NamespaceMetadata": {
         "type": "object",
         "description": "Editable, non-secret namespace metadata. PUT replaces all three fields.",
@@ -704,6 +845,57 @@
           "400": { "description": "Invalid body, or file-only verification without a primary log" },
           "403": { "description": "Forbidden (requires a root-namespace token)" },
           "404": { "description": "Named sink not found" }
+        }
+      }
+    },
+    "/v1/sys/teams": {
+      "post": {
+        "tags": [
+          "namespaces"
+        ],
+        "summary": "Onboard a team (namespace + policies + LDAP/K8s roles) in one step",
+        "description": "All-or-nothing. With dry_run=true nothing is changed and the plan is returned. Root namespace only.",
+        "operationId": "onboardTeam",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Dry-run plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid spec"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "409": {
+            "description": "Something already exists; nothing was changed"
+          }
         }
       }
     },

@@ -1,11 +1,17 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/NAGenaev/tuck/internal/audit"
+	"github.com/NAGenaev/tuck/internal/core"
+	"github.com/NAGenaev/tuck/internal/physical"
+	"github.com/NAGenaev/tuck/internal/seal"
 	"github.com/NAGenaev/tuck/internal/sysconfig"
 )
 
@@ -234,5 +240,31 @@ func TestRateConfigDefaultsAndOverrides(t *testing.T) {
 	}
 	if !srv.ipLimiter.Enabled() {
 		t.Error("the IP limit fell back to the default and must stay on")
+	}
+}
+
+// A config stored through another node reaches this node's limiters without a
+// restart or a request to this node.
+func TestSysConfigSyncPicksUpReplicatedChange(t *testing.T) {
+	c := core.New(physical.NewInMem(), seal.NewDev(filepath.Join(t.TempDir(), "rootkey")))
+	if _, err := c.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	srv := New(c)
+	srv.SetRateDefaults(sysconfig.Config{IPRateLimitRPS: 100, IPRateLimitBurst: 200})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	srv.StartSysConfigSync(ctx, 20*time.Millisecond)
+
+	// Written straight to the store, as a replicated entry from the leader would be.
+	if err := c.PutSysConfig(ctx, sysconfig.Config{IPRateLimitRPS: -1}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for srv.ipLimiter.Enabled() {
+		if time.Now().After(deadline) {
+			t.Fatal("the stored change never reached the limiter")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

@@ -106,6 +106,31 @@ func (s *Server) ApplyRateConfig(cfg sysconfig.Config) {
 	s.tokenLimiter.Reconfigure(rps(cfg.TokenRateLimitRPS, d.TokenRateLimitRPS), burst(cfg.TokenRateLimitBurst, d.TokenRateLimitBurst))
 }
 
+// StartSysConfigSync re-reads the stored runtime config every interval and
+// applies it. The config is replicated, but the limiters live in each node's
+// memory: without this, a change made through one node reached the others
+// only if they happened to be unsealed after it, and a follower that unsealed
+// before it had caught up kept the defaults after a leader change.
+func (s *Server) StartSysConfigSync(ctx context.Context, interval time.Duration) {
+	go func() {
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+			}
+			if s.core.Sealed() {
+				continue
+			}
+			if cfg, err := s.core.GetSysConfig(ctx); err == nil {
+				s.ApplyRateConfig(cfg)
+			}
+		}
+	}()
+}
+
 // StartLimiterCleanup periodically removes stale rate-limit buckets.
 // It returns when ctx is cancelled.
 func (s *Server) StartLimiterCleanup(ctx context.Context) {

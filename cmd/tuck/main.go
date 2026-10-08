@@ -523,6 +523,7 @@ func main() {
 		}()
 	}
 	apiSrv.StartLimiterCleanup(ctx)
+	apiSrv.StartSysConfigSync(ctx, 10*time.Second)
 	handler := apiSrv.Handler()
 
 	// --- HTTP server with production timeouts ---

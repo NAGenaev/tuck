@@ -1695,6 +1695,5 @@ func envOr(key, def string) string {
 // multiFlag is a flag.Value that can be set multiple times.
 type multiFlag []string
 
-func (m *multiFlag) String() string  { return strings.Join(*m, ",") }
+func (m *multiFlag) String() string     { return strings.Join(*m, ",") }
 func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }
-

@@ -76,6 +76,16 @@ server:
     enabled: false
     bindAddr: "0.0.0.0:8201"
     dir: "/data/tuck-raft"
+    # -- Mutual TLS for Raft RPC (port 8201). Without it Raft traffic is plain
+    # TCP inside the cluster network. secretName points to a Secret with
+    # tls.crt, tls.key and ca.crt (cert-manager's output format). The one
+    # certificate is shared by all pods, so it needs the SAN
+    # *.<fullname>-server-headless.<namespace>.svc
+    # and both serverAuth and clientAuth extended key usages.
+    tls:
+      secretName: ""
+      # -- Optional: expected peer certificate name. Empty verifies the chain only.
+      serverName: ""
 
   resources:
     limits:

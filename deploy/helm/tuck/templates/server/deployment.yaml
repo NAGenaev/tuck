@@ -75,6 +75,14 @@ spec:
             - --cluster-bootstrap
             - --cluster-peers={{ range $i := until (int .Values.server.replicaCount) }}{{ if $i }},{{ end }}{{ $fn }}-server-{{ $i }}={{ $fn }}-server-{{ $i }}.{{ $hl }}.{{ $ns }}.svc:8201{{ end }}
             - --cluster-label-leader
+            {{- if .Values.server.cluster.tls.secretName }}
+            - --cluster-tls-cert=/cluster-tls/tls.crt
+            - --cluster-tls-key=/cluster-tls/tls.key
+            - --cluster-tls-ca=/cluster-tls/ca.crt
+            {{- with .Values.server.cluster.tls.serverName }}
+            - --cluster-tls-server-name={{ . }}
+            {{- end }}
+            {{- end }}
             {{- end }}
           ports:
             - name: api
@@ -112,6 +120,11 @@ spec:
               mountPath: /tls
               readOnly: true
             {{- end }}
+            {{- if and .Values.server.cluster.enabled .Values.server.cluster.tls.secretName }}
+            - name: cluster-tls
+              mountPath: /cluster-tls
+              readOnly: true
+            {{- end }}
           {{- if .Values.server.cluster.enabled }}
           # A follower serves HTTP only after the leader initialized the store.
           startupProbe:
@@ -138,6 +151,11 @@ spec:
         - name: tls
           secret:
             secretName: {{ .Values.server.tls.certSecretName }}
+        {{- end }}
+        {{- if and .Values.server.cluster.enabled .Values.server.cluster.tls.secretName }}
+        - name: cluster-tls
+          secret:
+            secretName: {{ .Values.server.cluster.tls.secretName }}
         {{- end }}
       {{- with .Values.server.nodeSelector }}
       nodeSelector:

@@ -1351,7 +1351,7 @@
         "tags": ["auth-ldap"],
         "summary": "Set LDAP config",
         "operationId": "putLDAPConfig",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "url": { "type": "string", "example": "ldaps://ldap.example.com" }, "bind_dn": { "type": "string" }, "bind_password": { "type": "string" }, "user_dn": { "type": "string" }, "group_dn": { "type": "string" }, "insecure_tls": { "type": "boolean" } } } } } },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["urls", "user_dn"], "properties": { "urls": { "type": "array", "items": { "type": "string", "example": "ldaps://ldap.example.com:636" } }, "bind_dn": { "type": "string" }, "bind_password": { "type": "string", "description": "Never returned by GET; omitted on save = keep the stored one" }, "user_dn": { "type": "string" }, "user_attr": { "type": "string", "description": "uid (default) or sAMAccountName for AD" }, "group_dn": { "type": "string" }, "group_attr": { "type": "string" }, "group_filter": { "type": "string", "description": "Supports {{.UserDN}}; for nested AD groups use (member:1.2.840.113556.1.4.1941:={{.UserDN}})" }, "ca_cert": { "type": "string", "description": "PEM bundle of the CA(s) that sign the directory certificates; empty = system trust store" }, "starttls": { "type": "boolean" }, "tls_insecure": { "type": "boolean" } } } } } },
         "responses": { "204": { "description": "Saved" } }
       }
     },

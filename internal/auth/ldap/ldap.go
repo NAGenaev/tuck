@@ -12,9 +12,11 @@ package ldap
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -75,6 +77,11 @@ type Config struct {
 	// The literal string "{{.UserDN}}" is replaced with the authenticated user's DN.
 	// Default: "(member={{.UserDN}})"
 	GroupFilter string `json:"group_filter,omitempty"`
+
+	// CACert is a PEM bundle of the certificate authorities that sign the
+	// directory servers' certificates (typically the bank's internal CA). It is
+	// when set, only these CAs are trusted. Empty = the system trust store.
+	CACert string `json:"ca_cert,omitempty"`
 
 	// TLSInsecure disables certificate verification. Never use in production.
 	TLSInsecure bool `json:"tls_insecure,omitempty"`
@@ -321,7 +328,9 @@ func (a *Authenticator) Login(ctx context.Context, roles []*Role, username, pass
 	if err != nil {
 		return nil, fmt.Errorf("ldap: user search: %w", err)
 	}
-	if len(entries) == 0 {
+	if len(entries) != 1 {
+		// No match, or an ambiguous match: never guess which account the
+		// caller meant.
 		return nil, ErrInvalidCredentials
 	}
 	userDN := entries[0].DN
@@ -417,11 +426,66 @@ func cnOf(dn string) string {
 	return dn
 }
 
+// Validate checks the config for mistakes that would otherwise only surface
+// as a failed login.
+func (c *Config) Validate() error {
+	if len(c.URLs) == 0 {
+		return errors.New("urls is required")
+	}
+	for _, u := range c.URLs {
+		pu, err := url.Parse(u)
+		if err != nil || (pu.Scheme != "ldap" && pu.Scheme != "ldaps") || pu.Hostname() == "" {
+			return fmt.Errorf("invalid ldap url %q (want ldap://host[:port] or ldaps://host[:port])", u)
+		}
+	}
+	if c.UserDN == "" {
+		return errors.New("user_dn is required")
+	}
+	if c.CACert != "" {
+		if _, err := certPool(c.CACert); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func certPool(pemBundle string) (*x509.CertPool, error) {
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM([]byte(pemBundle)) {
+		return nil, errors.New("ca_cert contains no valid PEM certificate")
+	}
+	return pool, nil
+}
+
+// tlsConfig builds the TLS settings for one server URL. ServerName is set from
+// the URL: go-ldap does not derive it for STARTTLS, so verification would
+// otherwise fail.
+func (c *Config) tlsConfig(serverURL string) (*tls.Config, error) {
+	tlsCfg := &tls.Config{ // #nosec G402 — InsecureSkipVerify is an explicit operator opt-in
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: c.TLSInsecure,
+	}
+	if u, err := url.Parse(serverURL); err == nil {
+		tlsCfg.ServerName = u.Hostname()
+	}
+	if c.CACert != "" {
+		pool, err := certPool(c.CACert)
+		if err != nil {
+			return nil, err
+		}
+		tlsCfg.RootCAs = pool
+	}
+	return tlsCfg, nil
+}
+
 // defaultDial connects to the first reachable LDAP server in cfg.URLs.
 func defaultDial(_ context.Context, cfg Config) (Conn, error) {
-	tlsCfg := &tls.Config{InsecureSkipVerify: cfg.TLSInsecure} // #nosec G402 — controlled by operator config field TLSInsecure
 	var lastErr error
 	for _, u := range cfg.URLs {
+		tlsCfg, err := cfg.tlsConfig(u)
+		if err != nil {
+			return nil, err
+		}
 		conn, err := goldap.DialURL(u, goldap.DialWithTLSConfig(tlsCfg))
 		if err != nil {
 			lastErr = err

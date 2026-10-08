@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
 
 import { useAuthTone } from '@app/layouts/auth/auth.layout'
-import { lookupSelf } from '@shared/api/endpoints/auth'
+import { loginLdap, lookupSelf } from '@shared/api/endpoints/auth'
 import { unseal } from '@shared/api/endpoints/sys'
 import { useSealStatus } from '@shared/api/hooks/use-seal-status'
 import { removeToken, setToken } from '@shared/auth/token'
@@ -26,12 +26,24 @@ import styles from './login.module.css'
 
 const COMMAND = 'tuck token lookup-self'
 const REQUEST_LINE = '→ GET /v1/auth/token/lookup-self'
+const LDAP_COMMAND = 'tuck auth ldap login'
+const LDAP_REQUEST_LINE = '→ POST /v1/auth/ldap/login'
+const MODE_KEY = 'tuck_login_mode'
 
+type Mode = 'ldap' | 'token'
 type Phase = 'busy' | 'fail' | 'idle' | 'ok'
 interface Hint {
     icon?: 'check' | 'warn'
     text: string
     tone?: 'err' | 'ok' | 'warn'
+}
+
+function savedMode(): Mode {
+    try {
+        return localStorage.getItem(MODE_KEY) === 'ldap' ? 'ldap' : 'token'
+    } catch {
+        return 'token'
+    }
 }
 
 const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -62,12 +74,12 @@ function Cursor() {
     return <i className={c.cur} />
 }
 
-function TermHead() {
+function TermHead({ command = COMMAND }: { command?: string }) {
     return (
         <>
             <span className="c"># tuck login</span>
             {'\n'}
-            <span className="p">$</span> <span className="w">{COMMAND}</span>
+            <span className="p">$</span> <span className="w">{command}</span>
             {'\n'}
         </>
     )
@@ -88,6 +100,9 @@ export function LoginPage() {
     const { data: seal } = useSealStatus()
 
     const [expired, setExpired] = useState<null | SessionExpiredInfo>(() => peekSessionExpired())
+    const [mode, setMode] = useState<Mode>(savedMode)
+    const [username, setUsername] = useState('')
+    const [password, setPassword] = useState('')
     const [token, setTokenInput] = useState('')
     const [reveal, setReveal] = useState(false)
     const [pasted, setPasted] = useState<null | { trimmed: boolean }>(null)
@@ -97,6 +112,9 @@ export function LoginPage() {
     const [unsealOpen, setUnsealOpen] = useState(false)
     const [shake, setShake] = useState(0)
     const inputRef = useRef<HTMLInputElement>(null)
+    const isLdap = mode === 'ldap'
+    const command = isLdap ? LDAP_COMMAND : COMMAND
+    const requestLine = isLdap ? LDAP_REQUEST_LINE : REQUEST_LINE
 
     const sealed = seal?.sealed === true
     const showExpired = expired !== null && !sealed
@@ -109,10 +127,23 @@ export function LoginPage() {
 
     // terminal "typing" of the command on first paint
     useEffect(() => {
-        if (typed >= COMMAND.length) return
+        if (typed >= command.length) return
         const id = window.setTimeout(() => setTyped((n) => n + 1), typed === 0 ? 420 : 38 + Math.random() * 55)
         return () => window.clearTimeout(id)
-    }, [typed])
+    }, [typed, command.length])
+
+    const switchMode = (next: Mode) => {
+        if (next === mode || busy) return
+        setMode(next)
+        try {
+            localStorage.setItem(MODE_KEY, next)
+        } catch {
+            /* storage unavailable: the choice just isn't remembered */
+        }
+        setPhase('idle')
+        setFailMsg(null)
+        setTyped(Number.MAX_SAFE_INTEGER)
+    }
 
     const hint: Hint = (() => {
         const n = token.length
@@ -165,19 +196,30 @@ export function LoginPage() {
         e.preventDefault()
         if (busy || sealed) return
         const value = token.trim()
-        if (!value) {
-            fail('', t('errEmpty'))
+        if (isLdap ? !username.trim() || !password : !value) {
+            fail('', isLdap ? t('ldap.errEmpty') : t('errEmpty'))
             return
         }
         setPhase('busy')
         setFailMsg(null)
         try {
-            setToken(value)
+            if (isLdap) {
+                // a stale token must not ride along with the login request
+                removeToken()
+                const res = await loginLdap(username.trim(), password)
+                setToken(res.token)
+                setPassword('')
+            } else {
+                setToken(value)
+            }
             await lookupSelf()
         } catch (err) {
             removeToken()
             const status = isAxiosError(err) ? err.response?.status : undefined
             if (isAxiosError(err) && !err.response) fail('', t('errNetwork'))
+            else if (isLdap && status === 401) fail('401', t('ldap.invalid'))
+            else if (isLdap && status === 403) fail('403', t('ldap.noRole'))
+            else if (isLdap && status === 503) fail('503', t('ldap.notConfigured'))
             else if (status === 401 || status === 403) fail(String(status), t('invalidToken'))
             else fail(String(status ?? ''), t('errServer'))
             return
@@ -282,26 +324,31 @@ export function LoginPage() {
     /* login                                                         */
     /* ------------------------------------------------------------ */
     let termBody: ReactNode
-    if (typed < COMMAND.length) {
+    if (typed < command.length) {
         termBody = (
             <>
                 <span className="c"># tuck login</span>
                 {'\n'}
-                <span className="p">$</span> <span className="w">{COMMAND.slice(0, typed)}</span>
+                <span className="p">$</span> <span className="w">{command.slice(0, typed)}</span>
                 <Cursor />
             </>
         )
     } else if (phase === 'busy') {
         termBody = (
             <>
-                <TermHead />
-                <span className="c">{`${REQUEST_LINE}\n  X-Tuck-Token: tuck_••••••••`}</span> <Cursor />
+                <TermHead command={command} />
+                <span className="c">
+                    {isLdap
+                        ? `${requestLine}\n  user: ${username.trim()}\n  password: ••••••••`
+                        : `${requestLine}\n  X-Tuck-Token: tuck_••••••••`}
+                </span>{' '}
+                <Cursor />
             </>
         )
     } else if (phase === 'ok') {
         termBody = (
             <>
-                <TermHead />
+                <TermHead command={command} />
                 <span className="s">200 ok</span>
                 {'\n'}
                 <span className="c">{`→ ${t('termOpening')}`}</span>
@@ -310,8 +357,8 @@ export function LoginPage() {
     } else if (phase === 'fail' && failMsg?.code) {
         termBody = (
             <>
-                <TermHead />
-                <span className="c">{REQUEST_LINE}</span>
+                <TermHead command={command} />
+                <span className="c">{requestLine}</span>
                 {'\n'}
                 <span className="e">{`${failMsg.code} ${failMsg.text}`}</span> <Cursor />
             </>
@@ -326,6 +373,19 @@ export function LoginPage() {
                     <span className="e">vault is sealed</span>{' '}
                     <span className="c">{`· ${received} / ${total}`}</span>
                 </>
+            )
+        } else if (isLdap) {
+            line = username.trim() ? (
+                <>
+                    <span className="k">user</span>
+                    {': '}
+                    <span className="w">{username.trim()}</span>{' '}
+                    <span className="c">
+                        ({password ? t('ldap.passwordSet') : t('ldap.passwordWaiting')})
+                    </span>
+                </>
+            ) : (
+                <span className="c">{`→ ${t('ldap.termWaiting')}`}</span>
             )
         } else if (token.length) {
             line = (
@@ -342,7 +402,7 @@ export function LoginPage() {
         }
         termBody = (
             <>
-                <TermHead />
+                <TermHead command={command} />
                 {line} <Cursor />
             </>
         )
@@ -419,8 +479,24 @@ export function LoginPage() {
 
                 <form autoComplete="off" className={styles.form} noValidate onSubmit={handleSubmit}>
                     <div className={styles.formHead}>
-                        <h2>{t('formTitle')}</h2>
-                        <span className={c.pill}>lookup-self</span>
+                        <h2>{isLdap ? t('ldap.formTitle') : t('formTitle')}</h2>
+                        <span className={c.pill}>{isLdap ? 'ldap' : 'lookup-self'}</span>
+                    </div>
+                    <div aria-label={t('modeLabel')} className={styles.modes} role="tablist">
+                        {(['token', 'ldap'] as const).map((m) => (
+                            <button
+                                aria-selected={mode === m}
+                                className={styles.mode}
+                                disabled={busy}
+                                id={`login-mode-${m}`}
+                                key={m}
+                                onClick={() => switchMode(m)}
+                                role="tab"
+                                type="button"
+                            >
+                                {t(`mode.${m}`)}
+                            </button>
+                        ))}
                     </div>
                     {phase === 'fail' && failMsg && failMsg.code !== '' && (
                         <div className={styles.alert} role="alert">
@@ -432,6 +508,69 @@ export function LoginPage() {
                         </div>
                     )}
                     <fieldset disabled={sealed || busy}>
+                        {isLdap ? (
+                            <>
+                        <div className={c.field}>
+                            <label htmlFor="login-username">{t('ldap.username')}</label>
+                            <div className={c.input} data-state={fieldState}>
+                                <input
+                                    autoCapitalize="off"
+                                    autoComplete="username"
+                                    autoFocus
+                                    id="login-username"
+                                    name="username"
+                                    onChange={(e) => {
+                                        setUsername(e.currentTarget.value)
+                                        if (phase === 'fail') setPhase('idle')
+                                    }}
+                                    placeholder={t('ldap.usernamePlaceholder')}
+                                    ref={inputRef}
+                                    spellCheck={false}
+                                    type="text"
+                                    value={username}
+                                />
+                            </div>
+                        </div>
+                        <div className={c.field}>
+                            <label htmlFor="login-password">{t('ldap.password')}</label>
+                            <div className={c.input} data-state={fieldState}>
+                                <input
+                                    autoComplete="current-password"
+                                    id="login-password"
+                                    name="password"
+                                    onChange={(e) => {
+                                        setPassword(e.currentTarget.value)
+                                        if (phase === 'fail') setPhase('idle')
+                                    }}
+                                    placeholder={t('ldap.passwordPlaceholder')}
+                                    type={reveal ? 'text' : 'password'}
+                                    value={password}
+                                />
+                                <button
+                                    aria-label={reveal ? t('hide') : t('show')}
+                                    aria-pressed={reveal}
+                                    className={c.ib}
+                                    onClick={() => setReveal((v) => !v)}
+                                    title={reveal ? t('hide') : t('show')}
+                                    type="button"
+                                >
+                                    <ShellIcon name={reveal ? 'eyeoff' : 'eye'} />
+                                </button>
+                            </div>
+                            <div className={c.hint} data-tone={phase === 'fail' && failMsg?.code === '' ? 'err' : undefined}>
+                                {phase === 'fail' && failMsg && failMsg.code === '' ? (
+                                    <>
+                                        <ShellIcon name="warn" size={14} />
+                                        {failMsg.text}
+                                    </>
+                                ) : (
+                                    t('ldap.hint')
+                                )}
+                            </div>
+                        </div>
+                            </>
+                        ) : (
+                            <>
                         <div className={c.field}>
                             <label htmlFor="login-token">
                                 {t('token')} <em>{t('chars', { count: token.length })}</em>
@@ -477,6 +616,8 @@ export function LoginPage() {
                                 {hint.text}
                             </div>
                         </div>
+                            </>
+                        )}
                         <button
                             className={`${c.btn} ${c.hot} ${c.full} ${phase === 'busy' ? c.loading : ''}`}
                             type="submit"
@@ -485,7 +626,7 @@ export function LoginPage() {
                             {sealed ? t('submitSealed') : t('signIn')}
                         </button>
                     </fieldset>
-                    <div className={styles.note}>{t('tokenHint')}</div>
+                    <div className={styles.note}>{isLdap ? t('ldap.note') : t('tokenHint')}</div>
                 </form>
 
                 <div className={c.seal} data-tone={sealed ? 'red' : undefined}>

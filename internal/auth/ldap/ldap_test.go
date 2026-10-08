@@ -241,3 +241,22 @@ func TestLogin_ConnectError(t *testing.T) {
 		t.Error("expected error on dial failure, got nil")
 	}
 }
+
+type dupConn struct{ *fakeLDAPConn }
+
+func (d dupConn) Search(_, _ string, _ []string) ([]*authlda.Entry, error) {
+	return []*authlda.Entry{
+		{DN: "uid=alice,ou=a,dc=test"}, {DN: "uid=alice,ou=b,dc=test"},
+	}, nil
+}
+
+// TestLogin_AmbiguousUserRejected verifies that two directory entries matching
+// one username never resolve to either of them.
+func TestLogin_AmbiguousUserRejected(t *testing.T) {
+	conn := dupConn{newFakeConn("cn=svc,dc=test", "svcpass", sampleUsers())}
+	auth := authlda.NewAuthenticator(sampleCfg(), authlda.WithDialer(dialFactory(conn)))
+	_, err := auth.Login(context.Background(), nil, "alice", "alicepass")
+	if !errors.Is(err, authlda.ErrInvalidCredentials) {
+		t.Errorf("expected ErrInvalidCredentials, got %v", err)
+	}
+}

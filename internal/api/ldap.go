@@ -87,12 +87,8 @@ func (s *Server) putLDAPConfig(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 		return
 	}
-	if len(cfg.URLs) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "urls is required"})
-		return
-	}
-	if cfg.UserDN == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "user_dn is required"})
+	if err := cfg.Validate(); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	if err := s.core.PutLDAPConfig(r.Context(), &cfg); err != nil {

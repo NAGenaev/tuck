@@ -4802,13 +4802,21 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @example ldaps://ldap.example.com */
-                    url?: string;
+                    urls: string[];
                     bind_dn?: string;
+                    /** @description Never returned by GET; omitted on save = keep the stored one */
                     bind_password?: string;
-                    user_dn?: string;
+                    user_dn: string;
+                    /** @description uid (default) or sAMAccountName for AD */
+                    user_attr?: string;
                     group_dn?: string;
-                    insecure_tls?: boolean;
+                    group_attr?: string;
+                    /** @description Supports {{.UserDN}}; for nested AD groups use (member:1.2.840.113556.1.4.1941:={{.UserDN}}) */
+                    group_filter?: string;
+                    /** @description PEM bundle of the CA(s) that sign the directory certificates; empty = system trust store */
+                    ca_cert?: string;
+                    starttls?: boolean;
+                    tls_insecure?: boolean;
                 };
             };
         };

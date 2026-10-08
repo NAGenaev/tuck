@@ -208,3 +208,39 @@
         animation: none !important;
     }
 }
+
+/* sign-in method switch */
+.modes {
+    display: flex;
+    border: 1px solid #3b4154;
+}
+.mode {
+    flex: 1;
+    appearance: none;
+    background: transparent;
+    border: 0;
+    color: #9a9fae;
+    cursor: pointer;
+    font: 600 11px 'Oswald', Impact, sans-serif;
+    letter-spacing: 0.14em;
+    padding: 9px 12px;
+    text-transform: uppercase;
+}
+.mode + .mode {
+    border-left: 1px solid #3b4154;
+}
+.mode:hover:not(:disabled) {
+    color: #edeae2;
+}
+.mode[aria-selected='true'] {
+    background: rgba(215, 169, 75, 0.14);
+    color: #d7a94b;
+}
+.mode:focus-visible {
+    outline: 2px solid #d7a94b;
+    outline-offset: -2px;
+}
+.mode:disabled {
+    cursor: default;
+    opacity: 0.6;
+}

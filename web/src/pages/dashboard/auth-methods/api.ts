@@ -143,6 +143,7 @@ export async function deleteJwtRole(name: string): Promise<void> {
 export interface LdapConfigFull {
     bind_dn?: string
     bind_password?: string
+    ca_cert?: string
     group_attr?: string
     group_dn?: string
     group_filter?: string

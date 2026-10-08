@@ -1229,6 +1229,13 @@ func (c *Core) GetLDAPConfig(ctx context.Context) (*authlda.Config, error) {
 
 // PutLDAPConfig stores the LDAP auth configuration.
 func (c *Core) PutLDAPConfig(ctx context.Context, cfg *authlda.Config) error {
+	// GET never returns the bind password, so a client that round-trips the
+	// config sends it empty: keep the stored one rather than wiping it.
+	if cfg.BindPassword == "" {
+		if prev, err := c.ldapStore.GetConfig(ctx); err == nil && prev.BindDN == cfg.BindDN {
+			cfg.BindPassword = prev.BindPassword
+		}
+	}
 	return c.ldapStore.PutConfig(ctx, cfg)
 }
 

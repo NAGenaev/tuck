@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { Button, PasswordInput, Switch, TextInput } from '@mantine/core'
+import { Button, PasswordInput, Switch, Textarea, TextInput } from '@mantine/core'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
@@ -40,6 +40,7 @@ const URL_RE = /^ldaps?:\/\/\S+$/i
 interface Draft {
     bind_dn: string
     bind_password: string
+    ca_cert: string
     group_attr: string
     group_dn: string
     group_filter: string
@@ -53,6 +54,7 @@ interface Draft {
 const toDraft = (c?: LdapConfigFull): Draft => ({
     bind_dn: c?.bind_dn ?? '',
     bind_password: c?.bind_password ?? '',
+    ca_cert: c?.ca_cert ?? '',
     group_attr: c?.group_attr ?? '',
     group_dn: c?.group_dn ?? '',
     group_filter: c?.group_filter ?? '',
@@ -103,6 +105,7 @@ export function LdapPanel() {
             return putLdapConfig({
                 bind_dn: d.bind_dn.trim() || undefined,
                 bind_password: d.bind_password || undefined,
+                ca_cert: d.ca_cert.trim() || undefined,
                 group_attr: d.group_attr.trim() || undefined,
                 group_dn: d.group_dn.trim() || undefined,
                 group_filter: d.group_filter.trim() || undefined,
@@ -267,6 +270,18 @@ export function LdapPanel() {
                             onChange={(e) => set('group_filter', e.currentTarget.value)}
                             placeholder="(&(objectClass=groupOfNames)(member={{.UserDN}}))"
                             value={draft.group_filter}
+                        />
+                    </Field>
+                    <Field hint={t('ldap.f.caCertHint')} label="ca_cert">
+                        <Textarea
+                            aria-label="ca_cert"
+                            autosize
+                            minRows={3}
+                            onChange={(e) => set('ca_cert', e.currentTarget.value)}
+                            placeholder="-----BEGIN CERTIFICATE-----"
+                            spellCheck={false}
+                            styles={{ input: { fontFamily: 'monospace', fontSize: 12 } }}
+                            value={draft.ca_cert}
                         />
                     </Field>
                     <div className={styles.grid2}>

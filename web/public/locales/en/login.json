@@ -72,5 +72,26 @@
         "removed": "removed from this browser",
         "invalid": "Token is invalid",
         "invalidNote": "The saved token was removed from this browser"
+    },
+    "modeLabel": "Sign-in method",
+    "mode": {
+        "token": "Token",
+        "ldap": "LDAP"
+    },
+    "ldap": {
+        "formTitle": "Sign in with LDAP",
+        "username": "Username",
+        "usernamePlaceholder": "Corporate username",
+        "password": "Password",
+        "passwordPlaceholder": "Directory password",
+        "hint": "Use your corporate directory username and password",
+        "note": "Access is determined by your directory group membership",
+        "errEmpty": "Enter a username and password",
+        "invalid": "Wrong username or password",
+        "noRole": "Signed in, but none of your groups has a role in Tuck. Contact an administrator",
+        "notConfigured": "LDAP sign-in has not been configured by an administrator yet",
+        "termWaiting": "waiting for a username…",
+        "passwordSet": "password entered",
+        "passwordWaiting": "no password yet"
     }
 }

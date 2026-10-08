@@ -352,3 +352,40 @@ func TestLDAPPolicyUnion(t *testing.T) {
 		t.Errorf("alice devs read: %d, want 200", status)
 	}
 }
+
+// TestLDAPConfigRoundTripKeepsBindPassword verifies that re-saving the config
+// as returned by GET (bind_password omitted) does not wipe the stored password.
+func TestLDAPConfigRoundTripKeepsBindPassword(t *testing.T) {
+	ts, _, root := newLDAPTestServer(t)
+	putLDAPConfig(t, ts, root)
+	createTestPolicy(t, ts, root, "ldap-policy", `[{"path":"secret/ldap/*","capabilities":["read"]}]`)
+	putLDAPRole(t, ts, root, "admin-role", []string{"admin"}, nil, []string{"ldap-policy"}, "1h")
+
+	status, got := doJSON(t, ts, http.MethodGet, "/v1/auth/ldap/config", "", root)
+	if status != http.StatusOK {
+		t.Fatalf("GET config: %d %s", status, got)
+	}
+	if strings.Contains(string(got), "svcpass") {
+		t.Fatalf("GET config leaked the bind password: %s", got)
+	}
+	if status, resp := doJSON(t, ts, http.MethodPut, "/v1/auth/ldap/config", string(got), root); status != http.StatusNoContent {
+		t.Fatalf("PUT round trip: %d %s", status, resp)
+	}
+	if status, body := ldapLogin(t, ts, "alice", "alicepass"); status != http.StatusOK {
+		t.Fatalf("login after round trip: %d %s", status, body)
+	}
+}
+
+// TestLDAPConfigRejectsBadCACert verifies that a ca_cert that is not PEM is
+// refused at save time instead of failing every later login.
+func TestLDAPConfigRejectsBadCACert(t *testing.T) {
+	ts, _, root := newLDAPTestServer(t)
+	body := mustJSON(map[string]any{
+		"urls":    []string{"ldaps://fake:636"},
+		"user_dn": "ou=users,dc=test",
+		"ca_cert": "garbage",
+	})
+	if status, resp := doJSON(t, ts, http.MethodPut, "/v1/auth/ldap/config", body, root); status != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; %s", status, resp)
+	}
+}

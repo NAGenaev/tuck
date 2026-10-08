@@ -1613,7 +1613,7 @@ func (c *Core) CreateNamespace(ctx context.Context, name string) (*namespace.Nam
 	}
 	existing, err := c.namespaces.Get(ctx, name)
 	if err == nil && existing != nil {
-		return nil, fmt.Errorf("namespace %q already exists", name)
+		return nil, fmt.Errorf("%w: %q", namespace.ErrAlreadyExists, name)
 	}
 	ns := &namespace.Namespace{Name: name, CreatedAt: time.Now().UTC()}
 	if err := c.namespaces.Put(ctx, ns); err != nil {

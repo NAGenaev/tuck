@@ -43,7 +43,7 @@ curl -X POST "$env:TUCK_ADDR/v1/auth/jwt/role/developer" `
 ### 4. Проверить token
 
 ```powershell
-$env:TUCK_TOKEN = "tuck_..."   # client_token из login
+$env:TUCK_TOKEN = "tuck_..."   # token из login
 .\tuckcli.exe token lookup-self
 ```
 
@@ -51,7 +51,7 @@ $env:TUCK_TOKEN = "tuck_..."   # client_token из login
 
 | Действие | Ожидаемый результат |
 |----------|---------------------|
-| login с валидным JWT | `client_token` |
+| login с валидным JWT | `token` |
 | login с чужим issuer | 403 |
 | lookup-self | policies из роли |
 

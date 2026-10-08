@@ -18,7 +18,7 @@ func (c *Core) CreateNamespaceWithMetadata(ctx context.Context, name string, m n
 		return nil, err
 	}
 	if existing, err := c.namespaces.Get(ctx, name); err == nil && existing != nil {
-		return nil, fmt.Errorf("namespace %q already exists", name)
+		return nil, fmt.Errorf("%w: %q", namespace.ErrAlreadyExists, name)
 	}
 	ns := &namespace.Namespace{Name: name, CreatedAt: time.Now().UTC()}
 	ns.Apply(m)

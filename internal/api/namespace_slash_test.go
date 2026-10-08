@@ -198,3 +198,18 @@ func TestNamespaceSlashCreateDoesNotRequireParent(t *testing.T) {
 		t.Fatalf(`"team-a" status = %d, want 404 (no implicit parent namespace)`, resp.StatusCode)
 	}
 }
+
+func TestCreateNamespace_DuplicateIsConflict(t *testing.T) {
+	ts, _, rootTok := newTestServer(t)
+	b, _ := json.Marshal(map[string]string{"name": "dup-team"})
+	for i, want := range []int{http.StatusCreated, http.StatusConflict} {
+		resp, err := http.DefaultClient.Do(authedReq(t, http.MethodPost, ts.URL+"/v1/sys/namespaces", string(b), rootTok))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Fatalf("create #%d status = %d, want %d", i+1, resp.StatusCode, want)
+		}
+	}
+}

@@ -484,6 +484,15 @@ func (c *KubeClient) patchFinalizers(ctx context.Context, ts *TuckSecret, finali
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("patch finalizers %s/%s: unexpected status %d", ns, name, resp.StatusCode)
 	}
+	// The patch bumps resourceVersion; keep ts current so a following status
+	// update does not conflict.
+	var patched struct {
+		Metadata ObjectMeta `json:"metadata"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&patched); err == nil && patched.Metadata.ResourceVersion != "" {
+		ts.Metadata.ResourceVersion = patched.Metadata.ResourceVersion
+		ts.Metadata.Finalizers = patched.Metadata.Finalizers
+	}
 	return nil
 }
 

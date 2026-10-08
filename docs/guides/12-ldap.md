@@ -50,7 +50,7 @@ curl -X POST "$env:TUCK_ADDR/v1/auth/ldap/groups/devops" `
 
 | Действие | Ожидаемый результат |
 |----------|---------------------|
-| ldap login alice | client_token |
+| ldap login alice | token |
 | alice в группе devops | policies содержит devops-full |
 | неверный пароль | 400 / invalid credentials |
 

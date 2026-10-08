@@ -18,6 +18,9 @@ import (
 // ErrNotFound is returned when a namespace does not exist.
 var ErrNotFound = errors.New("namespace not found")
 
+// ErrAlreadyExists is returned when creating a namespace whose name is taken.
+var ErrAlreadyExists = errors.New("namespace already exists")
+
 // ErrInvalidName is returned when a namespace name contains illegal characters.
 //
 // A name is either a single segment or several segments joined by a single

@@ -130,7 +130,7 @@ func (ctrl *Controller) runOnce(ctx context.Context) error {
 			}
 			continue
 		}
-		_ = ctrl.ensureFinalizer(ctx, ts)
+		_ = ctrl.ensureFinalizer(ctx, &ts)
 		if err := ctrl.reconcile(ctx, ts); err != nil {
 			slog.Error("operator: reconcile", "namespace", ts.Metadata.Namespace, "name", ts.Metadata.Name, "err", err)
 		}
@@ -178,7 +178,7 @@ func (ctrl *Controller) handleEvent(ctx context.Context, ev WatchEvent) error {
 			return ctrl.runDeletion(ctx, ev.Object)
 		}
 		// Ensure our finalizer is present before syncing.
-		if err := ctrl.ensureFinalizer(ctx, ev.Object); err != nil {
+		if err := ctrl.ensureFinalizer(ctx, &ev.Object); err != nil {
 			return err
 		}
 		if !specChanged {
@@ -457,8 +457,9 @@ func resourceKey(ts TuckSecret) string {
 	return ts.Metadata.Namespace + "/" + ts.Metadata.Name
 }
 
-// ensureFinalizer adds FinalizerCleanup to ts if it's not already present.
-func (ctrl *Controller) ensureFinalizer(ctx context.Context, ts TuckSecret) error {
+// ensureFinalizer adds FinalizerCleanup to ts if it's not already present and
+// refreshes ts.Metadata.ResourceVersion from the patch result.
+func (ctrl *Controller) ensureFinalizer(ctx context.Context, ts *TuckSecret) error {
 	for _, f := range ts.Metadata.Finalizers {
 		if f == FinalizerCleanup {
 			return nil
@@ -467,7 +468,7 @@ func (ctrl *Controller) ensureFinalizer(ctx context.Context, ts TuckSecret) erro
 	if ts.Metadata.ResourceVersion == "" {
 		return nil // skip in tests without a real cluster
 	}
-	if err := ctrl.kube.AddFinalizer(ctx, &ts, FinalizerCleanup); err != nil {
+	if err := ctrl.kube.AddFinalizer(ctx, ts, FinalizerCleanup); err != nil {
 		slog.Warn("operator: add finalizer", "namespace", ts.Metadata.Namespace, "name", ts.Metadata.Name, "err", err)
 	}
 	return nil

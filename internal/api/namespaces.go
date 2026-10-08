@@ -34,6 +34,10 @@ func (s *Server) createNamespace(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
+		if errors.Is(err, namespace.ErrAlreadyExists) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			return
+		}
 		writeErr(w, err)
 		return
 	}

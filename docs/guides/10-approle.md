@@ -58,7 +58,7 @@ curl -X POST "$env:TUCK_ADDR/v1/auth/approle/login" `
 
 | Действие | Ожидаемый результат |
 |----------|---------------------|
-| approle login | `client_token` с policy `ci-deploy` |
+| approle login | `token` с policy `ci-deploy` |
 | read `secret/ci/...` | успех |
 | повторный secret_id | старый можно отозвать |
 

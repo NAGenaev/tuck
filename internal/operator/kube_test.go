@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -91,5 +92,57 @@ func TestRestartWorkload_UnsupportedKind(t *testing.T) {
 	}
 	if err := c.RestartWorkload(context.Background(), "prod", RestartTarget{Kind: "Pod", Name: "x"}, "now"); err == nil {
 		t.Fatal("expected an error for an unsupported restart target kind (Pod), got nil")
+	}
+}
+
+func TestAddFinalizer_RefreshesResourceVersion(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"metadata":{"resourceVersion":"42","finalizers":["tuck.io/cleanup"]}}`))
+	}))
+	defer srv.Close()
+
+	tokenFile, err := os.CreateTemp(t.TempDir(), "sa-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = tokenFile.WriteString("fake-jwt")
+	_ = tokenFile.Close()
+
+	c, err := NewKubeClient(srv.URL, tokenFile.Name(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := &TuckSecret{Metadata: ObjectMeta{Namespace: "app-a", Name: "x", ResourceVersion: "7"}}
+	if err := c.AddFinalizer(context.Background(), ts, FinalizerCleanup); err != nil {
+		t.Fatal(err)
+	}
+	if ts.Metadata.ResourceVersion != "42" {
+		t.Errorf("ResourceVersion = %q, want 42 (stale version makes the status PUT conflict)", ts.Metadata.ResourceVersion)
+	}
+	if len(ts.Metadata.Finalizers) != 1 || ts.Metadata.Finalizers[0] != FinalizerCleanup {
+		t.Errorf("Finalizers = %v", ts.Metadata.Finalizers)
+	}
+}
+
+// The Helm chart carries its own copy of the CRD; helm silently prunes any
+// spec field the installed schema does not know, so a stale copy disables
+// features (restartTargets, kvVersion) for Helm installs.
+func TestHelmCRDMatchesDeployCRD(t *testing.T) {
+	norm := func(path string) string {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := strings.ReplaceAll(string(raw), "\r\n", "\n")
+		s = strings.Replace(s, "{{- if .Values.crds.install }}\n", "", 1)
+		s = strings.Replace(s, "\n{{- end }}\n", "\n", 1)
+		s = strings.Replace(s, "  labels:\n    {{- include \"tuck.labels\" . | nindent 4 }}\n  annotations:\n    helm.sh/resource-policy: keep   # do not delete CRD on helm uninstall\n", "", 1)
+		return s
+	}
+	want := norm("../../deploy/crd/tucksecret.yaml")
+	got := norm("../../deploy/helm/tuck/templates/crd/tucksecret.yaml")
+	if want != got {
+		t.Fatal("deploy/helm/tuck/templates/crd/tucksecret.yaml drifted from deploy/crd/tucksecret.yaml")
 	}
 }

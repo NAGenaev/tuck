@@ -47,7 +47,7 @@ curl -X POST "$env:TUCK_ADDR/v1/auth/kubernetes/login" `
   -d "{`"token`":`"$SA_TOKEN`"}"
 ```
 
-В ответе — `auth.client_token` (scoped token).
+В ответе — поле `token` (scoped token).
 
 ### 5. Использовать client token
 
@@ -62,13 +62,13 @@ Sidecar или init-скрипт:
 
 1. Читает SA token из `/var/run/secrets/kubernetes.io/serviceaccount/token`
 2. `POST /v1/auth/kubernetes/login`
-3. Использует `client_token` для API
+3. Использует `token` для API
 
 ## Проверка
 
 | Действие | Ожидаемый результат |
 |----------|---------------------|
-| login с SA JWT | `client_token` + `policies: ["my-app-policy"]` |
+| login с SA JWT | `token` + `policies: ["my-app-policy"]` |
 | read `secret/app/*` | 200 |
 | read `secret/admin/*` | 403 |
 

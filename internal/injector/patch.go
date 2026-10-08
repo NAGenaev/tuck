@@ -33,7 +33,12 @@ const (
 	AnnotationOutputDir = "tuck.io/output-dir"
 	// AnnotationInsecure skips TLS verification for the Tuck server.
 	AnnotationInsecure = "tuck.io/insecure"
+	// AnnotationCAConfigMap names a ConfigMap in the Pod's namespace holding the
+	// Tuck server CA under key "ca.crt"; the agent verifies the server against it.
+	AnnotationCAConfigMap = "tuck.io/ca-configmap"
 
+	caVolumeName       = "tuck-ca"
+	caMountPath        = "/tuck/ca"
 	defaultSecretsDir  = "/tuck/secrets"
 	defaultTokenSecret = "tuck-token"
 	secretsVolumeName  = "tuck-secrets"
@@ -51,6 +56,7 @@ type InjectConfig struct {
 	Image          string
 	OutputDir      string
 	Insecure       bool
+	CAConfigMap    string
 }
 
 // ParseAnnotations extracts injection config from pod annotations.
@@ -66,6 +72,7 @@ func ParseAnnotations(ann map[string]string, defaultImage string) (InjectConfig,
 		Image:          ann[AnnotationImage],
 		OutputDir:      ann[AnnotationOutputDir],
 		Insecure:       ann[AnnotationInsecure] == "true",
+		CAConfigMap:    ann[AnnotationCAConfigMap],
 		KubernetesAuth: ann[AnnotationAuth] == "kubernetes",
 		Cluster:        ann[AnnotationCluster],
 	}
@@ -153,6 +160,22 @@ func BuildPatch(pod *Pod, cfg InjectConfig) ([]byte, error) {
 		patches = append(patches, jsonPatch{Op: "add", Path: "/spec/volumes/-", Value: tokenVolRaw})
 	}
 
+	if cfg.CAConfigMap != "" {
+		agent.VolumeMounts = append(agent.VolumeMounts, VolumeMount{
+			Name:      caVolumeName,
+			MountPath: caMountPath,
+			ReadOnly:  true,
+		})
+		caVol := map[string]interface{}{
+			"name": caVolumeName,
+			"configMap": map[string]interface{}{
+				"name":  cfg.CAConfigMap,
+				"items": []map[string]interface{}{{"key": "ca.crt", "path": "ca.crt"}},
+			},
+		}
+		patches = append(patches, jsonPatch{Op: "add", Path: "/spec/volumes/-", Value: caVol})
+	}
+
 	if len(pod.Spec.InitContainers) == 0 {
 		patches = append(patches, jsonPatch{Op: "add", Path: "/spec/initContainers", Value: []Container{agent}})
 	} else {
@@ -237,6 +260,9 @@ func buildEnv(cfg InjectConfig) []EnvVar {
 	}
 	if cfg.Insecure {
 		env = append(env, EnvVar{Name: "TUCK_INSECURE", Value: "true"})
+	}
+	if cfg.CAConfigMap != "" {
+		env = append(env, EnvVar{Name: "TUCK_CA_FILE", Value: caMountPath + "/ca.crt"})
 	}
 	return env
 }

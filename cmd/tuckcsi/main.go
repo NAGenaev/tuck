@@ -45,6 +45,7 @@ var Version = "dev"
 func main() {
 	endpoint := flag.String("endpoint", "unix:///csi/csi.sock", "CSI endpoint (unix:// or tcp://)")
 	nodeID := flag.String("node-id", "", "node ID reported to kubelet (required)")
+	tuckCAFile := flag.String("tuck-ca-file", "", "PEM CA bundle used to verify Tuck server certificates (empty = system roots)")
 	version := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
@@ -76,7 +77,7 @@ func main() {
 		log.Fatalf("tuckcsi: listen %s://%s: %v", network, addr, err)
 	}
 
-	drv := csi.NewDriver(*nodeID, csi.NewMounter())
+	drv := csi.NewDriver(*nodeID, csi.NewMounter()).WithCAFile(*tuckCAFile)
 	srv := grpc.NewServer()
 	csispec.RegisterIdentityServer(srv, drv)
 	csispec.RegisterNodeServer(srv, drv)

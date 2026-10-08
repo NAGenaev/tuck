@@ -84,6 +84,9 @@ spec:
             - "--k8s-api=https://kubernetes.default.svc"
             - "--sa-token-file=/var/run/secrets/kubernetes.io/serviceaccount/token"
             - "--k8s-ca-file=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+            # Private/corporate CA for the Tuck server certificate: mount the CA
+            # (ConfigMap key ca.crt) and point the operator at it.
+            # - "--tuck-ca-file=/etc/tuck/ca/ca.crt"
             # Multi-team clusters: confine each TuckSecret to Tuck paths under
             # "<its namespace>/" (plus the Namespace annotation tuck.io/allowed-paths).
             # - "--enforce-namespace-paths"

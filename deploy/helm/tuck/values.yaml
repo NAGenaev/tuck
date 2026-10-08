@@ -58,6 +58,10 @@ server:
     enabled: false
     auto: false           # generate self-signed cert
     certSecretName: ""    # K8s TLS Secret (tls.crt, tls.key)
+    # -- ConfigMap (release namespace, key ca.crt) with the CA that signed the
+    # server certificate. When set, the operator and the CSI driver pin Tuck
+    # server verification to it (needed for a private/corporate CA).
+    caConfigMap: ""
 
   # -- OpenTelemetry OTLP HTTP endpoint. Empty = disabled.
   otelEndpoint: ""

@@ -40,6 +40,9 @@ spec:
             {{- if .Values.operator.tuckCluster }}
             - --tuck-cluster={{ .Values.operator.tuckCluster }}
             {{- end }}
+            {{- if .Values.server.tls.caConfigMap }}
+            - --tuck-ca-file=/etc/tuck/ca/ca.crt
+            {{- end }}
             {{- if .Values.operator.enforceNamespacePaths }}
             - --enforce-namespace-paths
             {{- end }}
@@ -60,6 +63,21 @@ spec:
               port: 8081
             initialDelaySeconds: 10
             periodSeconds: 20
+          {{- if .Values.server.tls.caConfigMap }}
+          volumeMounts:
+            - name: tuck-ca
+              mountPath: /etc/tuck/ca
+              readOnly: true
+          {{- end }}
+      {{- if .Values.server.tls.caConfigMap }}
+      volumes:
+        - name: tuck-ca
+          configMap:
+            name: {{ .Values.server.tls.caConfigMap }}
+            items:
+              - key: ca.crt
+                path: ca.crt
+      {{- end }}
       {{- with .Values.operator.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

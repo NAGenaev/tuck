@@ -38,6 +38,9 @@ spec:
           args:
             - --endpoint=unix:///csi/csi.sock
             - --node-id=$(NODE_NAME)
+            {{- if .Values.server.tls.caConfigMap }}
+            - --tuck-ca-file=/etc/tuck/ca/ca.crt
+            {{- end }}
           env:
             - name: NODE_NAME
               valueFrom:
@@ -53,6 +56,11 @@ spec:
             - name: pods-mount-dir
               mountPath: /var/lib/kubelet/pods
               mountPropagation: Bidirectional
+            {{- if .Values.server.tls.caConfigMap }}
+            - name: tuck-ca
+              mountPath: /etc/tuck/ca
+              readOnly: true
+            {{- end }}
         - name: node-driver-registrar
           image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.0
           args:
@@ -64,6 +72,14 @@ spec:
             - name: registration-dir
               mountPath: /registration
       volumes:
+        {{- if .Values.server.tls.caConfigMap }}
+        - name: tuck-ca
+          configMap:
+            name: {{ .Values.server.tls.caConfigMap }}
+            items:
+              - key: ca.crt
+                path: ca.crt
+        {{- end }}
         - name: plugin-dir
           hostPath:
             path: {{ .Values.csi.kubeletRootDir }}/plugins/secrets.tuck.io

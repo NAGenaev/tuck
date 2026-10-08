@@ -3,6 +3,7 @@ package operator
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/NAGenaev/tuck/internal/tlsutil"
 )
 
 const (
@@ -37,12 +40,26 @@ func NewTuckClient(serverURL, saTokenFile string) *TuckClient {
 	}
 }
 
-// GetSecret fetches the secret at path, refreshing the Tuck token if needed.
 // WithCluster selects the Tuck cluster entry used at login (multi-cluster Tuck).
 func (c *TuckClient) WithCluster(name string) *TuckClient {
 	c.cluster = name
 	return c
 }
+
+// WithCAFile makes the client verify the Tuck server certificate against the
+// PEM bundle at caFile instead of the system roots.
+func (c *TuckClient) WithCAFile(caFile string) (*TuckClient, error) {
+	pool, err := tlsutil.LoadCAPool(caFile)
+	if err != nil {
+		return nil, err
+	}
+	c.httpClient.Transport = &http.Transport{
+		TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12},
+	}
+	return c, nil
+}
+
+// GetSecret fetches the secret at path, refreshing the Tuck token if needed.
 
 func (c *TuckClient) GetSecret(ctx context.Context, path, kvVersion string) ([]byte, error) {
 	token, err := c.ensureToken(ctx)

@@ -24,6 +24,8 @@ import (
 	csispec "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/NAGenaev/tuck/internal/tlsutil"
 )
 
 const (
@@ -58,6 +60,7 @@ type Driver struct {
 
 	nodeID  string
 	mounter Mounter
+	caFile  string // PEM CA bundle for verifying Tuck servers; "" = system roots
 
 	mu     sync.Mutex
 	mounts map[string]*mountState // keyed by TargetPath; only holds mounts with a valid refresh interval
@@ -172,7 +175,11 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csispec.NodePublish
 		return nil, status.Errorf(codes.Internal, "mount tmpfs: %v", err)
 	}
 
-	hc := httpClient(insecure)
+	hc, err := httpClient(insecure, d.caFile)
+	if err != nil {
+		_ = d.mounter.Unmount(req.TargetPath)
+		return nil, status.Errorf(codes.Internal, "tuck TLS config: %v", err)
+	}
 	for _, p := range paths {
 		files, err := fetchSecretFiles(ctx, hc, addr, token, ns, p, kvVersion, expandKeys)
 		if err != nil {
@@ -306,7 +313,11 @@ func (d *Driver) runDueRefreshesAt(ctx context.Context, now time.Time) {
 // next tick, mirroring the retry-until-success shape of the Operator's
 // reconcile (internal/operator/controller.go).
 func (d *Driver) refreshMount(ctx context.Context, target string, st mountState) {
-	hc := httpClient(st.insecure)
+	hc, err := httpClient(st.insecure, d.caFile)
+	if err != nil {
+		slog.Warn("csi: background refresh failed, keeping existing files", "target", target, "err", err)
+		return
+	}
 
 	allFiles := make(map[string]string)
 	for _, p := range st.paths {
@@ -452,10 +463,25 @@ func splitPaths(raw string) []string {
 	return out
 }
 
-func httpClient(insecure bool) *http.Client {
+// httpClient builds the client used to reach Tuck. A CA bundle pins server
+// verification to it; tuck.io/insecure takes precedence only if set explicitly.
+func httpClient(insecure bool, caFile string) (*http.Client, error) {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
-	if insecure {
+	switch {
+	case insecure:
 		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // #nosec G402 — gated by tuck.io/insecure volume attribute
+	case caFile != "":
+		pool, err := tlsutil.LoadCAPool(caFile)
+		if err != nil {
+			return nil, err
+		}
+		tr.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
 	}
-	return &http.Client{Transport: tr, Timeout: 10 * time.Second}
+	return &http.Client{Transport: tr, Timeout: 10 * time.Second}, nil
+}
+
+// WithCAFile sets the PEM CA bundle the driver uses to verify Tuck servers.
+func (d *Driver) WithCAFile(caFile string) *Driver {
+	d.caFile = caFile
+	return d
 }

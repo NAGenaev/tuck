@@ -21,6 +21,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/NAGenaev/tuck/internal/tlsutil"
 )
 
 // Client talks to a Tuck server.
@@ -45,6 +47,28 @@ func WithInsecure() Option {
 		}
 	}
 }
+
+// WithCAFile verifies the server certificate against the PEM CA bundle at
+// path instead of the system roots (private-CA deployments).
+func WithCAFile(path string) Option {
+	return func(c *Client) {
+		pool, err := tlsutil.LoadCAPool(path)
+		if err != nil {
+			// Fail closed: every request reports the bad CA instead of
+			// silently falling back to the system roots.
+			c.http = &http.Client{Transport: failTransport{err}, Timeout: 30 * time.Second}
+			return
+		}
+		c.http = &http.Client{
+			Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}},
+			Timeout:   30 * time.Second,
+		}
+	}
+}
+
+type failTransport struct{ err error }
+
+func (f failTransport) RoundTrip(*http.Request) (*http.Response, error) { return nil, f.err }
 
 // WithHTTPClient replaces the default HTTP client.
 func WithHTTPClient(h *http.Client) Option {

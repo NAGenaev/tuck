@@ -51,6 +51,17 @@ kubernetes:
 
 Для Raft (3 узла) добавьте `cluster:` с `tls_cert`/`tls_key`/`tls_ca` — **mutual TLS на Raft-транспорте**, CA отдельный, выпускающий только сертификаты узлов Tuck ([20](20-ha-raft.md), [MANUAL_TESTS §25](../MANUAL_TESTS.md)). HTTP API защищён обычным TLS; mTLS для клиентов API не реализован.
 
+**Проверка сертификата сервера клиентами.** Если сертификат выпущен корпоративным УЦ, которого нет в системных корнях образов, положите CA в ConfigMap (ключ `ca.crt`) и передайте его всем потребителям — без `insecure`:
+
+| Потребитель | Как задать CA |
+|-------------|---------------|
+| Оператор | `--tuck-ca-file=/etc/tuck/ca/ca.crt` (Helm: `server.tls.caConfigMap`) |
+| CSI-драйвер | `--tuck-ca-file=...` (Helm: тот же `server.tls.caConfigMap`) |
+| tuck-agent (инжектор) | аннотация пода `tuck.io/ca-configmap: <имя ConfigMap>` → монтируется в `/tuck/ca`, `TUCK_CA_FILE` |
+| Go SDK | `client.New(addr, token, client.WithCAFile(path))` |
+
+Битый или отсутствующий файл CA — ошибка (запросы не уходят), а не молчаливый откат на системные корни. `insecure` оставьте только для стендов.
+
 ### 3. Первый запуск и распечатывание
 
 1. Запустите сервер. **Один раз** в логе будут показаны `ROOT TOKEN` и `SHAMIR SHARES` — раздайте доли разным людям, root-токен уберите в сейф. Вместе их хранить нельзя.

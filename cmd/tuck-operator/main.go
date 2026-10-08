@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -18,6 +19,8 @@ import (
 func main() {
 	tuckAddr := flag.String("tuck-addr", "https://tuck.tuck.svc:8200",
 		"address of the Tuck server")
+	tuckCAFile := flag.String("tuck-ca-file", "",
+		"PEM CA bundle used to verify the Tuck server certificate (empty = system roots)")
 	tuckCluster := flag.String("tuck-cluster", "",
 		"Tuck kubernetes-auth cluster entry for this operator's ServiceAccount (multi-cluster Tuck; empty = default)")
 	namespace := flag.String("namespace", "",
@@ -63,6 +66,14 @@ func main() {
 	}
 
 	tuckClient := operator.NewTuckClient(*tuckAddr, *saTokenFile).WithCluster(*tuckCluster)
+	if *tuckCAFile != "" {
+		if tuckClient, err = tuckClient.WithCAFile(*tuckCAFile); err != nil {
+			slog.Error("operator: load Tuck CA", "file", *tuckCAFile, "err", err)
+			os.Exit(1)
+		}
+	} else if strings.HasPrefix(*tuckAddr, "https://") {
+		slog.Warn("operator: --tuck-ca-file not set; verifying the Tuck certificate against system roots only")
+	}
 	ctrl := operator.New(kubeClient, tuckClient, *namespace)
 	ctrl.EnforceNamespacePaths(*enforcePaths)
 	ctrl.EnableRestartTargets(*enableRestartTargets)

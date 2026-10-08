@@ -14,6 +14,7 @@
 //	TUCK_K8S_CLUSTER   Tuck cluster entry for this Pod's ServiceAccount (multi-cluster Tuck; default: none)
 //	TUCK_SECRETS     Comma-separated "tuckPath:filename" pairs
 //	TUCK_OUTPUT_DIR  Directory to write secret files (default /tuck/secrets)
+//	TUCK_CA_FILE     PEM CA bundle to verify the Tuck server certificate (injected from tuck.io/ca-configmap)
 //	TUCK_INSECURE    Skip TLS certificate verification ("true" = skip)
 package main
 
@@ -62,6 +63,8 @@ func main() {
 	var opts []client.Option
 	if insecure {
 		opts = append(opts, client.WithInsecure())
+	} else if ca := os.Getenv("TUCK_CA_FILE"); ca != "" {
+		opts = append(opts, client.WithCAFile(ca))
 	}
 	var (
 		token string

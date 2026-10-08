@@ -11,6 +11,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Кластеры Kubernetes без рестарта.** `kubernetes.clusters` перечитывается по SIGHUP или `tuckcli auth kubernetes reload-clusters` (`POST /v1/auth/kubernetes/clusters/reload`): новый кластер доступен сразу, убранный перестаёт принимать вход, некорректный конфиг оставляет текущий набор.
+- **Обновление политик подключённых команд.** `tuckcli team sync [имя] [--dry-run]` (`POST /v1/sys/teams/sync`) приводит `team-admin/developer/reader` существующих команд к текущим шаблонам. Также `tuckcli team onboard` для мастера из CLI.
 - **Восстановление Raft-кластера из снимка.** `tuckcli snapshot save|restore` и `POST /v1/sys/cluster/restore?confirm=true`: данные всего кластера заменяются одной реплицируемой операцией, затем все узлы запечатываются и распечатываются долями кластера-источника. Раньше документация описывала только замену файла bbolt, для Raft процедуры не было.
 - **Helm:** при `server.enabled=false` больше не создаются ServiceAccount, ClusterRole и ClusterRoleBinding сервера (в клиентских кластерах это были лишние права).
 - **Аудит с логином.** Записи журнала содержат `identity` (имя токена, например `ldap:bob.dev`; для входа заявленный логин, в том числе неудачного) и `entity_id`. Теперь расследование не требует сопоставлять отпечаток токена, который исчезает вместе с токеном.

@@ -189,3 +189,39 @@ func (s *Server) listK8sClusters(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"clusters": s.core.K8sClusters()})
 }
+
+// SetClusterReloader registers how the list of trusted Kubernetes clusters is
+// re-read from the server configuration (see reloadK8sClusters).
+func (s *Server) SetClusterReloader(f func() (added, removed []string, err error)) { s.reloadClusters = f }
+
+// POST /v1/auth/kubernetes/clusters/reload
+//
+// Re-reads kubernetes.clusters from the config file and applies it without a
+// restart: new clusters become usable, removed ones stop accepting logins.
+// Same as sending SIGHUP to the server. Root namespace only.
+func (s *Server) reloadK8sClusters(w http.ResponseWriter, r *http.Request) {
+	if nsFromCtx(r.Context()) != "" {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
+		return
+	}
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "auth/k8s/cluster", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if s.reloadClusters == nil {
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "the server was started without a config file"})
+		return
+	}
+	added, removed, err := s.reloadClusters()
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if added == nil {
+		added = []string{}
+	}
+	if removed == nil {
+		removed = []string{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"added": added, "removed": removed, "clusters": s.core.K8sClusters()})
+}

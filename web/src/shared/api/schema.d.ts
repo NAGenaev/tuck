@@ -1267,6 +1267,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sys/teams/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bring onboarded teams' policies up to the current templates
+         * @description Rewrites team-admin / team-developer / team-reader of existing teams (only policies that exist under these names). name empty = all namespaces. Root namespace only.
+         */
+        post: operations["syncTeamPolicies"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/kubernetes/clusters/reload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-read kubernetes.clusters from the config file without a restart
+         * @description Same as SIGHUP. New clusters become usable, removed ones stop accepting logins; a broken config keeps the current set. Root namespace only.
+         */
+        post: operations["reloadK8sClusters"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sys/cluster/restore": {
         parameters: {
             query?: never;
@@ -5205,6 +5245,93 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["KeyList"];
                 };
+            };
+        };
+    };
+    syncTeamPolicies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    dry_run?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Result per policy */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        dry_run?: boolean;
+                        policies?: {
+                            namespace?: string;
+                            policy?: string;
+                            /** @enum {string} */
+                            action?: "updated" | "unchanged" | "would_update";
+                        }[];
+                    };
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Namespace not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reloadK8sClusters: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Applied */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        added?: string[];
+                        removed?: string[];
+                        clusters?: string[];
+                    };
+                };
+            };
+            /** @description Config could not be applied */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Server started without a config file */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

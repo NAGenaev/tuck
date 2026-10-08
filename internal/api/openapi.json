@@ -1607,6 +1607,33 @@
         "responses": { "200": { "description": "Role names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyList" } } } } }
       }
     },
+    "/v1/sys/teams/sync": {
+      "post": {
+        "tags": ["namespaces"],
+        "summary": "Bring onboarded teams' policies up to the current templates",
+        "description": "Rewrites team-admin / team-developer / team-reader of existing teams (only policies that exist under these names). name empty = all namespaces. Root namespace only.",
+        "operationId": "syncTeamPolicies",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" }, "dry_run": { "type": "boolean" } } } } } },
+        "responses": {
+          "200": { "description": "Result per policy", "content": { "application/json": { "schema": { "type": "object", "properties": { "dry_run": { "type": "boolean" }, "policies": { "type": "array", "items": { "type": "object", "properties": { "namespace": { "type": "string" }, "policy": { "type": "string" }, "action": { "type": "string", "enum": ["updated", "unchanged", "would_update"] } } } } } } } } },
+          "403": { "description": "Permission denied" },
+          "404": { "description": "Namespace not found" }
+        }
+      }
+    },
+    "/v1/auth/kubernetes/clusters/reload": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "Re-read kubernetes.clusters from the config file without a restart",
+        "description": "Same as SIGHUP. New clusters become usable, removed ones stop accepting logins; a broken config keeps the current set. Root namespace only.",
+        "operationId": "reloadK8sClusters",
+        "responses": {
+          "200": { "description": "Applied", "content": { "application/json": { "schema": { "type": "object", "properties": { "added": { "type": "array", "items": { "type": "string" } }, "removed": { "type": "array", "items": { "type": "string" } }, "clusters": { "type": "array", "items": { "type": "string" } } } } } } },
+          "400": { "description": "Config could not be applied" },
+          "501": { "description": "Server started without a config file" }
+        }
+      }
+    },
     "/v1/sys/cluster/restore": {
       "post": {
         "tags": ["cluster"],

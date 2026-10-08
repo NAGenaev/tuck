@@ -196,9 +196,15 @@ func k8sRolePath(cluster, ns, sa string) string {
 
 func dispatchK8sAuth(c *client, args []string) {
 	if len(args) < 1 {
-		fatalf("usage: auth kubernetes role|clusters|login")
+		fatalf("usage: auth kubernetes role|clusters|reload-clusters|login")
 	}
 	switch args[0] {
+	case "reload-clusters":
+		resp, err := c.do("POST", "/v1/auth/kubernetes/clusters/reload", nil)
+		if err != nil {
+			fatalf("request: %v", err)
+		}
+		printJSON(mustJSON(resp, 200))
 	case "clusters":
 		resp, err := c.do("GET", "/v1/auth/kubernetes/clusters", nil)
 		if err != nil {

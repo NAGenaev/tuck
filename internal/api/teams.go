@@ -90,3 +90,43 @@ func (s *Server) onboardTeam(w http.ResponseWriter, r *http.Request) {
 func namespaceRoleName(ns, access string) string {
 	return core.TeamLDAPRoleName(ns, access)
 }
+
+// POST /v1/sys/teams/sync
+//
+// Body: {"name":"payments","dry_run":true}. Rewrites the team-admin /
+// team-developer / team-reader policies of already onboarded teams with the
+// current templates ("name" empty = all namespaces). Needed after a template
+// fix, which onboarding alone applies only to new teams. Root namespace only.
+func (s *Server) syncTeamPolicies(w http.ResponseWriter, r *http.Request) {
+	if nsFromCtx(r.Context()) != "" {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
+		return
+	}
+	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "sys/teams/sync", policy.CapWrite); err != nil {
+		writeErr(w, err)
+		return
+	}
+	var body struct {
+		Name   string `json:"name"`
+		DryRun bool   `json:"dry_run"`
+	}
+	if r.ContentLength != 0 {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes)).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			return
+		}
+	}
+	items, err := s.core.SyncTeamPolicies(r.Context(), body.Name, body.DryRun)
+	if err != nil {
+		if errors.Is(err, namespace.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "namespace not found"})
+			return
+		}
+		writeErr(w, err)
+		return
+	}
+	if items == nil {
+		items = []core.PolicySyncItem{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"dry_run": body.DryRun, "policies": items})
+}

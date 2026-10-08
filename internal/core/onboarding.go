@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -361,4 +362,64 @@ func (c *Core) OnboardTeam(ctx context.Context, spec TeamSpec) (*OnboardResult, 
 		})
 	}
 	return plan, nil
+}
+
+// PolicySyncItem is the outcome for one team policy of one namespace.
+type PolicySyncItem struct {
+	Namespace string `json:"namespace"`
+	Policy    string `json:"policy"`
+	Action    string `json:"action"` // updated | unchanged (would_update with dry_run)
+}
+
+// SyncTeamPolicies brings the team-admin / team-developer / team-reader policies
+// of already onboarded teams up to the current templates. Onboarding writes the
+// templates once; without this, a later fix (for example a missing capability)
+// would only reach teams created afterwards. Only policies that exist under
+// exactly these names are touched: a team that deleted one, or renamed its
+// own, is left alone. namespaceName "" means every namespace.
+func (c *Core) SyncTeamPolicies(ctx context.Context, namespaceName string, dryRun bool) ([]PolicySyncItem, error) {
+	var targets []string
+	if namespaceName != "" {
+		if _, err := c.namespaces.Get(ctx, namespaceName); err != nil {
+			return nil, err
+		}
+		targets = []string{namespaceName}
+	} else {
+		all, err := c.ListNamespaces(ctx)
+		if err != nil {
+			return nil, err
+		}
+		targets = all
+	}
+	templates := teamPolicies()
+	var out []PolicySyncItem
+	for _, ns := range targets {
+		for _, access := range accessLevels {
+			want := templates[access]
+			have, err := c.GetPolicy(ctx, ns, want.Name)
+			if errors.Is(err, policy.ErrNotFound) {
+				continue
+			}
+			if err != nil {
+				return out, err
+			}
+			item := PolicySyncItem{Namespace: ns, Policy: want.Name, Action: "unchanged"}
+			if !samePolicyRules(have, want) {
+				item.Action = "updated"
+				if dryRun {
+					item.Action = "would_update"
+				} else if err := c.PutPolicy(ctx, ns, want); err != nil {
+					return out, err
+				}
+			}
+			out = append(out, item)
+		}
+	}
+	return out, nil
+}
+
+func samePolicyRules(a, b *policy.Policy) bool {
+	x, _ := json.Marshal(a.Rules)
+	y, _ := json.Marshal(b.Rules)
+	return string(x) == string(y)
 }

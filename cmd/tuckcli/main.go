@@ -910,6 +910,8 @@ System:
   unseal <key>                        Submit a Shamir unseal shard
   seal                                Re-seal the server
   rotate                              Rotate the root key
+  team onboard <json|-> [--dry-run]   Create namespace + team policies + LDAP/K8s roles for a team in one step
+  team sync [name] [--dry-run]        Bring existing teams' policies up to the current templates (all teams if no name)
   snapshot save <file>                Download an (encrypted) snapshot of the data
   snapshot restore <file> --yes       Replace the cluster data with a snapshot (Raft); nodes seal and need the snapshot cluster's key shares
   version                             Print version
@@ -952,6 +954,7 @@ Auth logins:
   auth ldap revoke-user <username>   Revoke every live token of an LDAP login
   auth kubernetes login --jwt=... [--cluster=<name>]
   auth kubernetes clusters
+  auth kubernetes reload-clusters     Re-read kubernetes.clusters from the server config file (same as SIGHUP)
   auth kubernetes role put <k8s-ns> <service-account> [--cluster=<name>] [--policies=p1,p2] [--ttl=24h] [--tuck-namespace=<ns>]
   auth kubernetes role get|delete <k8s-ns> <service-account> [--cluster=<name>]
   auth jwt login --jwt=... [--role=...]
@@ -1209,6 +1212,9 @@ func main() {
 
 	case "snapshot":
 		dispatchSnapshot(c, args[1:])
+
+	case "team":
+		dispatchTeam(c, args[1:])
 
 	case "kv":
 		if len(args) < 2 {

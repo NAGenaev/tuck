@@ -138,3 +138,45 @@ func TestOnboardTeamRollbackAndValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestSyncTeamPoliciesBringsOldTeamsUpToDate(t *testing.T) {
+	ts, _, root := newTestServerWithK8s(t, &mockReviewer{result: &k8sauth.ReviewResult{}})
+	if s, b := nsReq(t, ts, http.MethodPost, "/v1/sys/teams", `{"name":"payments","groups":{"admin":["pay-admins"],"reader":["pay-ro"]}}`, root, ""); s != http.StatusCreated {
+		t.Fatalf("onboard: %d %s", s, b)
+	}
+	// An older template: no right to list policies. A team that renamed or removed
+	// a policy (team-developer was never created here) must be left alone.
+	old := `{"rules":[{"path":"secret/**","capabilities":["read","write","delete","list"]}]}`
+	if s, b := nsReq(t, ts, http.MethodPut, "/v1/policy/team-admin", old, root, "payments"); s != http.StatusNoContent {
+		t.Fatalf("age the policy: %d %s", s, b)
+	}
+	admin := teamToken(t, ts, root, "payments", "team-admin")
+	if s, _ := nsReq(t, ts, "LIST", "/v1/policy/", "", admin, "payments"); s != http.StatusForbidden {
+		t.Fatalf("the aged policy should not list policies, got %d", s)
+	}
+
+	s, b := nsReq(t, ts, http.MethodPost, "/v1/sys/teams/sync", `{"dry_run":true}`, root, "")
+	if s != http.StatusOK || !strings.Contains(b, "would_update") || strings.Contains(b, "team-developer") {
+		t.Fatalf("dry run: %d %s", s, b)
+	}
+	if s, _ := nsReq(t, ts, "LIST", "/v1/policy/", "", admin, "payments"); s != http.StatusForbidden {
+		t.Fatal("a dry run changed a policy")
+	}
+	s, b = nsReq(t, ts, http.MethodPost, "/v1/sys/teams/sync", `{"name":"payments"}`, root, "")
+	if s != http.StatusOK || !strings.Contains(b, `"updated"`) {
+		t.Fatalf("sync: %d %s", s, b)
+	}
+	if s, _ := nsReq(t, ts, "LIST", "/v1/policy/", "", admin, "payments"); s != http.StatusOK {
+		t.Errorf("after the sync the team admin still cannot list policies: %d", s)
+	}
+	// Idempotent, and a team admin cannot run it.
+	if s, b := nsReq(t, ts, http.MethodPost, "/v1/sys/teams/sync", ``, root, ""); s != http.StatusOK || strings.Contains(b, `"updated"`) {
+		t.Errorf("second sync: %d %s", s, b)
+	}
+	if s, _ := nsReq(t, ts, http.MethodPost, "/v1/sys/teams/sync", ``, admin, "payments"); s != http.StatusForbidden {
+		t.Errorf("team admin ran the sync: %d", s)
+	}
+	if s, _ := nsReq(t, ts, http.MethodPost, "/v1/sys/teams/sync", `{"name":"nope"}`, root, ""); s != http.StatusNotFound {
+		t.Errorf("unknown namespace: %d, want 404", s)
+	}
+}

@@ -343,18 +343,50 @@ func main() {
 	if err := c.SetBarrierCipher(*barrierCipher); err != nil {
 		log.Fatalf("barrier cipher: %v", err)
 	}
+	buildClusters := func(list []config.K8sCluster) (map[string]k8sauth.Reviewer, error) {
+		out := make(map[string]k8sauth.Reviewer, len(list))
+		for _, cl := range list {
+			if cl.API == "" || cl.TokenFile == "" {
+				return nil, fmt.Errorf("kubernetes cluster %q: api and token_file are required", cl.Name)
+			}
+			if _, dup := out[cl.Name]; dup {
+				return nil, fmt.Errorf("duplicate kubernetes cluster %q", cl.Name)
+			}
+			r, err := k8sauth.NewClientFromFiles(cl.API, cl.TokenFile, cl.CAFile)
+			if err != nil {
+				return nil, fmt.Errorf("kubernetes cluster %q: %w", cl.Name, err)
+			}
+			out[cl.Name] = r
+		}
+		return out, nil
+	}
+	if initial, buildErr := buildClusters(k8sClusters); buildErr != nil {
+		log.Fatalf("%v", buildErr)
+	} else if _, _, replErr := c.ReplaceK8sClusters(initial); replErr != nil {
+		log.Fatalf("kubernetes clusters: %v", replErr)
+	}
 	for _, cl := range k8sClusters {
-		if cl.API == "" || cl.TokenFile == "" {
-			log.Fatalf("kubernetes cluster %q: api and token_file are required", cl.Name)
-		}
-		r, buildErr := k8sauth.NewClientFromFiles(cl.API, cl.TokenFile, cl.CAFile)
-		if buildErr != nil {
-			log.Fatalf("kubernetes cluster %q: %v", cl.Name, buildErr)
-		}
-		if addErr := c.AddK8sCluster(cl.Name, r); addErr != nil {
-			log.Fatalf("kubernetes cluster: %v", addErr)
-		}
 		log.Printf("tuck: kubernetes cluster %q enabled (%s)", cl.Name, cl.API)
+	}
+	// reloadClusters re-reads kubernetes.clusters from the config file (SIGHUP
+	// or POST /v1/auth/kubernetes/clusters/reload) and swaps the set in place.
+	var reloadClusters func() ([]string, []string, error)
+	if resolvedCfgPath != "" {
+		reloadClusters = func() ([]string, []string, error) {
+			fresh, _, err := config.Load(resolvedCfgPath)
+			if err != nil {
+				return nil, nil, err
+			}
+			next, err := buildClusters(fresh.Kubernetes.Clusters)
+			if err != nil {
+				return nil, nil, err
+			}
+			added, removed, err := c.ReplaceK8sClusters(next)
+			if err == nil {
+				log.Printf("tuck: kubernetes clusters reloaded: added %v, removed %v", added, removed)
+			}
+			return added, removed, err
+		}
 	}
 
 	// --- Audit log ---
@@ -432,6 +464,18 @@ func main() {
 
 	// --- API server + rate limiters ---
 	apiSrv := api.New(c)
+	if reloadClusters != nil {
+		apiSrv.SetClusterReloader(reloadClusters)
+		hup := make(chan os.Signal, 1)
+		signal.Notify(hup, syscall.SIGHUP)
+		go func() {
+			for range hup {
+				if _, _, err := reloadClusters(); err != nil {
+					log.Printf("tuck: SIGHUP: reloading kubernetes clusters failed (kept the current set): %v", err)
+				}
+			}
+		}()
+	}
 	if *k8sAPI != "" {
 		if _, statErr := os.Stat(*k8sTokenFile); statErr == nil {
 			if kc, kcErr := operator.NewKubeClient(*k8sAPI, *k8sTokenFile, *k8sCaFile); kcErr == nil {

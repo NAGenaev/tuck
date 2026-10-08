@@ -120,7 +120,8 @@ type Core struct {
 	// optional — nil means k8s auth is disabled
 	k8sReviewer k8sauth.Reviewer
 	k8sRoles    *k8sauth.RoleStore
-	k8sClusters map[string]k8sauth.Reviewer // named extra clusters; set at startup, read-only afterwards
+	k8sMu       sync.RWMutex
+	k8sClusters map[string]k8sauth.Reviewer // named extra clusters; replaced as a whole by ReplaceK8sClusters
 
 	// ldapDialerFn, when non-nil, overrides the real LDAP dial. Tests inject a
 	// fake Conn via SetLDAPDialer so they don't need a live directory server.
@@ -814,6 +815,8 @@ func (c *Core) AddK8sCluster(name string, r k8sauth.Reviewer) error {
 	if r == nil {
 		return fmt.Errorf("cluster %q: nil reviewer", name)
 	}
+	c.k8sMu.Lock()
+	defer c.k8sMu.Unlock()
 	if _, dup := c.k8sClusters[name]; dup {
 		return fmt.Errorf("duplicate cluster %q", name)
 	}
@@ -826,6 +829,8 @@ func (c *Core) AddK8sCluster(name string, r k8sauth.Reviewer) error {
 
 // K8sClusters lists the names of the additionally registered clusters.
 func (c *Core) K8sClusters() []string {
+	c.k8sMu.RLock()
+	defer c.k8sMu.RUnlock()
 	names := make([]string, 0, len(c.k8sClusters))
 	for n := range c.k8sClusters {
 		names = append(names, n)
@@ -841,11 +846,45 @@ func (c *Core) k8sReviewerFor(cluster string) (k8sauth.Reviewer, error) {
 		}
 		return c.k8sReviewer, nil
 	}
+	c.k8sMu.RLock()
 	r, ok := c.k8sClusters[cluster]
+	c.k8sMu.RUnlock()
 	if !ok {
 		return nil, ErrK8sUnknownCluster
 	}
 	return r, nil
+}
+
+// ReplaceK8sClusters swaps the whole set of additional trusted clusters in one
+// step, so a cluster can be added or removed without restarting the server.
+// Logins in flight finish with the reviewer they already hold. It returns the
+// names that were added and removed. Roles of a removed cluster stay stored
+// (logins for it fail with "unknown kubernetes cluster" until it is back).
+func (c *Core) ReplaceK8sClusters(next map[string]k8sauth.Reviewer) (added, removed []string, err error) {
+	for name, r := range next {
+		if !k8sauth.ValidClusterName(name) {
+			return nil, nil, fmt.Errorf("invalid cluster name %q", name)
+		}
+		if r == nil {
+			return nil, nil, fmt.Errorf("cluster %q: nil reviewer", name)
+		}
+	}
+	c.k8sMu.Lock()
+	defer c.k8sMu.Unlock()
+	for name := range next {
+		if _, had := c.k8sClusters[name]; !had {
+			added = append(added, name)
+		}
+	}
+	for name := range c.k8sClusters {
+		if _, keep := next[name]; !keep {
+			removed = append(removed, name)
+		}
+	}
+	sort.Strings(added)
+	sort.Strings(removed)
+	c.k8sClusters = next
+	return added, removed, nil
 }
 
 // LoginK8sCluster is LoginK8s for a named cluster ("" = the default one). The

@@ -42,6 +42,9 @@ type Server struct {
 	// tuckSecrets backs the read-only TuckSecret listing; nil when the server
 	// has no Kubernetes API access.
 	tuckSecrets TuckSecretSource
+	// reloadClusters re-reads the trusted-cluster list from the config file; nil
+	// when the server was started without one.
+	reloadClusters func() (added, removed []string, err error)
 }
 
 // New returns an HTTP server wired to the core's audit Dispatcher.
@@ -139,6 +142,7 @@ func (s *Server) Handler() http.Handler {
 	// getNamespace since {name...} would otherwise swallow it as part of name.
 	mux.HandleFunc("POST /v1/sys/namespaces", s.requireToken(s.createNamespace))
 	mux.HandleFunc("POST /v1/sys/teams", s.requireToken(s.onboardTeam))
+	mux.HandleFunc("POST /v1/sys/teams/sync", s.requireToken(s.syncTeamPolicies))
 	mux.HandleFunc("GET /v1/sys/namespaces/{name...}", s.requireToken(s.getNamespace))
 	mux.HandleFunc("DELETE /v1/sys/namespaces/{name...}", s.requireToken(s.deleteNamespace))
 	mux.HandleFunc("PUT /v1/sys/namespaces/{name...}", s.requireToken(s.updateNamespace))
@@ -225,6 +229,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/auth/kubernetes/role/{namespace}/{sa}", s.requireToken(s.getK8sRole))
 	mux.HandleFunc("DELETE /v1/auth/kubernetes/role/{namespace}/{sa}", s.requireToken(s.deleteK8sRole))
 	mux.HandleFunc("GET /v1/auth/kubernetes/clusters", s.requireToken(s.listK8sClusters))
+	mux.HandleFunc("POST /v1/auth/kubernetes/clusters/reload", s.requireToken(s.reloadK8sClusters))
 	mux.HandleFunc("GET /v1/sys/k8s/tucksecrets", s.requireToken(s.listTuckSecrets))
 	mux.HandleFunc("PUT /v1/auth/kubernetes/clusters/{cluster}/role/{namespace}/{sa}", s.requireToken(s.putK8sRole))
 	mux.HandleFunc("GET /v1/auth/kubernetes/clusters/{cluster}/role/{namespace}/{sa}", s.requireToken(s.getK8sRole))

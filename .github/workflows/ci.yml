@@ -146,4 +146,5 @@ jobs:
       - name: gosec
         run: |
           go install github.com/securego/gosec/v2/cmd/gosec@latest
-          gosec -exclude=G104,G704,G706 ./...
+          # internal/gost: intentional uint64→byte conversions in the (non-certified) GOST ciphers.
+          gosec -exclude=G104,G704,G706 -exclude-dir=internal/gost ./...

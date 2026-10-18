@@ -623,7 +623,7 @@ func certPool(pemBundle string) (*x509.CertPool, error) {
 func (c *Config) tlsConfig(serverURL string) (*tls.Config, error) {
 	tlsCfg := &tls.Config{ // #nosec G402 — InsecureSkipVerify is an explicit operator opt-in
 		MinVersion:         tls.VersionTLS12,
-		InsecureSkipVerify: c.TLSInsecure,
+		InsecureSkipVerify: c.TLSInsecure, // #nosec G402 — explicit operator opt-in (tls_insecure)
 	}
 	if u, err := url.Parse(serverURL); err == nil {
 		tlsCfg.ServerName = u.Hostname()

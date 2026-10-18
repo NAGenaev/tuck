@@ -23,7 +23,7 @@ const (
 
 	// volumeKeySATokens is set by kubelet when the CSIDriver declares
 	// tokenRequests: a JSON object audience → {token, expirationTimestamp}.
-	volumeKeySATokens = "csi.storage.k8s.io/serviceAccount.tokens"
+	volumeKeySATokens = "csi.storage.k8s.io/serviceAccount.tokens" // #nosec G101 — volume context key name, not a credential
 
 	// saTokenSkew: a ServiceAccount token this close to expiry is treated as expired.
 	saTokenSkew = 10 * time.Second

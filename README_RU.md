@@ -2,7 +2,7 @@
 
 > Самый простой менеджер секретов для Kubernetes. Спрячь секрет — без лишних ритуалов.
 
-[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
+[![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Release](https://img.shields.io/badge/release-v2.1.0-green)](https://github.com/NAGenaev/tuck/releases)
 

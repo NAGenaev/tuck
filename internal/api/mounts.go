@@ -1,6 +1,7 @@
 package api
 
 import (
+	"strings"
 	"errors"
 	"io"
 	"net/http"
@@ -49,6 +50,11 @@ func (s *Server) listMounts(w http.ResponseWriter, r *http.Request) {
 // (bad config, path collision, ...) nothing is created or persisted.
 func (s *Server) createMount(w http.ResponseWriter, r *http.Request) {
 	mountPath := r.PathValue("path")
+	if strings.Trim(mountPath, "/") == "" {
+		// Go 1.26 routes POST /v1/sys/mounts here with an empty wildcard.
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "mount path required"})
+		return
+	}
 	if err := s.core.EnforceAccess(r.Context(), tokenFromCtx(r.Context()), "sys/mounts", policy.CapWrite); err != nil {
 		writeErr(w, err)
 		return

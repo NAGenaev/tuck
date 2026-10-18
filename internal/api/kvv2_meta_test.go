@@ -202,7 +202,7 @@ func TestKVv2MountOptions(t *testing.T) {
 	if code, _, _ := kvCall(t, ts, http.MethodPost, "/v1/sys/mounts-tune/secret", `{"max_versions":5000}`, root); code != http.StatusBadRequest {
 		t.Fatalf("max_versions 5000: %d", code)
 	}
-	if code, _, _ := kvCall(t, ts, http.MethodPost, "/v1/sys/mounts", `{"type":"kv","path":"other"}`, root); code < 300 {
+	if code, _, _ := kvCall(t, ts, http.MethodPost, "/v1/sys/mounts/other", `{"type":"kv"}`, root); code < 300 {
 		if code, _, raw := kvCall(t, ts, http.MethodPost, "/v1/sys/mounts-tune/other", `{"cas_required":true}`, root); code != http.StatusBadRequest {
 			t.Fatalf("kv option on other mount: %d %s, want 400", code, raw)
 		}

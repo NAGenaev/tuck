@@ -4,7 +4,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v1.5.0-green)](https://github.com/NAGenaev/tuck/releases)
+[![Release](https://img.shields.io/badge/release-v2.1.0-green)](https://github.com/NAGenaev/tuck/releases)
 
 Tuck — open-source менеджер секретов для Kubernetes. Главная идея: **анти-Vault** — один статический бинарь, никакой внешней базы данных, автоматическое распечатывание по умолчанию. `kubectl apply` — и работает.
 
@@ -24,8 +24,8 @@ Tuck — open-source менеджер секретов для Kubernetes. Гла
 | Хранилище | Внешнее | Встроенный bbolt или встроенный Raft |
 | Распечатывание после рестарта | Ручное (кворум Shamir) | Автоматическое (dev / transit) |
 | Kubernetes-оператор | Внешний (ESO) | Встроенный |
-| Хранилища секретов | KV, PKI, Transit, SSH, Database, TOTP | KV v1/v2, Cubbyhole (фокус на Kubernetes) |
-| Методы аутентификации | Token, K8s, JWT, AppRole | Те же |
+| Хранилища секретов | KV, PKI, Transit, SSH, Database, TOTP | KV v1/v2, Cubbyhole (фокус на Kubernetes; PKI, Transit, SSH, TOTP и динамические секреты удалены) |
+| Методы аутентификации | Token, K8s, JWT, AppRole, LDAP | Те же, плюс SSO (OIDC) |
 | HA | Vault Enterprise / OSS Raft | Встроенный Raft (3–5 нод) |
 | Размер бинаря | ~300 МБ | ~20 МБ |
 
@@ -54,7 +54,14 @@ Tuck — open-source менеджер секретов для Kubernetes. Гла
 | **Kubernetes SA** | Воркloadы обмениваются ServiceAccount JWT через `TokenReview` API |
 | **JWT / OIDC** | Любой OIDC-провайдер — Keycloak, Auth0, Google |
 | **AppRole** | Машина-машина: `role_id` + `secret_id` |
-| **LDAP / AD** | Аутентификация пользователей из OpenLDAP, Active Directory, FreeIPA; членство в группах → политики через Roles |
+| **LDAP / AD** | Пользователи из OpenLDAP, Active Directory, FreeIPA; группа → роль → политики и namespace; перепроверка токенов каждые 5 минут |
+| **SSO (OIDC)** | Вход по коду с PKCE (Keycloak и др.), `bound_groups`, собственный УЦ |
+
+### Команды и несколько кластеров
+
+- **Мастер подключения команды** (страница Teams, `tuckcli team onboard`): namespace, политики, LDAP-роли и роли ServiceAccount одной операцией, с предпросмотром и откатом
+- **Один Tuck — несколько зеркальных кластеров** (`kubernetes.clusters`), горячее подключение кластера без рестарта
+- Снимки и атомарное восстановление Raft-кластера (`tuckcli snapshot`)
 
 ### Kubernetes
 
@@ -264,7 +271,9 @@ go build ./cmd/tuck-agent
 | M30 — UI: Auth Methods (AppRole/JWT/LDAP/K8s) | v0.30 | ✅ |
 | M31 — UI: Crypto Engines (PKI / Transit / SSH / TOTP в браузере) | v0.31 | 🗑 снято |
 | M32 — CLI completeness (db creds, pki/transit/ssh/totp операции) | v0.32 | 🗑 снято |
-| v1.0 GA — Внешний security audit | — | 🔜 |
+| v1.0 GA (2026-06-12); внешний security audit | v1.0 | 🔜 (аудит) |
+| Сужение до Kubernetes-сценария (удаление движков) | v2.0 | ✅ |
+| Пилот банка: мастер команд, LDAP/SSO, зеркальные кластеры, восстановление, нагрузочные тесты | v2.1 | ✅ |
 
 ---
 
